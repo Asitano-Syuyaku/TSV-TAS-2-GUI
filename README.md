@@ -41,7 +41,7 @@ Use PyInstaller to bundle into a single executable (**no console window**):
 
 - **Japanese version (UI in Japanese)**
 ```
-ppyinstaller --noconsole --onefile main_jp.py
+pyinstaller --noconsole --onefile main_jp.py
 ```
 
 - **English version (UI in English)**
