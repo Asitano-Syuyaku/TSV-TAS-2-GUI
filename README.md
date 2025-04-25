@@ -21,7 +21,9 @@ If you would like to generate a debug CSV file displaying each frame of the gene
 ## Converting nx-TAS to TSV-TAS
 To convert an nx-TAS script to a TSV-TAS script, in the command line, navigate to the ```TSV-TAS-2``` directory and enter ```python3 nx-tas-to-tsv-tas.py [path to nx-TAS file] [path to output file]```. (Note: functionality currently limited)
 
-## Running the GUI
+# TSV-TAS-2-GUI
+
+### Running the GUI
 
 1. Place the generated `main_jp.exe` or `main_en.exe` in the same folder as `nx-tas-to-tsv-tas.py` and `tsv-tas.py`.
 2. Double‑click the executable to launch the GUI.
@@ -33,7 +35,7 @@ To convert an nx-TAS script to a TSV-TAS script, in the command line, navigate t
 4. Click **Start Conversion**.
 5. Conversion logs will appear in the GUI. On success, a message box confirms completion.
 
-## Building the GUI Executable
+### Building the GUI Executable
 
 Use PyInstaller to bundle into a single executable (**no console window**):
 
@@ -50,6 +52,6 @@ pyinstaller --noconsole --onefile main_en.py
 > **Note:** replace `main_jp.py` or `main_en.py` with your actual script filename.
 
 
-## Disclaimer
+### Disclaimer
 
 Please note that this code was generated with the help of ChatGPT's Python code generation capabilities, and its correct operation is not guaranteed. Use at your own risk.
