@@ -1495,16 +1495,13 @@ while loop or do_once:
     script.combineFrames()
 
     if debug:
-        debugFile = open(outfile + "-debug.csv", "w")
-
-        debugFile.write(
-            "Frame,2ndPlayer,Buttons,ButtonsOn,ButtonsOff,lx.r,ls.theta,ls.x,ls.y,rs.r,rs.theta,rs.x,rs.y,la.x,la.y,la.z,ra.x,ra.y,ra.z,lg.r.xx,lg.r.xy,lg.r.xz,lg.r.yx,lg.r.yy,lg.r.yz,lg.r.zx,lg.r.zy,lg.r.zz,lg.v.x,lg.v.y,lg.v.z,rg.r.xx,rg.r.xy,rg.r.xz,rg.r.yx,rg.r.yy,rg.r.yz,rg.r.zx,rg.r.zy,rg.r.zz,rg.v.x,rg.v.y,rg.v.z,Command\n"
-        )
-        for i in range(len(script.frames)):
+        with open(outfile + "-debug.csv", "w", encoding="utf-8", newline="") as debugFile:
+            debugFile.write(
+                "Frame,2ndPlayer,Buttons,ButtonsOn,ButtonsOff,lx.r,ls.theta,ls.x,ls.y,rs.r,rs.theta,rs.x,rs.y,la.x,la.y,la.z,ra.x,ra.y,ra.z,lg.r.xx,lg.r.xy,lg.r.xz,lg.r.yx,lg.r.yy,lg.r.yz,lg.r.zx,lg.r.zy,lg.r.zz,lg.v.x,lg.v.y,lg.v.z,rg.r.xx,rg.r.xy,rg.r.xz,rg.r.yx,rg.r.yy,rg.r.yz,rg.r.zx,rg.r.zy,rg.r.zz,rg.v.x,rg.v.y,rg.v.z,Command\n"
+            )
             csv_writer = csv.writer(debugFile, delimiter=",")
-            data = script.frames[i].toStrArray()
-            csv_writer.writerow(data)
-        debugFile.close()
+            for frame in script.frames:
+                csv_writer.writerow(frame.toStrArray())
 
     if nxtas:
         outf: FileIO = cast(FileIO, open(outfile, "w"))

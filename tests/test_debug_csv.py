@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from python_to_exe.editor.debug_csv import SUMMARY_FIELDS, parse_debug_csv
+from python_to_exe.editor.debug_csv import SUMMARY_FIELDS, load_debug_csv, parse_debug_csv
 from python_to_exe.editor.frame_inspector import MAIN_COLUMNS
 from python_to_exe.editor.validation import analyze_script
 
@@ -64,6 +64,36 @@ class DebugCsvTests(unittest.TestCase):
                 parse_debug_csv(io.StringIO(headers + "\n" + ",".join(values) + "\n"))
         with self.assertRaises(csv.Error):
             parse_debug_csv(io.StringIO(headers + "\n\"unterminated\n"))
+
+    def test_windows_newlines_and_legacy_blank_records(self):
+        # csv.writer emits CRLF. A legacy Windows text stream translated its LF
+        # again, producing CR CR LF and an empty csv.reader record per data row.
+        original = make_csv([(0, False), (0, True), (2, False)]).getvalue()
+        header, *data_rows = original.splitlines(keepends=True)
+        legacy = header + "".join(row.replace("\r\n", "\r\r\n") for row in data_rows)
+        cases = ((original, 3),
+                 (original.replace("\r\n", "\n"), 3),
+                 (legacy, 3))
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "windows-debug.csv"
+            for content, expected_total in cases:
+                path.write_bytes(content.encode("utf-8"))
+                frames = load_debug_csv(path)
+                self.assertEqual((len(frames.rows), frames.total_frames), (3, expected_total))
+                self.assertEqual([frames.summary(i)[1] for i in range(3)],
+                                 ["1P", "2P", "1P"])
+                self.assertEqual(frames.row_for_frame(2), 2)
+
+    def test_only_zero_field_records_are_skipped(self):
+        original = make_csv([(0, False), (1, False)]).getvalue()
+        header, first, second = original.splitlines(keepends=True)
+        frames = parse_debug_csv(io.StringIO(header + "\r\n" + first + "\n" + second,
+                                             newline=""))
+        self.assertEqual((len(frames.rows), frames.total_frames), (2, 2))
+        for malformed in ("0,False\r\n", '""\r\n'):
+            with self.assertRaisesRegex(ValueError, "fields"):
+                parse_debug_csv(io.StringIO(header + first + "\n" + malformed + second,
+                                            newline=""))
 
     def test_ten_thousand_rows_parse_and_lookup(self):
         source = make_csv(((frame, False) for frame in range(10000)),

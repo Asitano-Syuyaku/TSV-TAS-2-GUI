@@ -83,7 +83,9 @@ class ConversionTests(unittest.TestCase):
         self.run_command(self.build("binary", debug=True)[0])
         debug_path = self.work / "output with spaces-debug.csv"
         self.assertTrue(debug_path.is_file())
-        self.assertIn("Frame,2ndPlayer", debug_path.read_text())
+        contents = debug_path.read_bytes()
+        self.assertIn(b"Frame,2ndPlayer", contents)
+        self.assertNotIn(b"\r\r\n", contents)
 
     def test_ftp_command_combinations_and_config_types(self):
         for format_name, expected in (("binary", "-f"), ("stas", "-fs"),

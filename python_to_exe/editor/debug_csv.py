@@ -50,6 +50,10 @@ def parse_debug_csv(source):
     first_row_by_frame = {}
     highest = -1
     for csv_row_number, fields in enumerate(reader, start=2):
+        if not fields:
+            # Legacy Windows output used csv.writer with a text stream that
+            # translated CRLF a second time, leaving empty CSV records.
+            continue
         if len(fields) != len(headers):
             raise ValueError(f"Debug CSV row {csv_row_number} has {len(fields)} fields; "
                              f"expected {len(headers)}")
