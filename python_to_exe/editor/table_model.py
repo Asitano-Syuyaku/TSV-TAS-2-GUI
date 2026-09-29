@@ -38,6 +38,8 @@ class TableModel:
         return len(self.rows)
 
     def cell(self, row, column):
+        if row >= self.row_count:
+            return ""
         cells = self.rows[row]
         return cells[column] if column < len(cells) else ""
 
@@ -76,7 +78,7 @@ class TableModel:
 
     def clear_range(self, bounds):
         top, bottom, left, right = bounds
-        for row in range(top, bottom + 1):
+        for row in range(top, min(bottom + 1, self.row_count)):
             cells = self.rows[row]
             for column in range(left, min(right + 1, len(cells))):
                 cells[column] = ""
@@ -104,14 +106,18 @@ class TableModel:
         return len(block), max(map(len, block))
 
     def insert_row(self, row):
+        while row > self.row_count:
+            self.rows.append([""])
         self.rows.insert(row, [""])
         self._recount()
 
     def delete_row(self, row):
-        if self.row_count == 1:
-            self.rows[0] = [""]
-        else:
-            self.rows.pop(row)
+        self.delete_rows(row, row)
+
+    def delete_rows(self, first, last):
+        del self.rows[first:min(last + 1, self.row_count)]
+        if not self.rows:
+            self.rows = [[""]]
         self._recount()
 
     def duplicate_row(self, row):
@@ -126,9 +132,11 @@ class TableModel:
         self._recount()
 
     def delete_column(self, column):
+        self.delete_columns(column, column)
+
+    def delete_columns(self, first, last):
         for cells in self.rows:
-            if column < len(cells):
-                cells.pop(column)
+            del cells[first:min(last + 1, len(cells))]
             if not cells:
                 cells.append("")
         self._recount()

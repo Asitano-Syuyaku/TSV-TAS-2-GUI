@@ -22,9 +22,12 @@ LABELS = {
         "replace_all": "Replace All", "not_found": "Not found", "saved": "Unmodified",
         "modified": "Modified", "line": "Line", "column": "Column",
         "raw_view": "Raw Text", "table_view": "Table",
-        "table_menu": "Table", "insert_row": "Insert Row",
+        "table_menu": "Table", "add_row": "+ Row", "add_column": "+ Column",
+        "insert_row_above": "Insert Row Above", "insert_row_below": "Insert Row Below",
         "delete_row": "Delete Row", "duplicate_row": "Duplicate Row",
-        "insert_column": "Insert Column", "delete_column": "Delete Column",
+        "insert_column_left": "Insert Column Left",
+        "insert_column_right": "Insert Column Right",
+        "delete_column": "Delete Column",
         "clear_cells": "Clear Cells",
     },
     "ja": {
@@ -41,9 +44,12 @@ LABELS = {
         "not_found": "見つかりません", "saved": "未編集", "modified": "編集済み",
         "line": "行", "column": "列",
         "raw_view": "テキスト", "table_view": "表",
-        "table_menu": "表", "insert_row": "行を追加",
+        "table_menu": "表", "add_row": "+ 行", "add_column": "+ 列",
+        "insert_row_above": "上に行を追加", "insert_row_below": "下に行を追加",
         "delete_row": "行を削除", "duplicate_row": "行を複製",
-        "insert_column": "列を追加", "delete_column": "列を削除",
+        "insert_column_left": "左に列を追加",
+        "insert_column_right": "右に列を追加",
+        "delete_column": "列を削除",
         "clear_cells": "セルを消去",
     },
 }
@@ -93,10 +99,12 @@ class EditorWindow(tk.Toplevel):
             search_menu.add_command(label=self.words[key], command=command, accelerator=shortcut)
         menu.add_cascade(label=self.words["search"], menu=search_menu)
         table_menu = tk.Menu(menu, tearoff=False)
-        for key, action in (("insert_row", "insert_row"),
+        for key, action in (("insert_row_above", "insert_row_above"),
+                            ("insert_row_below", "insert_row_below"),
                             ("delete_row", "delete_row"),
                             ("duplicate_row", "duplicate_row"),
-                            ("insert_column", "insert_column"),
+                            ("insert_column_left", "insert_column_left"),
+                            ("insert_column_right", "insert_column_right"),
                             ("delete_column", "delete_column"),
                             ("clear_cells", "clear_selection")):
             table_menu.add_command(label=self.words[key],
@@ -110,6 +118,11 @@ class EditorWindow(tk.Toplevel):
         self._table_button = tk.Button(view_bar, text=self.words["table_view"],
                                        command=self.show_table)
         self._table_button.pack(side="left")
+        self.table_tools = tk.Frame(view_bar)
+        tk.Button(self.table_tools, text=self.words["add_row"],
+                  command=lambda: self._table_action("insert_row_below")).pack(side="left")
+        tk.Button(self.table_tools, text=self.words["add_column"],
+                  command=lambda: self._table_action("insert_column_right")).pack(side="left")
 
         frame = tk.Frame(self)
         frame.pack(fill="both", expand=True)
@@ -135,7 +148,7 @@ class EditorWindow(tk.Toplevel):
         from .grid import TableGrid
         self.table_grid = TableGrid(self, fixed_font, self._table_cell_changed,
                                     self._table_text_changed, self._update_status,
-                                    self.undo, self.redo)
+                                    self.undo, self.redo, self.words)
         self.status = tk.Label(self, anchor="w")
         self.status.pack(fill="x")
         self._update_view_button()
@@ -250,6 +263,8 @@ class EditorWindow(tk.Toplevel):
             if not self._commit_table_edit():
                 return False
             self.table_grid.pack_forget()
+            if hasattr(self, "table_tools"):
+                self.table_tools.pack_forget()
             self.raw_frame.pack(fill="both", expand=True, before=self.status)
             self._view = "raw"
             self._update_status()
@@ -265,6 +280,8 @@ class EditorWindow(tk.Toplevel):
         self.table_grid.set_text(self.document.text)
         self.raw_frame.pack_forget()
         self.table_grid.pack(fill="both", expand=True, before=self.status)
+        if hasattr(self, "table_tools"):
+            self.table_tools.pack(side="left", after=self._table_button)
         self._view = "table"
         self._update_status()
         self.table_grid.canvas.focus_set()
@@ -322,6 +339,8 @@ class EditorWindow(tk.Toplevel):
     def _show_document(self):
         if getattr(self, "_view", "raw") == "table":
             self.table_grid.pack_forget()
+            if hasattr(self, "table_tools"):
+                self.table_tools.pack_forget()
             self.raw_frame.pack(fill="both", expand=True, before=self.status)
             self._view = "raw"
         if hasattr(self, "table_grid"):

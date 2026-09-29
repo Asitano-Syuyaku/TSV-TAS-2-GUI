@@ -129,6 +129,14 @@ class TableWindowTests(unittest.TestCase):
     def tearDownClass(cls):
         sys.modules.pop("python_to_exe.editor.window", None)
 
+    def test_structure_controls_have_matching_language_keys(self):
+        labels = self.editor_window.LABELS
+        self.assertEqual(set(labels["ja"]), set(labels["en"]))
+        self.assertEqual((labels["ja"]["add_row"], labels["ja"]["add_column"]),
+                         ("+ 行", "+ 列"))
+        self.assertEqual((labels["en"]["add_row"], labels["en"]["add_column"]),
+                         ("+ Row", "+ Column"))
+
     def _window(self, path):
         window = self.editor_window.EditorWindow.__new__(self.editor_window.EditorWindow)
         window.words = self.editor_window.LABELS["en"]
@@ -246,6 +254,28 @@ class TableWindowTests(unittest.TestCase):
             self.assertEqual(window._view, "raw")
             self.assertFalse(window.show_table())
             self.assertEqual(txt_path.read_bytes(), converted[0][1])
+
+    def test_virtual_row_transform_is_one_undo_and_preserves_mixed_endings(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "virtual 日本語.tsv"
+            source.write_bytes(b"A\r\nB\n")
+            window = self._window(source)
+            self.assertTrue(window.show_table())
+            original = window.document.text
+            model = TableModel(original)
+            model.paste(4, 0, "猫")
+            updated = model.to_text()
+            self.assertTrue(window._table_text_changed(original, updated))
+            window.table_grid.set_text(updated)
+            self.assertTrue(window.document.modified)
+            self.assertEqual(len(window.text._undo), 1)
+            self.assertTrue(window.undo())
+            self.assertEqual(window.document.text, original)
+            self.assertFalse(window.document.modified)
+            self.assertTrue(window.redo())
+            self.assertEqual(window.document.text, updated)
+            self.assertTrue(window.save())
+            self.assertEqual(source.read_bytes(), b"A\r\nB\n\r\n\r\n\xe7\x8c\xab")
 
     def test_txt_stays_raw(self):
         with tempfile.TemporaryDirectory() as folder:

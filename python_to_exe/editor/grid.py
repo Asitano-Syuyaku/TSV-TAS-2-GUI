@@ -29,7 +29,7 @@ def column_label(index):
 
 class TableGrid(tk.Frame):
     def __init__(self, master, font, on_change, on_transform, on_select,
-                 on_undo, on_redo):
+                 on_undo, on_redo, labels=None):
         super().__init__(master)
         self.font = font
         self.on_change = on_change
@@ -48,6 +48,8 @@ class TableGrid(tk.Frame):
         self._draw_job = None
         self._scroll_region = None
         self._drag_ready = False
+        self._selection_axis = None
+        self._drag_axis = None
 
         self.canvas = tk.Canvas(self, background=CANVAS_BACKGROUND, highlightthickness=0,
                                 takefocus=True)
@@ -67,6 +69,7 @@ class TableGrid(tk.Frame):
         self.canvas.bind("<Double-Button-1>", self._double_click)
         self.canvas.bind("<B1-Motion>", self._drag)
         self.canvas.bind("<ButtonRelease-1>", self._release)
+        self.canvas.bind("<Button-3>", self._right_click)
         self.canvas.bind("<KeyPress>", self._type_to_edit)
         self.canvas.bind("<MouseWheel>", self._wheel)
         self.canvas.bind("<Button-4>", lambda event: self._wheel_units(-1))
@@ -76,7 +79,30 @@ class TableGrid(tk.Frame):
         self.canvas.bind("<BackSpace>", lambda event: self._key_action(self.clear_selection))
         self._bind_clipboard(self.canvas)
         self._bind_history(self.canvas)
+        if labels is not None:
+            self._build_context_menus(labels)
         self._update_region()
+
+    def _build_context_menus(self, labels):
+        actions = {
+            "row": ("insert_row_above", "insert_row_below", "duplicate_row",
+                    "delete_row", "cut", "copy", "paste"),
+            "column": ("insert_column_left", "insert_column_right",
+                       "delete_column", "cut", "copy", "paste"),
+            "cell": ("cut", "copy", "paste", "clear_cells",
+                     "insert_row_above", "insert_row_below", "duplicate_row",
+                     "delete_row", "insert_column_left", "insert_column_right",
+                     "delete_column"),
+        }
+        commands = {"cut": self.cut_selection, "copy": self.copy_selection,
+                    "paste": self.paste_clipboard, "clear_cells": self.clear_selection}
+        self._context_menus = {}
+        for kind, entries in actions.items():
+            menu = tk.Menu(self, tearoff=False)
+            for key in entries:
+                command = commands[key] if key in commands else getattr(self, key)
+                menu.add_command(label=labels[key], command=command)
+            self._context_menus[kind] = menu
 
     def _bind_canvas_navigation(self):
         for key, delta in (("Up", (-1, 0)), ("Down", (1, 0)),
@@ -103,6 +129,15 @@ class TableGrid(tk.Frame):
         else:
             self.selection.move_to(*cell)
 
+    def _selection_bounds(self):
+        top, bottom, left, right = self.selection.bounds
+        axis = getattr(self, "_selection_axis", None)
+        if axis == "row":
+            return top, bottom, 0, max(self.model.column_count - 1, right)
+        if axis == "column":
+            return 0, max(self.model.row_count - 1, bottom), left, right
+        return top, bottom, left, right
+
     @staticmethod
     def _key_action(action):
         action()
@@ -127,7 +162,7 @@ class TableGrid(tk.Frame):
         if self._editor is not None:
             raise RuntimeError("Commit the current cell before refreshing the table")
         self.model = TableModel(text)
-        self.selection.clamp(self.model.row_count, self.model.column_count)
+        self._selection_axis = None
         self._update_region()
         self._schedule_draw()
         self.on_select()
@@ -135,8 +170,10 @@ class TableGrid(tk.Frame):
     def _update_region(self):
         columns = max(self.model.column_count, self.selected[1] + 1,
                       self.selection.anchor[1] + 1)
+        rows = max(self.model.row_count + 1, self.selected[0] + 1,
+                   self.selection.anchor[0] + 1)
         width = self.gutter_width + columns * self.column_width
-        height = self.header_height + self.model.row_count * self.row_height
+        height = self.header_height + rows * self.row_height
         region = (0, 0, width, height)
         if region != self._scroll_region:
             self.canvas.configure(scrollregion=region)
@@ -163,13 +200,16 @@ class TableGrid(tk.Frame):
         x0, y0 = canvas.canvasx(0), canvas.canvasy(0)
         width, height = canvas.winfo_width(), canvas.winfo_height()
         rows = visible_span(y0, height, self.header_height,
-                            self.row_height, self.model.row_count)
+                            self.row_height, max(self.model.row_count + 1,
+                                                 self.selected[0] + 1,
+                                                 self.selection.anchor[0] + 1))
         columns = visible_span(x0, width, self.gutter_width,
                                self.column_width,
                                max(self.model.column_count, self.selected[1] + 1,
                                    self.selection.anchor[1] + 1))
         canvas.delete("grid")
-        top, bottom, left, right = self.selection.bounds
+        top, bottom, left, right = self._selection_bounds()
+        axis = getattr(self, "_selection_axis", None)
         for row in rows:
             for column in columns:
                 x1, y1, x2, y2 = self._cell_box(row, column)
@@ -193,7 +233,7 @@ class TableGrid(tk.Frame):
         for row in rows:
             y = self.header_height + row * self.row_height
             canvas.create_rectangle(x0, y, x0 + self.gutter_width, y + self.row_height,
-                                    fill=HEADER_SELECTED if top <= row <= bottom
+                                    fill=HEADER_SELECTED if axis != "column" and top <= row <= bottom
                                     else HEADER_BACKGROUND,
                                     outline=HEADER_LINE, width=2, tags="grid")
             canvas.create_text(x0 + self.gutter_width - 5, y + self.row_height / 2,
@@ -202,7 +242,7 @@ class TableGrid(tk.Frame):
         for column in columns:
             x = self.gutter_width + column * self.column_width
             canvas.create_rectangle(x, y0, x + self.column_width, y0 + self.header_height,
-                                    fill=HEADER_SELECTED if left <= column <= right
+                                    fill=HEADER_SELECTED if axis != "row" and left <= column <= right
                                     else HEADER_BACKGROUND,
                                     outline=HEADER_LINE, width=2, tags="grid")
             canvas.create_text(x + self.column_width / 2, y0 + self.header_height / 2,
@@ -259,50 +299,129 @@ class TableGrid(tk.Frame):
             return None
         row = int((self.canvas.canvasy(y) - self.header_height) // self.row_height)
         column = int((self.canvas.canvasx(x) - self.gutter_width) // self.column_width)
-        if not clamp and (row >= self.model.row_count or
-                          column >= self.model.column_count):
+        last_row = max(self.model.row_count, self.selected[0] + 1)
+        last_column = max(self.model.column_count, self.selected[1] + 1)
+        if not clamp and (row > last_row or column > last_column):
             return None
-        return (max(0, min(row, self.model.row_count - 1)),
-                max(0, min(column, self.model.column_count)))
+        return max(0, min(row, last_row)), max(0, min(column, last_column))
 
-    def _click(self, event):
-        self._drag_ready = False
+    def _hit_target(self, event):
+        if event.x < self.gutter_width and event.y < self.header_height:
+            return None
+        if event.x < self.gutter_width:
+            row = int((self.canvas.canvasy(event.y) - self.header_height) // self.row_height)
+            if 0 <= row <= max(self.model.row_count, self.selected[0] + 1):
+                return "row", row
+            return None
+        if event.y < self.header_height:
+            column = int((self.canvas.canvasx(event.x) - self.gutter_width) // self.column_width)
+            if 0 <= column <= max(self.model.column_count, self.selected[1] + 1):
+                return "column", column
+            return None
         cell = self._hit_cell(event)
-        if cell is None:
-            return
-        if not self.commit_edit():
-            return
-        self.selection.move_to(*cell, extend=bool(getattr(event, "state", 0) & 0x0001))
-        self._drag_ready = True
+        return ("cell", cell) if cell is not None else None
+
+    def _select_header(self, kind, index, extend=False):
+        if kind == "row":
+            anchor = (self.selection.anchor[0] if extend and
+                      getattr(self, "_selection_axis", None) == "row" else index)
+            column = max(0, int((self.canvas.canvasx(self.gutter_width) -
+                                 self.gutter_width) // self.column_width))
+            self.selection.anchor = anchor, column
+            self.selection.active = index, column
+        else:
+            anchor = (self.selection.anchor[1] if extend and
+                      getattr(self, "_selection_axis", None) == "column" else index)
+            row = max(0, int((self.canvas.canvasy(self.header_height) -
+                              self.header_height) // self.row_height))
+            self.selection.anchor = row, anchor
+            self.selection.active = row, index
+        self._selection_axis = kind
+
+    def _select_target(self, target, extend=False):
+        kind, value = target
+        if kind == "cell":
+            self.selection.move_to(*value, extend=extend)
+            self._selection_axis = None
+        else:
+            self._select_header(kind, value, extend)
+        self._update_region()
         self._ensure_visible()
         self.on_select()
         self._schedule_draw()
+
+    def _click(self, event):
+        self._drag_ready = False
+        target = self._hit_target(event)
+        if target is None:
+            return
+        if not self.commit_edit():
+            return
+        self._select_target(target, extend=bool(getattr(event, "state", 0) & 0x0001))
+        self._drag_ready = True
+        self._drag_axis = target[0]
         self.canvas.focus_set()
 
     def _double_click(self, event):
         self._click(event)
-        if self._drag_ready:
+        if self._drag_ready and self._drag_axis == "cell":
             self.begin_edit(caret_x=event.x)
         return "break"
 
     def _drag(self, event):
         if not self._drag_ready:
             return
-        cell = self._hit_cell(event, clamp=True)
-        if cell is None or cell == self.selected:
-            return
-        self.selection.move_to(*cell, extend=True)
+        if self._drag_axis == "cell":
+            cell = self._hit_cell(event, clamp=True)
+            if cell is None or cell == self.selected:
+                return
+            self.selection.move_to(*cell, extend=True)
+        else:
+            coordinate = event.y if self._drag_axis == "row" else event.x
+            world = (self.canvas.canvasy(coordinate) - self.header_height
+                     if self._drag_axis == "row" else
+                     self.canvas.canvasx(coordinate) - self.gutter_width)
+            size = self.row_height if self._drag_axis == "row" else self.column_width
+            index = max(0, int(world // size))
+            limit = (max(self.model.row_count, self.selected[0] + 1) if self._drag_axis == "row"
+                     else max(self.model.column_count, self.selected[1] + 1))
+            self._select_header(self._drag_axis, min(index, limit), extend=True)
+        self._update_region()
         self.on_select()
         self._schedule_draw()
 
     def _release(self, _event):
         self._drag_ready = False
+        self._drag_axis = None
+
+    def _right_click(self, event):
+        target = self._hit_target(event)
+        if target is None or not self.commit_edit():
+            return "break"
+        kind, value = target
+        top, bottom, left, right = self._selection_bounds()
+        if kind == "cell":
+            selected = top <= value[0] <= bottom and left <= value[1] <= right
+        elif kind == "row":
+            selected = getattr(self, "_selection_axis", None) == "row" and top <= value <= bottom
+        else:
+            selected = getattr(self, "_selection_axis", None) == "column" and left <= value <= right
+        if not selected:
+            self._select_target(target)
+        self.canvas.focus_set()
+        menu = self._context_menus[kind]
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+        return "break"
 
     def begin_edit(self, initial=None, caret_x=None):
         if self._editor is not None:
             return
         row, column = self.selected
         self.selection.move_to(row, column)
+        self._selection_axis = None
         editor = self._entry_widget
         if editor is None:
             editor = tk.Entry(self.canvas, font=self.font, exportselection=False,
@@ -413,8 +532,18 @@ class TableGrid(tk.Frame):
 
     def _apply_editor_value(self):
         row, column = self.selected
+        value = self._editor.get()
+        if "\t" in value or "\n" in value or "\r" in value:
+            self._editor.bell()
+            return False
+        if row >= self.model.row_count:
+            if not value:
+                return True
+            updated = self.model.copy()
+            updated.paste(row, column, value)
+            return self._apply_model(updated)
         try:
-            new_line = self.model.changed_line(row, column, self._editor.get())
+            new_line = self.model.changed_line(row, column, value)
         except ValueError:
             self._editor.bell()
             return False
@@ -441,11 +570,11 @@ class TableGrid(tk.Frame):
         if current != previous and not self.on_transform(previous, current):
             return False
         self.model = updated
+        self._selection_axis = None
         if anchor is not None:
             self.selection.move_to(*anchor)
         if active is not None:
             self.selection.move_to(*active, extend=True)
-        self.selection.clamp(self.model.row_count, self.model.column_count)
         self._update_region()
         self._ensure_visible()
         self.on_select()
@@ -457,7 +586,7 @@ class TableGrid(tk.Frame):
             return False
         try:
             self.clipboard_clear()
-            self.clipboard_append(self.model.copy_range(self.selection.bounds))
+            self.clipboard_append(self.model.copy_range(self._selection_bounds()))
         except tk.TclError:
             return False
         return True
@@ -475,7 +604,9 @@ class TableGrid(tk.Frame):
     def paste_text(self, data):
         if not self.commit_edit():
             return False
-        top, _, left, _ = self.selection.bounds
+        top, _, left, _ = self._selection_bounds()
+        if not data and top >= self.model.row_count:
+            return True
         updated = self.model.copy()
         rows, columns = updated.paste(top, left, data)
         return self._apply_model(updated, (top, left),
@@ -485,57 +616,94 @@ class TableGrid(tk.Frame):
         if not self.commit_edit():
             return False
         updated = self.model.copy()
-        updated.clear_range(self.selection.bounds)
+        updated.clear_range(self._selection_bounds())
         return self._apply_model(updated)
 
-    def insert_row(self):
+    def insert_row_above(self):
         if not self.commit_edit():
             return False
         row, column = self.selected
         updated = self.model.copy()
-        updated.insert_row(row)
-        return self._apply_model(updated, (row, column))
+        index = row
+        updated.insert_row(index)
+        return self._apply_model(updated, (index, column))
+
+    def insert_row_below(self):
+        if not self.commit_edit():
+            return False
+        row, column = self.selected
+        updated = self.model.copy()
+        index = row + 1
+        updated.insert_row(index)
+        return self._apply_model(updated, (index, column))
+
+    def insert_row(self):
+        return self.insert_row_above()
 
     def delete_row(self):
         if not self.commit_edit():
             return False
         row, column = self.selected
+        first, last = (self._selection_bounds()[:2] if
+                       getattr(self, "_selection_axis", None) == "row" else (row, row))
+        if first >= self.model.row_count:
+            return False
         updated = self.model.copy()
-        updated.delete_row(row)
-        return self._apply_model(updated, (min(row, updated.row_count - 1), column))
+        updated.delete_rows(first, last)
+        return self._apply_model(updated, (min(first, updated.row_count - 1), column))
 
     def duplicate_row(self):
         if not self.commit_edit():
             return False
         row, column = self.selected
         updated = self.model.copy()
+        if row >= updated.row_count:
+            return False
         updated.duplicate_row(row)
         return self._apply_model(updated, (row + 1, column))
 
-    def insert_column(self):
+    def insert_column_left(self):
         if not self.commit_edit():
             return False
         row, column = self.selected
         updated = self.model.copy()
-        updated.insert_column(column)
-        return self._apply_model(updated, (row, column))
+        index = column
+        updated.insert_column(index)
+        return self._apply_model(updated, (row, index))
+
+    def insert_column_right(self):
+        if not self.commit_edit():
+            return False
+        row, column = self.selected
+        updated = self.model.copy()
+        index = column + 1
+        updated.insert_column(index)
+        return self._apply_model(updated, (row, index))
+
+    def insert_column(self):
+        return self.insert_column_left()
 
     def delete_column(self):
         if not self.commit_edit():
             return False
         row, column = self.selected
         updated = self.model.copy()
-        updated.delete_column(column)
-        return self._apply_model(updated, (row, min(column, updated.column_count)))
+        first, last = (self._selection_bounds()[2:] if
+                       getattr(self, "_selection_axis", None) == "column" else (column, column))
+        if first >= self.model.column_count:
+            return False
+        updated.delete_columns(first, last)
+        return self._apply_model(updated, (row, min(first, updated.column_count - 1)))
 
     def _move(self, row_delta, column_delta, extend=False):
         if not self.commit_edit():
             return "break"
         row, column = self.selected
         self.selection.move_to(
-            max(0, min(self.model.row_count - 1, row + row_delta)),
+            max(0, row + row_delta),
             max(0, column + column_delta),
             extend=extend)
+        self._selection_axis = None
         self._update_region()
         self._ensure_visible()
         self.on_select()
@@ -549,14 +717,15 @@ class TableGrid(tk.Frame):
         left, top = self.canvas.canvasx(0), self.canvas.canvasy(0)
         width, height = self.canvas.winfo_width(), self.canvas.winfo_height()
         total_width = self.gutter_width + max(self.model.column_count, column + 1) * self.column_width
-        total_height = self.header_height + self.model.row_count * self.row_height
-        if x < left + self.gutter_width:
+        total_height = self.header_height + max(self.model.row_count + 1, row + 1) * self.row_height
+        axis = getattr(self, "_selection_axis", None)
+        if axis != "row" and x < left + self.gutter_width:
             self.canvas.xview_moveto(max(0, (x - self.gutter_width) / total_width))
-        elif x + self.column_width > left + width:
+        elif axis != "row" and x + self.column_width > left + width:
             self.canvas.xview_moveto(max(0, (x + self.column_width - width) / total_width))
-        if y < top + self.header_height:
+        if axis != "column" and y < top + self.header_height:
             self.canvas.yview_moveto(max(0, (y - self.header_height) / total_height))
-        elif y + self.row_height > top + height:
+        elif axis != "column" and y + self.row_height > top + height:
             self.canvas.yview_moveto(max(0, (y + self.row_height - height) / total_height))
 
     def _scroll_x(self, *args):

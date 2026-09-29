@@ -558,12 +558,13 @@ class TableGridTests(unittest.TestCase):
                                             canvasy=lambda y: y,
                                             focus_set=lambda: None)
         grid.commit_edit = lambda: True
+        grid._update_region = lambda: None
         grid._ensure_visible = lambda: None
         grid._schedule_draw = lambda: None
         grid.on_select = lambda: None
         grid.begin_edit = lambda: None
         grid._click(types.SimpleNamespace(x=20, y=40))
-        self.assertEqual(grid.selected, (0, 0))  # Fixed gutter, not a cell.
+        self.assertEqual(grid._selection_bounds(), (0, 0, 0, 3))
         grid._click(types.SimpleNamespace(x=50, y=40))
         self.assertEqual(grid.selected, (0, 2))
 
@@ -658,6 +659,165 @@ class TableGridTests(unittest.TestCase):
         self.assertEqual(pending, [])
         self.assertEqual(grid.model.to_text(), "猫\t犬\n鳥\t魚")
         self.assertEqual(len(grid.changes), 1)
+
+    def test_scrolled_headers_select_whole_rows_and_columns(self):
+        grid, _ = self._working_grid("A\tB\tC\nD\tE\tF\nG\tH\tI")
+        grid.canvas = CanvasStub(origin_x=160, origin_y=24)
+        grid.gutter_width = 48
+        grid.header_height = grid.row_height = 24
+        grid.column_width = 160
+        grid._click(types.SimpleNamespace(x=20, y=40, state=0))
+        self.assertEqual(grid._selection_bounds(), (1, 1, 0, 2))
+        self.assertEqual(grid.selected, (1, 1))
+        grid._click(types.SimpleNamespace(x=20, y=64, state=1))
+        self.assertEqual(grid._selection_bounds(), (1, 2, 0, 2))
+        grid._click(types.SimpleNamespace(x=50, y=10, state=0))
+        self.assertEqual(grid._selection_bounds(), (0, 2, 1, 1))
+        self.assertEqual(grid.selected, (1, 1))
+        grid._click(types.SimpleNamespace(x=210, y=10, state=1))
+        self.assertEqual(grid._selection_bounds(), (0, 2, 1, 2))
+
+    def test_context_menus_select_target_and_expose_actions(self):
+        class MenuStub:
+            def __init__(self, *_args, **_kwargs):
+                self.items = []
+                self.popup = None
+
+            def add_command(self, **options):
+                self.items.append(options)
+
+            def tk_popup(self, x, y):
+                self.popup = x, y
+
+            def grab_release(self):
+                pass
+
+        grid, _ = self._working_grid("A\tB\nC\tD")
+        grid.canvas = CanvasStub(origin_y=0)
+        grid.gutter_width = 48
+        grid.header_height = grid.row_height = 24
+        grid.column_width = 160
+        keys = ("insert_row_above", "insert_row_below", "duplicate_row",
+                "delete_row", "insert_column_left", "insert_column_right",
+                "delete_column", "cut", "copy", "paste", "clear_cells")
+        with patch.object(self.module.tk, "Menu", MenuStub, create=True):
+            grid._build_context_menus({key: key for key in keys})
+        self.assertEqual(len(grid._context_menus["row"].items), 7)
+        self.assertEqual(len(grid._context_menus["column"].items), 6)
+        self.assertEqual(len(grid._context_menus["cell"].items), 11)
+        grid._right_click(types.SimpleNamespace(x=20, y=40, x_root=90, y_root=100))
+        self.assertEqual(grid._selection_bounds(), (0, 0, 0, 1))
+        self.assertEqual(grid._context_menus["row"].popup, (90, 100))
+        grid._right_click(types.SimpleNamespace(x=220, y=10, x_root=91, y_root=101))
+        self.assertEqual(grid._selection_bounds(), (0, 1, 1, 1))
+        self.assertEqual(grid._context_menus["column"].popup, (91, 101))
+        grid._right_click(types.SimpleNamespace(x=60, y=40, x_root=92, y_root=102))
+        self.assertEqual(grid._selection_bounds(), (0, 0, 0, 0))
+        self.assertEqual(grid._context_menus["cell"].popup, (92, 102))
+
+    def test_virtual_row_navigation_and_first_edit(self):
+        grid, pending, changes = self._navigation_grid("A\nB")
+        transformed = []
+        grid.on_transform = lambda old, new: transformed.append((old, new)) or True
+        for _ in range(52):
+            grid.canvas.bindings["<Return>"](types.SimpleNamespace())
+        self.assertEqual(grid.selected, (52, 0))
+        self.assertEqual(grid.model.to_text(), "A\nB")
+        self.assertEqual(grid.model.row_count, 2)
+        self.assertEqual(grid.model.column_count, 1)
+        self.assertEqual(len(pending), 1)
+        self.assertGreater(grid.canvas.scrollregion[3], grid.canvas.height)
+        grid._move(-1, 0)
+        grid._move(1, 0)
+        self.assertEqual(grid.model.to_text(), "A\nB")
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            grid.begin_edit()
+            grid._editor.value = "猫"
+            self.assertTrue(grid.commit_edit())
+        self.assertEqual(grid.model.to_text(), "A\nB" + "\n" * 51 + "猫")
+        self.assertEqual(grid.model.row_count, 53)
+        self.assertEqual(len(transformed), 1)
+        self.assertEqual(transformed[0][0], "A\nB")
+        self.assertEqual(changes, [])
+
+    def test_enter_burst_and_direct_vertical_input_reuse_entry(self):
+        grid, pending, _ = self._navigation_grid("A")
+        grid.on_transform = lambda old, new: True
+        for _ in range(160):
+            grid.canvas.bindings["<Return>"](types.SimpleNamespace())
+        self.assertEqual(grid.selected, (160, 0))
+        self.assertEqual(grid.model.to_text(), "A")
+        self.assertEqual(len(pending), 1)
+        grid.selected = (0, 0)
+        EntryStub.created = 0
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            for value in "123":
+                self.assertEqual(grid._type_to_edit(types.SimpleNamespace(char=value, state=0)),
+                                 "break")
+                editor = grid._editor
+                self.assertEqual(editor.value, value)
+                self.assertEqual(editor.bindings["<Return>"](
+                    types.SimpleNamespace(widget=editor)), "break")
+                self.assertIsNone(grid._editor)
+        self.assertEqual(grid.model.to_text(), "1\n2\n3")
+        self.assertEqual(grid.selected, (3, 0))
+        self.assertEqual(EntryStub.created, 1)
+
+    def test_structural_actions_and_multi_header_deletion(self):
+        original = "A\tB\t\nC\tD\t\nE\tF\t"
+        cases = (
+            ("insert_row_above", (1, 1), "A\tB\t\n\nC\tD\t\nE\tF\t"),
+            ("insert_row_below", (1, 1), "A\tB\t\nC\tD\t\n\nE\tF\t"),
+            ("duplicate_row", (1, 1), "A\tB\t\nC\tD\t\nC\tD\t\nE\tF\t"),
+            ("delete_row", (1, 1), "A\tB\t\nE\tF\t"),
+            ("insert_column_left", (1, 1), "A\t\tB\t\nC\t\tD\t\nE\t\tF\t"),
+            ("insert_column_right", (1, 1), "A\tB\t\t\nC\tD\t\t\nE\tF\t\t"),
+            ("delete_column", (1, 1), "A\t\nC\t\nE\t"),
+        )
+        for action, cell, expected in cases:
+            with self.subTest(action=action):
+                grid, _ = self._working_grid(original)
+                grid.selected = cell
+                self.assertTrue(getattr(grid, action)())
+                self.assertEqual(grid.model.to_text(), expected)
+                self.assertEqual(len(grid.changes), 1)
+        grid, _ = self._working_grid(original)
+        grid._selection_axis = "row"
+        grid.selection.anchor = (0, 0)
+        grid.selection.active = (1, 0)
+        self.assertTrue(grid.delete_row())
+        self.assertEqual(grid.model.to_text(), "E\tF\t")
+        grid, _ = self._working_grid(original)
+        grid._selection_axis = "column"
+        grid.selection.anchor = (0, 1)
+        grid.selection.active = (0, 2)
+        self.assertTrue(grid.delete_column())
+        self.assertEqual(grid.model.to_text(), "A\nC\nE")
+
+    def test_ten_thousand_row_header_selection_stays_visible_only(self):
+        grid = self.module.TableGrid.__new__(self.module.TableGrid)
+        grid.canvas = CanvasStub(origin_y=9000 * 24)
+        grid.model = TableModel("\n".join(f"{i}\ta\tb" for i in range(10000)))
+        grid.font = types.SimpleNamespace(measure=lambda value: len(value) * 8)
+        grid.selected = (9000, 0)
+        grid.header_height = grid.row_height = 24
+        grid.gutter_width = 48
+        grid.column_width = 160
+        grid._draw_job = None
+        grid._editor = None
+        grid._scroll_region = None
+        grid._ensure_visible = lambda: None
+        grid._schedule_draw = lambda: None
+        grid.on_select = lambda: None
+        grid._click(types.SimpleNamespace(x=20, y=40, state=0))
+        self.assertEqual(grid._selection_bounds()[:2], (9000, 9000))
+        grid._draw_visible()
+        self.assertLess(grid.canvas.rectangles, 150)
+        grid.canvas.rectangles = 0
+        grid._click(types.SimpleNamespace(x=55, y=10, state=0))
+        self.assertEqual(grid._selection_bounds(), (0, 9999, 0, 0))
+        grid._draw_visible()
+        self.assertLess(grid.canvas.rectangles, 150)
 
 
 if __name__ == "__main__":
