@@ -152,6 +152,9 @@ class FakeWidget:
     def insert(self, index, value):
         self.value = value
 
+    def delete(self, start, end):
+        self.value = ""
+
     def get(self):
         return self.value
 
@@ -197,6 +200,18 @@ class GuiStartupTests(unittest.TestCase):
             en_app.toggle_skip()
             self.assertEqual(en_app.skip_check.state, "normal")
             self.assertNotEqual(en_app.window_title, ja_app.window_title)
+            opened = []
+            fake_editor = types.ModuleType("editor.window")
+            fake_editor.EditorWindow = lambda master, **kwargs: opened.append((master, kwargs))
+            with patch.dict(sys.modules, {"editor.window": fake_editor}):
+                en_app.open_editor()
+                ja_app.open_editor()
+            self.assertEqual([item[1]["language"] for item in opened], ["en", "ja"])
+            self.assertTrue(all(item[1]["initial_path"] is None for item in opened))
+            for app, options in opened:
+                options["on_saved"](Path("/example with spaces/sample.tsv"))
+                self.assertEqual(app.input_entry.get(), "/example with spaces/sample.tsv")
+                self.assertEqual(app.outname_entry.get(), "sample")
             with tempfile.TemporaryDirectory() as directory:
                 source = Path(directory) / "script with spaces.tsv"
                 source.write_text("1\ta\n")

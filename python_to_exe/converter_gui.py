@@ -18,7 +18,7 @@ TEXT = {
     "en": {
         "title": "TAS Scripts Converter Tool", "input": "Input Script File (.txt or .tsv):",
         "output": "Output Directory:", "name": "Output File Name (without extension):",
-        "browse": "Browse...", "format": "Output format:",
+        "browse": "Browse...", "edit": "Edit...", "format": "Output format:",
         "binary": "LunaKit binary", "stas": "STAS", "nxtas": "nx-TAS",
         "skip": "Skip empty frames (nx-TAS only)", "debug": "Debug output (CSV)",
         "ftp": "Send via FTP (SMO/tas/scripts)", "ip": "FTP IP:",
@@ -30,7 +30,7 @@ TEXT = {
     "ja": {
         "title": "TAS scripts 変換ツール", "input": "入力スクリプトファイル (.txt または .tsv):",
         "output": "出力ディレクトリ:", "name": "出力ファイル名 (拡張子なし):",
-        "browse": "参照...", "format": "出力形式:",
+        "browse": "参照...", "edit": "編集...", "format": "出力形式:",
         "binary": "LunaKit バイナリ", "stas": "STAS", "nxtas": "nx-TAS",
         "skip": "空フレームを省略 (nx-TAS のみ)", "debug": "Debug 出力 (CSV)",
         "ftp": "FTPで送信 (SMO/tas/scripts)", "ip": "FTP IP:",
@@ -71,7 +71,10 @@ class TASConverterApp(tk.Tk):
         tk.Label(self, text=self.words["input"]).grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.input_entry = tk.Entry(self, width=50)
         self.input_entry.grid(row=0, column=1, padx=5, pady=5)
-        tk.Button(self, text=self.words["browse"], command=self.browse_input).grid(row=0, column=2, padx=5, pady=5)
+        input_buttons = tk.Frame(self)
+        input_buttons.grid(row=0, column=2, padx=5, pady=5)
+        tk.Button(input_buttons, text=self.words["browse"], command=self.browse_input).pack(side="left")
+        tk.Button(input_buttons, text=self.words["edit"], command=self.open_editor).pack(side="left")
 
         tk.Label(self, text=self.words["output"]).grid(row=1, column=0, padx=5, pady=5, sticky="e")
         self.output_entry = tk.Entry(self, width=50)
@@ -129,10 +132,23 @@ class TASConverterApp(tk.Tk):
     def browse_input(self):
         path = filedialog.askopenfilename(filetypes=[("Script files", "*.txt *.tsv")])
         if path:
-            self.input_entry.delete(0, tk.END)
-            self.input_entry.insert(0, path)
-            self.outname_entry.delete(0, tk.END)
-            self.outname_entry.insert(0, os.path.splitext(os.path.basename(path))[0])
+            self._set_input_path(path)
+
+    def _set_input_path(self, path):
+        self.input_entry.delete(0, tk.END)
+        self.input_entry.insert(0, str(path))
+        self.outname_entry.delete(0, tk.END)
+        self.outname_entry.insert(0, os.path.splitext(os.path.basename(path))[0])
+
+    def open_editor(self):
+        # Import on demand so conversion-only startup does not load editor widgets.
+        if __package__:
+            from .editor.window import EditorWindow
+        else:
+            from editor.window import EditorWindow
+        EditorWindow(self, language=self.language,
+                     initial_path=self.input_entry.get().strip() or None,
+                     on_saved=self._set_input_path)
 
     def browse_output(self):
         path = filedialog.askdirectory()

@@ -48,6 +48,12 @@ This example holds the left stick upward for five frames, then inputs A and the 
 
 The Japanese and English launchers use the same conversion behavior; only displayed language differs. `-l` is an interactive CLI option for repeated compilation and is not in the GUI.
 
+### Built-in editor (Phase 1)
+
+Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, and `Ctrl+Shift+S`. New, Open, and Close ask what to do with unsaved changes.
+
+For now, this is a **raw text editor** that preserves tabs, UTF-8, and original line endings. It does not offer a spreadsheet view, interpret TSV-TAS syntax, or reformat files on save. `tsv-tas.py` remains responsible for interpreting scripts.
+
 ### FTP setup
 
 Enabling FTP shows IP, port, user, and password fields. The GUI saves `ip` (string), `port` (integer), `user` (string), and `passwd` (string) to `ftp_config.json` beside the converter scripts. To use `-f` in the CLI, configure that file and run the command **from the repository root**. The file can contain secrets: do not commit or share it after entering credentials. FTP can be combined with any of the three output formats. Verify actual transfer in your Switch environment.
@@ -135,6 +141,7 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 | `nx-tas-to-tsv-tas.py` | nx-TAS→TSV-TAS converter matching upstream |
 | `python_to_exe/main_jp.py`, `main_en.py` | Japanese/English launchers |
 | `python_to_exe/converter_gui.py`, `converter_logic.py` | Shared GUI, argument construction, Python discovery, and FTP settings |
+| `python_to_exe/editor/` | Independent raw text editor window and file-state management |
 | `ftp_config.json` | FTP connection settings; do not commit real credentials |
 | `tests/test_conversion.py` | Local conversion and GUI argument tests |
 

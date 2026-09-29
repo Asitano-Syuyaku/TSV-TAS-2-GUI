@@ -48,6 +48,12 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 
 日本語版と英語版は表示言語以外、同じ変換処理を使います。`-l` は対話的に再生成するCLI専用オプションで、GUIにはありません。
 
+### 内蔵エディター（Phase 1）
+
+Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
+
+現時点ではタブ・UTF-8・元の改行を保持する**raw text editor**です。Spreadsheet表示やTSV-TAS構文の意味解析、保存時の整形はしません。TSV-TASの解釈は引き続き `tsv-tas.py` が担当します。
+
 ### FTP設定
 
 FTPを有効にするとIP、port、user、passwordの入力欄が表示されます。GUIはconverterと同じフォルダーの `ftp_config.json` に `ip`（文字列）、`port`（整数）、`user`（文字列）、`passwd`（文字列）を保存します。CLIで `-f` を使う場合も、このファイルを設定して**repositoryのルートから**実行してください。秘密情報が入るため、設定後のファイルをcommit・共有しないでください。FTPは選択した3形式のどれとも組み合わせられます。実機転送の成否はSwitch側の環境で確認してください。
@@ -135,6 +141,7 @@ python -m PyInstaller --noconsole --onefile python_to_exe/main_en.py
 | `nx-tas-to-tsv-tas.py` | upstreamと同じnx-TAS→TSV-TAS converter |
 | `python_to_exe/main_jp.py`、`main_en.py` | 日本語／Englishの起動スクリプト |
 | `python_to_exe/converter_gui.py`、`converter_logic.py` | 共通GUI、引数生成、Python探索、FTP設定 |
+| `python_to_exe/editor/` | 独立したraw text editorの画面とファイル状態管理 |
 | `ftp_config.json` | FTP接続設定。実credentialをcommitしないこと |
 | `tests/test_conversion.py` | ローカル変換とGUI引数のテスト |
 
