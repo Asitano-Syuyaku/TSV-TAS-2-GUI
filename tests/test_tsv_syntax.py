@@ -9,6 +9,16 @@ from python_to_exe.editor.tsv_syntax import (
 
 
 class SyntaxHintsTests(unittest.TestCase):
+    def test_palette_metadata_does_not_change_inserted_syntax(self):
+        dpad = next(item for item in CANDIDATES if item.text == "dp-u")
+        self.assertEqual((dpad.display_label, dpad.short_label, dpad.icon_key),
+                         ("dp-u", "Up", "dpad_up"))
+        self.assertEqual(insert_template("", 0, 0, dpad), ("dp-u", 4, None))
+        accel = next(item for item in CANDIDATES if item.category == "accel")
+        self.assertIsNone(accel.icon_key)
+        self.assertEqual(accel.display_label, accel.label)
+        self.assertEqual(insert_template("", 0, 0, accel)[0], accel.text)
+
     def test_verified_candidate_categories_and_filtering(self):
         self.assertTrue(set(PALETTE_CATEGORIES) <= {item.category for item in CANDIDATES})
         self.assertTrue({"buttons", "left_stick", "right_stick", "accel", "gyro",

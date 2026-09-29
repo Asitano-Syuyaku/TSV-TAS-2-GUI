@@ -337,6 +337,9 @@ class TableGridTests(unittest.TestCase):
         grid._entry_widget = None
         grid._completion = self.module.CompletionState()
         grid._popup = None
+        grid._selection_axis = None
+        grid._resize_column = None
+        grid._resize_cursor = None
         grid._edit_job = None
         grid._draw_job = None
         grid._scroll_region = None
@@ -421,6 +424,116 @@ class TableGridTests(unittest.TestCase):
         grid._move(-19, -9)
         self.assertGreaterEqual(grid.display_row_count, 20)
         self.assertGreaterEqual(grid.display_column_count, 10)
+
+    def test_header_boundary_drag_resizes_without_selecting_or_editing(self):
+        grid, _, changes = self._navigation_grid("A\tB\tC")
+        grid.on_change = lambda *_args: self.fail("Resize must not edit a cell")
+        grid.on_transform = lambda *_args: self.fail("Resize must not enter Undo history")
+        original = grid.model.to_text()
+        boundary = grid.gutter_width + grid.columns.edge(1)
+        grid._header_motion(types.SimpleNamespace(x=boundary, y=10))
+        self.assertEqual(grid._resize_cursor, "sb_h_double_arrow")
+        grid._click(types.SimpleNamespace(x=boundary, y=10, state=0))
+        self.assertEqual(grid._resize_column, 0)
+        self.assertIsNone(grid._selection_axis)
+        self.assertEqual(grid.selected, (0, 0))
+        grid._drag(types.SimpleNamespace(x=boundary + 50, y=10))
+        self.assertEqual(grid.columns.width(0), 210)
+        self.assertEqual(grid.columns.width(1), 160)
+        self.assertEqual(grid._cell_box(0, 1)[0], boundary + 50)
+        grid._release(types.SimpleNamespace(x=boundary + 50, y=10))
+        self.assertIsNone(grid._resize_column)
+        self.assertEqual(grid.model.to_text(), original)
+        self.assertEqual(changes, [])
+
+        grid._click(types.SimpleNamespace(x=80, y=10, state=0))
+        self.assertEqual(grid._selection_axis, "column")
+        self.assertEqual(grid.selected[1], 0)
+        grid._click(types.SimpleNamespace(x=boundary + 50, y=10, state=0))
+        grid._drag(types.SimpleNamespace(x=-500, y=10))
+        self.assertEqual(grid.columns.width(0), 48)
+        grid._release(types.SimpleNamespace(x=-500, y=10))
+        self.assertEqual(grid.columns.width(1), 160)
+        self.assertEqual(grid.model.to_text(), original)
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "widths.tsv"
+            source.write_text(original, encoding="utf-8")
+            document = EditorDocument()
+            document.open(source)
+            self.assertFalse(document.modified)
+            document.save()
+            self.assertEqual(source.read_text(encoding="utf-8"), original)
+
+    def test_resize_after_horizontal_scroll_keeps_hits_selection_and_entry_aligned(self):
+        grid, _, _ = self._navigation_grid("A\tB\tC\tD\tE\tF")
+        grid._move(0, 5)
+        self.assertGreater(grid.canvas.origin_x, 0)
+        boundary = grid.gutter_width + grid.columns.edge(5) - grid.canvas.origin_x
+        self.assertEqual(grid._header_resize_target(
+            types.SimpleNamespace(x=boundary, y=10)), 4)
+        grid._click(types.SimpleNamespace(x=boundary, y=10, state=0))
+        grid._drag(types.SimpleNamespace(x=boundary + 35, y=10))
+        grid._release(types.SimpleNamespace(x=boundary + 35, y=10))
+        self.assertEqual(grid.columns.width(4), 195)
+        self.assertEqual(grid.columns.width(5), 160)
+        x1, y1, x2, y2 = grid._cell_box(0, 5)
+        center = (x1 + x2) / 2 - grid.canvas.origin_x
+        self.assertEqual(grid._hit_cell(types.SimpleNamespace(x=center, y=35)), (0, 5))
+        grid.selection.move_to(0, 4)
+        grid.selection.move_to(0, 5, extend=True)
+        grid.font = types.SimpleNamespace(measure=lambda value: len(value) * 8)
+        self.module.TableGrid._draw_visible(grid)
+        selection_box = (grid._cell_box(0, 4)[0] + 1, y1 + 1, x2 - 1, y2 - 1)
+        self.assertTrue(any(coords == selection_box and
+                            style.get("outline") == self.module.SELECTION_LINE
+                            for coords, style in grid.canvas.boxes))
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            grid.begin_edit()
+            self.assertEqual(grid._editor.placement["x"],
+                             max(x1 - grid.canvas.origin_x, grid.gutter_width))
+            self.assertEqual(grid._editor.placement["width"],
+                             min(x2 - grid.canvas.origin_x, grid.canvas.width) -
+                             max(x1 - grid.canvas.origin_x, grid.gutter_width))
+            grid.cancel_edit()
+
+    def test_column_width_survives_table_refresh_and_virtual_columns_use_default(self):
+        grid, _, _ = self._navigation_grid("A\tB")
+        self.assertTrue(grid.columns.set_width(0, 220))
+        grid._update_region()
+        grid.set_text("A\tB")  # Raw -> Table refresh uses the same TableGrid instance.
+        self.assertEqual(grid.columns.width(0), 220)
+        self.assertEqual(grid.columns.width(50), grid.column_width)
+        self.assertEqual(grid.model.to_text(), "A\tB")
+        grid._move(0, 50)
+        self.assertEqual(grid.columns.width(50), grid.column_width)
+        self.assertEqual(grid.model.to_text(), "A\tB")
+
+    def test_autocomplete_popup_tracks_resized_entry(self):
+        grid, _, _ = self._navigation_grid("A\tB")
+        grid.canvas.width = 800
+        grid.columns.set_width(0, 210)
+        grid._canvas_resized()
+        grid.selected = (0, 1)
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            grid.begin_edit(initial="l")
+            x = grid._cell_box(0, 1)[0] - grid.canvas.origin_x
+            self.assertEqual(grid._editor.placement["x"], x)
+            self.assertEqual(grid._popup.placement["x"], x)
+            self.assertEqual(grid._popup.placement["y"],
+                             grid._editor.placement["y"] + grid._editor.placement["height"])
+            grid.cancel_edit()
+
+    def test_resized_grid_still_draws_only_visible_cells_of_ten_thousand_rows(self):
+        grid, _, _ = self._navigation_grid("\n".join("1\ta\tb" for _ in range(10000)))
+        grid.canvas.origin_y = 9000 * grid.row_height
+        grid.font = types.SimpleNamespace(measure=lambda value: len(value) * 8)
+        grid.columns.set_width(1, 230)
+        grid.display_column_count = 500
+        grid._update_region()
+        before = grid.model.to_text()
+        self.module.TableGrid._draw_visible(grid)
+        self.assertLess(grid.canvas.rectangles, 100)
+        self.assertEqual(grid.model.to_text(), before)
 
     def test_burst_tab_moves_virtual_active_cell_without_creating_entries(self):
         EntryStub.created = 0
@@ -811,10 +924,10 @@ class TableGridTests(unittest.TestCase):
         self.assertEqual(grid.selected, (1, 1))
         grid._click(types.SimpleNamespace(x=20, y=64, state=1))
         self.assertEqual(grid._selection_bounds(), (1, 2, 0, 2))
-        grid._click(types.SimpleNamespace(x=50, y=10, state=0))
+        grid._click(types.SimpleNamespace(x=60, y=10, state=0))
         self.assertEqual(grid._selection_bounds(), (0, 2, 1, 1))
         self.assertEqual(grid.selected, (1, 1))
-        grid._click(types.SimpleNamespace(x=210, y=10, state=1))
+        grid._click(types.SimpleNamespace(x=220, y=10, state=1))
         self.assertEqual(grid._selection_bounds(), (0, 2, 1, 2))
 
     def test_context_menus_select_target_and_expose_actions(self):

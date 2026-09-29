@@ -11,10 +11,29 @@ class Candidate:
     label: str
     text: str
     select: Optional[Tuple[int, int]] = None
+    short_label: Optional[str] = None
+    icon_key: Optional[str] = None
+
+    @property
+    def display_label(self):
+        return self.label
+
+
+_BUTTON_ICONS = {
+    "a": ("A", "button_a"), "b": ("B", "button_b"),
+    "x": ("X", "button_x"), "y": ("Y", "button_y"),
+    "l": ("L", "button_l"), "r": ("R", "button_r"),
+    "zl": ("ZL", "button_zl"), "zr": ("ZR", "button_zr"),
+    "dp-u": ("Up", "dpad_up"), "dp-d": ("Down", "dpad_down"),
+    "dp-l": ("Left", "dpad_left"), "dp-r": ("Right", "dpad_right"),
+    "ls": ("LS", "stick_left_click"), "rs": ("RS", "stick_right_click"),
+}
 
 
 def _button(name, category="buttons"):
-    return Candidate(category, name, name)
+    short_label, icon_key = (_BUTTON_ICONS.get(name, (None, None))
+                             if category == "buttons" else (None, None))
+    return Candidate(category, name, name, short_label=short_label, icon_key=icon_key)
 
 
 def _template(category, label, text, placeholder="0"):

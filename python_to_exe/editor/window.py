@@ -82,8 +82,9 @@ class EditorWindow(tk.Toplevel):
         self._gutter_job = None
         self._highlight_job = None
         self._highlight_range = None
+        self._palette_icons = {}  # Future PhotoImage values stay referenced here.
         self._view = "raw"
-        self.geometry("800x520")
+        self.geometry("1100x700")
 
         menu = tk.Menu(self)
         file_menu = tk.Menu(menu, tearoff=False)
@@ -210,7 +211,7 @@ class EditorWindow(tk.Toplevel):
             self.open_file(initial_path)
 
     def _build_input_palette(self):
-        self.input_palette = tk.Frame(self.table_area, width=240, relief="groove",
+        self.input_palette = tk.Frame(self.table_area, width=330, relief="groove",
                                       borderwidth=1)
         self.input_palette.pack_propagate(False)
         self.input_palette.pack(side="right", fill="y")
@@ -229,13 +230,40 @@ class EditorWindow(tk.Toplevel):
         canvas.bind("<Configure>", lambda event: canvas.itemconfigure(content_id, width=event.width))
         for category in PALETTE_CATEGORIES:
             tk.Label(content, text=self.words[category], anchor="w").pack(
-                fill="x", padx=6, pady=(8, 2))
-            for candidate in CANDIDATES:
-                if candidate.category == category:
-                    tk.Button(content, text=candidate.label, anchor="w",
-                              command=lambda item=candidate: self.table_grid.insert_candidate(item)).pack(
-                                  fill="x", padx=6, pady=1)
+                fill="x", padx=6, pady=(5, 1))
+            group = tk.Frame(content)
+            group.pack(fill="x", padx=3)
+            for column in (0, 1):
+                group.grid_columnconfigure(column, weight=1, uniform="palette")
+            slot = 0
+            candidates = sorted((item for item in CANDIDATES if item.category == category),
+                                key=lambda item: -self._palette_span(item))
+            for candidate in candidates:
+                span = self._palette_span(candidate)
+                if span == 2 and slot % 2:
+                    slot += 1
+                row, column = divmod(slot, 2)
+                group.grid_rowconfigure(row, minsize=30)
+                self._palette_button(group, candidate).grid(
+                    row=row, column=column, columnspan=span,
+                    sticky="ew", padx=2, pady=1)
+                slot += span
         self.palette_canvas = canvas
+
+    @staticmethod
+    def _palette_span(candidate):
+        return (2 if candidate.category in ("left_stick", "right_stick") and
+                len(candidate.display_label) > 16 else 1)
+
+    def _palette_button(self, parent, candidate):
+        image = getattr(self, "_palette_icons", {}).get(candidate.icon_key)
+        options = {"text": (candidate.short_label or candidate.display_label)
+                   if image is not None else candidate.display_label,
+                   "anchor": "w",
+                   "command": lambda item=candidate: self.table_grid.insert_candidate(item)}
+        if image is not None:
+            options.update(image=image, compound="left")
+        return tk.Button(parent, **options)
 
     @staticmethod
     def _shortcut(action):

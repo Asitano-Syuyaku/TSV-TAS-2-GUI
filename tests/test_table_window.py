@@ -179,6 +179,15 @@ class TableWindowTests(unittest.TestCase):
             def pack(self, **options):
                 self.placement = options
 
+            def grid(self, **options):
+                self.placement = options
+
+            def grid_columnconfigure(self, *_args, **_kwargs):
+                pass
+
+            def grid_rowconfigure(self, *_args, **_kwargs):
+                pass
+
             def pack_propagate(self, value):
                 self.propagate = value
 
@@ -215,17 +224,49 @@ class TableWindowTests(unittest.TestCase):
                             Label=lambda master, **kw: Widget("label", master, **kw),
                             Button=lambda master, **kw: Widget("button", master, **kw)):
             window._build_input_palette()
-        self.assertEqual(window.input_palette.options["width"], 240)
+            icon = object()
+            window._palette_icons = {"button_a": icon}
+            icon_button = window._palette_button(window.input_palette, CANDIDATES[0])
+            motion = next(item for item in CANDIDATES if item.category == "accel")
+            motion_button = window._palette_button(window.input_palette, motion)
+        self.assertEqual(window.input_palette.options["width"], 330)
         self.assertEqual(window.input_palette.placement, {"side": "right", "fill": "y"})
         self.assertFalse(window.input_palette.propagate)
         labels = [item.options["text"] for item in widgets if item.kind == "label"]
         self.assertEqual(labels, [window.words["input_palette"]] +
                          [window.words[category] for category in PALETTE_CATEGORIES])
         buttons = [item for item in widgets if item.kind == "button"]
-        expected = [item for item in CANDIDATES if item.category in PALETTE_CATEGORIES]
-        self.assertEqual([item.options["text"] for item in buttons],
-                         [item.label for item in expected])
-        buttons[-1].options["command"]()
+        palette_buttons = buttons[:-2]
+        expected = [item for category in PALETTE_CATEGORIES
+                    for item in sorted((entry for entry in CANDIDATES
+                                        if entry.category == category),
+                                       key=lambda entry: -window._palette_span(entry))]
+        self.assertEqual([item.options["text"] for item in palette_buttons],
+                         [item.display_label for item in expected])
+        button_group = palette_buttons[0].master
+        self.assertEqual(palette_buttons[0].placement["column"], 0)
+        self.assertEqual(palette_buttons[1].placement["column"], 1)
+        self.assertIs(palette_buttons[0].master, button_group)
+        self.assertIs(palette_buttons[1].master, button_group)
+        self.assertEqual(palette_buttons[0].placement["sticky"], "ew")
+        for category in PALETTE_CATEGORIES:
+            category_buttons = [button for button, item in zip(palette_buttons, expected)
+                                if item.category == category]
+            self.assertEqual({button.placement["column"] for button in category_buttons
+                              if button.placement["columnspan"] == 1}, {0, 1})
+        self.assertEqual({category: 1 + max(button.placement["row"]
+                                            for button, item in zip(palette_buttons, expected)
+                                            if item.category == category)
+                          for category in PALETTE_CATEGORIES},
+                         {"buttons": 8, "left_stick": 2,
+                          "right_stick": 2, "commands": 4})
+        self.assertEqual(icon_button.options["image"], icon)
+        self.assertEqual(icon_button.options["compound"], "left")
+        self.assertEqual(icon_button.options["text"], "A")
+        self.assertEqual(motion_button.options["text"], motion.display_label)
+        self.assertNotIn("image", motion_button.options)
+        self.assertTrue(any(item.placement["columnspan"] == 2 for item in palette_buttons))
+        palette_buttons[-1].options["command"]()
         self.assertIs(inserted[0], expected[-1])
         self.assertEqual(window.palette_canvas.kind, "canvas")
         self.assertTrue(any(item.kind == "scrollbar" for item in widgets))

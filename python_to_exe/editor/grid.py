@@ -2,6 +2,7 @@
 
 import tkinter as tk
 
+from .column_layout import ColumnLayout
 from .table_model import CellSelection, TableModel, visible_span
 from .tsv_syntax import (CompletionState, candidates_for, classify_cell,
                          completion_span, insert_template)
@@ -43,6 +44,7 @@ class TableGrid(tk.Frame):
         self.on_redo = on_redo
         self.row_height = max(font.metrics("linespace") + 8, 24)
         self.column_width = max(font.measure("0" * 18) + 12, 160)
+        self._columns = ColumnLayout(self.column_width)
         self.header_height = self.row_height
         self.gutter_width = max(font.measure("00000") + 12, 48)
         self.model = TableModel("")
@@ -56,6 +58,8 @@ class TableGrid(tk.Frame):
         self._drag_ready = False
         self._selection_axis = None
         self._drag_axis = None
+        self._resize_column = None
+        self._resize_cursor = None
         self._completion = CompletionState()
         self._popup = None
 
@@ -77,6 +81,7 @@ class TableGrid(tk.Frame):
         self.canvas.bind("<Double-Button-1>", self._double_click)
         self.canvas.bind("<B1-Motion>", self._drag)
         self.canvas.bind("<ButtonRelease-1>", self._release)
+        self.canvas.bind("<Motion>", self._header_motion)
         self.canvas.bind("<Button-3>", self._right_click)
         self.canvas.bind("<KeyPress>", self._type_to_edit)
         self.canvas.bind("<MouseWheel>", self._wheel)
@@ -175,9 +180,16 @@ class TableGrid(tk.Frame):
         self._schedule_draw()
         self.on_select()
 
+    @property
+    def columns(self):
+        # Tests also construct grids without Tk's __init__.
+        if not hasattr(self, "_columns"):
+            self._columns = ColumnLayout(self.column_width)
+        return self._columns
+
     def _update_region(self):
-        viewport_columns = max(1, (max(0, self.canvas.winfo_width() - self.gutter_width)
-                                   + self.column_width - 1) // self.column_width)
+        viewport_columns = self.columns.cover_count(
+            max(0, self.canvas.winfo_width() - self.gutter_width))
         viewport_rows = max(1, (max(0, self.canvas.winfo_height() - self.header_height)
                                 + self.row_height - 1) // self.row_height)
         self.display_column_count = max(getattr(self, "display_column_count", 0),
@@ -186,7 +198,7 @@ class TableGrid(tk.Frame):
         self.display_row_count = max(getattr(self, "display_row_count", 0),
                                      self.model.row_count + 1, self.selected[0] + 1,
                                      self.selection.anchor[0] + 1, viewport_rows)
-        width = self.gutter_width + self.display_column_count * self.column_width
+        width = self.gutter_width + self.columns.edge(self.display_column_count)
         height = self.header_height + self.display_row_count * self.row_height
         region = (0, 0, width, height)
         if region != self._scroll_region:
@@ -206,9 +218,9 @@ class TableGrid(tk.Frame):
             self._draw_job = self.after_idle(self._draw_visible)
 
     def _cell_box(self, row, column):
-        x = self.gutter_width + column * self.column_width
+        x = self.gutter_width + self.columns.edge(column)
         y = self.header_height + row * self.row_height
-        return x, y, x + self.column_width, y + self.row_height
+        return x, y, x + self.columns.width(column), y + self.row_height
 
     def _draw_visible(self):
         self._draw_job = None
@@ -221,11 +233,11 @@ class TableGrid(tk.Frame):
                             max(getattr(self, "display_row_count", 0),
                                 self.model.row_count + 1, self.selected[0] + 1,
                                 self.selection.anchor[0] + 1))
-        columns = visible_span(x0, width, self.gutter_width,
-                               self.column_width,
-                               max(getattr(self, "display_column_count", 0),
-                                   self.model.column_count + 1, self.selected[1] + 1,
-                                   self.selection.anchor[1] + 1))
+        columns = self.columns.visible(
+            x0, width, self.gutter_width,
+            max(getattr(self, "display_column_count", 0),
+                self.model.column_count + 1, self.selected[1] + 1,
+                self.selection.anchor[1] + 1))
         canvas.delete("grid")
         top, bottom, left, right = self._selection_bounds()
         axis = getattr(self, "_selection_axis", None)
@@ -241,7 +253,7 @@ class TableGrid(tk.Frame):
                 value = self.model.cell(row, column)
                 if value:
                     canvas.create_text(x1 + 6, y1 + self.row_height / 2,
-                                       text=self._display(value), anchor="w",
+                                       text=self._display(value, self.columns.width(column)), anchor="w",
                                        fill=SYNTAX_COLORS.get(classify_cell(value, column),
                                                               "#1f2937"),
                                        font=self.font, tags="grid")
@@ -261,12 +273,13 @@ class TableGrid(tk.Frame):
                                text=str(row + 1), anchor="e", fill="#26384d",
                                font=self.font, tags="grid")
         for column in columns:
-            x = self.gutter_width + column * self.column_width
-            canvas.create_rectangle(x, y0, x + self.column_width, y0 + self.header_height,
+            x = self.gutter_width + self.columns.edge(column)
+            column_width = self.columns.width(column)
+            canvas.create_rectangle(x, y0, x + column_width, y0 + self.header_height,
                                     fill=HEADER_SELECTED if axis != "row" and left <= column <= right
                                     else HEADER_BACKGROUND,
                                     outline=HEADER_LINE, width=2, tags="grid")
-            canvas.create_text(x + self.column_width / 2, y0 + self.header_height / 2,
+            canvas.create_text(x + column_width / 2, y0 + self.header_height / 2,
                                text=column_label(column), fill="#26384d",
                                font=self.font, tags="grid")
         canvas.create_rectangle(x0, y0, x0 + self.gutter_width,
@@ -288,10 +301,10 @@ class TableGrid(tk.Frame):
                                         outline=ACTIVE_LINE, width=3, tags="grid")
         self._position_editor()
 
-    def _display(self, value):
-        limit = max(1, (self.column_width - 12) // max(self.font.measure("0"), 1))
+    def _display(self, value, width):
+        limit = max(1, (width - 12) // max(self.font.measure("0"), 1))
         visible = value[:limit]
-        while visible and self.font.measure(visible + ("…" if len(visible) < len(value) else "")) > self.column_width - 12:
+        while visible and self.font.measure(visible + ("…" if len(visible) < len(value) else "")) > width - 12:
             visible = visible[:-1]
         return visible + ("…" if len(visible) < len(value) else "")
 
@@ -299,12 +312,12 @@ class TableGrid(tk.Frame):
         if self._editor is None:
             return
         row, column = self.selected
-        x1, y1, _, _ = self._cell_box(row, column)
+        x1, y1, x2, _ = self._cell_box(row, column)
         x = x1 - self.canvas.canvasx(0)
         y = y1 - self.canvas.canvasy(0)
         left = max(x, self.gutter_width)
         top = max(y, self.header_height)
-        right = min(x + self.column_width, self.canvas.winfo_width())
+        right = min(x2 - self.canvas.canvasx(0), self.canvas.winfo_width())
         bottom = min(y + self.row_height, self.canvas.winfo_height())
         if left >= right or top >= bottom:
             self._editor.place_forget()
@@ -340,7 +353,12 @@ class TableGrid(tk.Frame):
         elif x < self.gutter_width or y < self.header_height:
             return None
         row = int((self.canvas.canvasy(y) - self.header_height) // self.row_height)
-        column = int((self.canvas.canvasx(x) - self.gutter_width) // self.column_width)
+        column_count = max(getattr(self, "display_column_count", 0),
+                           self.model.column_count + 1, self.selected[1] + 1)
+        offset = self.canvas.canvasx(x) - self.gutter_width
+        if not clamp and offset >= self.columns.edge(column_count):
+            return None
+        column = self.columns.at(offset, column_count)
         last_row = max(getattr(self, "display_row_count", 0) - 1,
                        self.model.row_count, self.selected[0])
         last_column = max(getattr(self, "display_column_count", 0) - 1,
@@ -359,7 +377,12 @@ class TableGrid(tk.Frame):
                 return "row", row
             return None
         if event.y < self.header_height:
-            column = int((self.canvas.canvasx(event.x) - self.gutter_width) // self.column_width)
+            column_count = max(getattr(self, "display_column_count", 0),
+                               self.model.column_count + 1, self.selected[1] + 1)
+            offset = self.canvas.canvasx(event.x) - self.gutter_width
+            if offset >= self.columns.edge(column_count):
+                return None
+            column = self.columns.at(offset, column_count)
             if 0 <= column < max(getattr(self, "display_column_count", 0),
                                  self.model.column_count + 1, self.selected[1] + 1):
                 return "column", column
@@ -371,8 +394,10 @@ class TableGrid(tk.Frame):
         if kind == "row":
             anchor = (self.selection.anchor[0] if extend and
                       getattr(self, "_selection_axis", None) == "row" else index)
-            column = max(0, int((self.canvas.canvasx(self.gutter_width) -
-                                 self.gutter_width) // self.column_width))
+            column = self.columns.at(self.canvas.canvasx(self.gutter_width) -
+                                     self.gutter_width,
+                                     max(getattr(self, "display_column_count", 0),
+                                         self.model.column_count + 1))
             self.selection.anchor = anchor, column
             self.selection.active = index, column
         else:
@@ -398,6 +423,16 @@ class TableGrid(tk.Frame):
 
     def _click(self, event):
         self._drag_ready = False
+        self._drag_axis = None
+        resize_column = self._header_resize_target(event)
+        if resize_column is not None:
+            if self.commit_edit():
+                self._resize_column = resize_column
+                self._resize_start_x = event.x
+                self._resize_start_width = self.columns.width(resize_column)
+                self.canvas.focus_set()
+                self._set_resize_cursor(True)
+            return "break"
         target = self._hit_target(event)
         if target is None:
             return
@@ -415,6 +450,13 @@ class TableGrid(tk.Frame):
         return "break"
 
     def _drag(self, event):
+        resize_column = getattr(self, "_resize_column", None)
+        if resize_column is not None:
+            if self.columns.set_width(resize_column,
+                                      self._resize_start_width + event.x - self._resize_start_x):
+                self._update_region()
+                self._schedule_draw()
+            return "break"
         if not self._drag_ready:
             return
         if self._drag_axis == "cell":
@@ -424,11 +466,14 @@ class TableGrid(tk.Frame):
             self.selection.move_to(*cell, extend=True)
         else:
             coordinate = event.y if self._drag_axis == "row" else event.x
-            world = (self.canvas.canvasy(coordinate) - self.header_height
-                     if self._drag_axis == "row" else
-                     self.canvas.canvasx(coordinate) - self.gutter_width)
-            size = self.row_height if self._drag_axis == "row" else self.column_width
-            index = max(0, int(world // size))
+            if self._drag_axis == "row":
+                index = max(0, int((self.canvas.canvasy(coordinate) -
+                                    self.header_height) // self.row_height))
+            else:
+                index = self.columns.at(self.canvas.canvasx(coordinate) -
+                                        self.gutter_width,
+                                        max(getattr(self, "display_column_count", 0),
+                                            self.model.column_count + 1))
             limit = (max(getattr(self, "display_row_count", 0) - 1,
                          self.model.row_count, self.selected[0]) if self._drag_axis == "row"
                      else max(getattr(self, "display_column_count", 0) - 1,
@@ -438,9 +483,39 @@ class TableGrid(tk.Frame):
         self.on_select()
         self._schedule_draw()
 
-    def _release(self, _event):
+    def _release(self, event):
+        if getattr(self, "_resize_column", None) is not None:
+            self._resize_column = None
+            self._drag_axis = None
+            self._ensure_visible()
+            self._schedule_draw()
+            self._header_motion(event)
+            return "break"
         self._drag_ready = False
         self._drag_axis = None
+
+    def _header_resize_target(self, event):
+        if event.y >= self.header_height or event.x < self.gutter_width:
+            return None
+        column = self.columns.resize_hit(
+            self.canvas.canvasx(event.x) - self.gutter_width,
+            max(getattr(self, "display_column_count", 0),
+                self.model.column_count + 1))
+        if column is None:
+            return None
+        edge_on_screen = (self.gutter_width + self.columns.edge(column + 1) -
+                          self.canvas.canvasx(0))
+        return column if edge_on_screen > self.gutter_width + 5 else None
+
+    def _set_resize_cursor(self, resizing):
+        cursor = "sb_h_double_arrow" if resizing else ""
+        if getattr(self, "_resize_cursor", None) != cursor:
+            self.canvas.configure(cursor=cursor)
+            self._resize_cursor = cursor
+
+    def _header_motion(self, event):
+        self._set_resize_cursor(getattr(self, "_resize_column", None) is not None or
+                                self._header_resize_target(event) is not None)
 
     def _right_click(self, event):
         target = self._hit_target(event)
@@ -873,17 +948,20 @@ class TableGrid(tk.Frame):
 
     def _ensure_visible(self):
         row, column = self.selected
-        x = self.gutter_width + column * self.column_width
+        x = self.gutter_width + self.columns.edge(column)
+        column_width = self.columns.width(column)
         y = self.header_height + row * self.row_height
         left, top = self.canvas.canvasx(0), self.canvas.canvasy(0)
         width, height = self.canvas.winfo_width(), self.canvas.winfo_height()
-        total_width = self.gutter_width + max(self.model.column_count, column + 1) * self.column_width
-        total_height = self.header_height + max(self.model.row_count + 1, row + 1) * self.row_height
+        total_width = self.gutter_width + self.columns.edge(
+            max(getattr(self, "display_column_count", 0), column + 1))
+        total_height = self.header_height + max(getattr(self, "display_row_count", 0),
+                                                row + 1) * self.row_height
         axis = getattr(self, "_selection_axis", None)
         if axis != "row" and x < left + self.gutter_width:
             self.canvas.xview_moveto(max(0, (x - self.gutter_width) / total_width))
-        elif axis != "row" and x + self.column_width > left + width:
-            self.canvas.xview_moveto(max(0, (x + self.column_width - width) / total_width))
+        elif axis != "row" and x + column_width > left + width:
+            self.canvas.xview_moveto(max(0, (x + column_width - width) / total_width))
         if axis != "column" and y < top + self.header_height:
             self.canvas.yview_moveto(max(0, (y - self.header_height) / total_height))
         elif axis != "column" and y + self.row_height > top + height:
