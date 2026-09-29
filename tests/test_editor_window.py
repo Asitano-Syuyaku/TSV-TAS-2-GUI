@@ -294,6 +294,7 @@ class EditorWindowHeadlessTests(unittest.TestCase):
             window.status = FakeStatus()
             window._gutter_job = None
             window._schedule_line_numbers = lambda: None
+            window._schedule_highlight = lambda: None
             window.destroyed = False
             window.text.value = "1\ta"
             window._sync_text()

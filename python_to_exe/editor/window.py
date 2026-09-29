@@ -6,6 +6,12 @@ from tkinter import filedialog, font as tkfont, messagebox
 from .document import EditorDocument
 from .text_ops import (file_kind, find_next as next_match, find_previous as previous_match,
                        line_column, replace_all as replace_every, replace_current as replace_match)
+from .tsv_syntax import CANDIDATES, PALETTE_CATEGORIES, syntax_spans
+
+
+HIGHLIGHT_COLORS = {"comment": "#53805a", "command": "#8741a8",
+                    "variable": "#9a621f", "duration": "#295fa3",
+                    "input": "#234a84"}
 
 
 LABELS = {
@@ -29,6 +35,9 @@ LABELS = {
         "insert_column_right": "Insert Column Right",
         "delete_column": "Delete Column",
         "clear_cells": "Clear Cells",
+        "input_palette": "Input Palette", "buttons": "Buttons",
+        "left_stick": "Left Stick", "right_stick": "Right Stick",
+        "commands": "STAS Commands",
     },
     "ja": {
         "title": "TSV-TAS エディター", "untitled": "無題", "file": "ファイル",
@@ -51,6 +60,9 @@ LABELS = {
         "insert_column_right": "右に列を追加",
         "delete_column": "列を削除",
         "clear_cells": "セルを消去",
+        "input_palette": "入力パレット", "buttons": "ボタン",
+        "left_stick": "左スティック", "right_stick": "右スティック",
+        "commands": "STASコマンド",
     },
 }
 
@@ -68,6 +80,8 @@ class EditorWindow(tk.Toplevel):
         self.replace_value = tk.StringVar(self)
         self._find_dialog = None
         self._gutter_job = None
+        self._highlight_job = None
+        self._highlight_range = None
         self._view = "raw"
         self.geometry("800x520")
 
@@ -123,6 +137,18 @@ class EditorWindow(tk.Toplevel):
                   command=lambda: self._table_action("insert_row_below")).pack(side="left")
         tk.Button(self.table_tools, text=self.words["add_column"],
                   command=lambda: self._table_action("insert_column_right")).pack(side="left")
+        palette_button = tk.Menubutton(self.table_tools, text=self.words["input_palette"],
+                                       relief="raised")
+        palette = tk.Menu(palette_button, tearoff=False)
+        for category in PALETTE_CATEGORIES:
+            group = tk.Menu(palette, tearoff=False)
+            for candidate in CANDIDATES:
+                if candidate.category == category:
+                    group.add_command(label=candidate.label,
+                                      command=lambda item=candidate: self.table_grid.insert_candidate(item))
+            palette.add_cascade(label=self.words[category], menu=group)
+        palette_button.configure(menu=palette)
+        palette_button.pack(side="left")
 
         frame = tk.Frame(self)
         frame.pack(fill="both", expand=True)
@@ -137,6 +163,8 @@ class EditorWindow(tk.Toplevel):
         horizontal = tk.Scrollbar(frame, orient="horizontal", command=self.text.xview)
         self.text.configure(yscrollcommand=lambda first, last: self._on_scroll(vertical, first, last),
                             xscrollcommand=horizontal.set)
+        for kind, color in HIGHLIGHT_COLORS.items():
+            self.text.tag_configure("syntax_" + kind, foreground=color)
         self.line_numbers.grid(row=0, column=0, sticky="ns")
         self.text.grid(row=0, column=1, sticky="nsew")
         vertical.grid(row=0, column=2, sticky="ns")
@@ -156,7 +184,7 @@ class EditorWindow(tk.Toplevel):
         self.text.bind("<<Modified>>", self._on_modified)
         self.text.bind("<KeyRelease>", self._update_status)
         self.text.bind("<ButtonRelease-1>", self._update_status)
-        self.text.bind("<Configure>", self._schedule_line_numbers)
+        self.text.bind("<Configure>", self._on_text_configure)
         for sequence, command in (
             ("<Control-n>", self.new_document), ("<Control-o>", self.open_file),
             ("<Control-s>", self.save), ("<Control-Shift-S>", self.save_as),
@@ -186,6 +214,7 @@ class EditorWindow(tk.Toplevel):
         self._update_title()
         self._update_status()
         self._schedule_line_numbers()
+        self._schedule_highlight()
         if initial_path:
             self.open_file(initial_path)
 
@@ -197,6 +226,39 @@ class EditorWindow(tk.Toplevel):
     def _on_scroll(self, scrollbar, first, last):
         scrollbar.set(first, last)
         self._schedule_line_numbers()
+        self._schedule_highlight()
+
+    def _on_text_configure(self, _event=None):
+        self._schedule_line_numbers()
+        self._schedule_highlight()
+
+    def _schedule_highlight(self):
+        if self._view == "raw" and self._highlight_job is None:
+            self._highlight_job = self.after_idle(self._draw_highlight)
+
+    def _draw_highlight(self):
+        self._highlight_job = None
+        if self._view != "raw" or not self.winfo_exists():
+            return
+        if self._highlight_range is not None:
+            for kind in HIGHLIGHT_COLORS:
+                self.text.tag_remove("syntax_" + kind,
+                                     "_tas_highlight_start", "_tas_highlight_end")
+        if not self._table_available():
+            self._highlight_range = None
+            return
+        first = int(self.text.index("@0,0").split(".")[0])
+        last = int(self.text.index(f"@0,{max(0, self.text.winfo_height() - 1)}").split(".")[0])
+        self._highlight_range = first, last
+        self.text.mark_set("_tas_highlight_start", f"{first}.0")
+        self.text.mark_set("_tas_highlight_end", f"{last + 1}.0")
+        self.text.mark_gravity("_tas_highlight_start", "left")
+        self.text.mark_gravity("_tas_highlight_end", "right")
+        for line in range(first, last + 1):
+            value = self.text.get(f"{line}.0", f"{line}.0 lineend")
+            for kind, start, end in syntax_spans(value):
+                self.text.tag_add("syntax_" + kind,
+                                  f"{line}.0+{start}c", f"{line}.0+{end}c")
 
     def _schedule_line_numbers(self, _event=None):
         if self._gutter_job is None:
@@ -269,6 +331,7 @@ class EditorWindow(tk.Toplevel):
             self._view = "raw"
             self._update_status()
             self.text.focus_set()
+            self._schedule_highlight()
         return True
 
     def show_table(self):
@@ -308,6 +371,7 @@ class EditorWindow(tk.Toplevel):
         self._sync_text()
         self._update_status()
         self._schedule_line_numbers()
+        self._schedule_highlight()
 
     def _table_text_changed(self, original, updated):
         if self.text.get("1.0", "end-1c") != original:
@@ -335,6 +399,7 @@ class EditorWindow(tk.Toplevel):
             self.text.edit_modified(False)
             self._update_status()
             self._schedule_line_numbers()
+            self._schedule_highlight()
 
     def _show_document(self):
         if getattr(self, "_view", "raw") == "table":
@@ -353,6 +418,7 @@ class EditorWindow(tk.Toplevel):
         self._update_status()
         self._update_view_button()
         self._schedule_line_numbers()
+        self._schedule_highlight()
 
     def undo(self):
         if not self._commit_table_edit():
@@ -366,6 +432,7 @@ class EditorWindow(tk.Toplevel):
             self.table_grid.set_text(self.document.text)
         self._update_status()
         self._schedule_line_numbers()
+        self._schedule_highlight()
         return True
 
     def redo(self):
@@ -380,6 +447,7 @@ class EditorWindow(tk.Toplevel):
             self.table_grid.set_text(self.document.text)
         self._update_status()
         self._schedule_line_numbers()
+        self._schedule_highlight()
         return True
 
     def cut(self):

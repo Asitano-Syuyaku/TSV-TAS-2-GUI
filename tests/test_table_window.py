@@ -137,6 +137,61 @@ class TableWindowTests(unittest.TestCase):
         self.assertEqual((labels["en"]["add_row"], labels["en"]["add_column"]),
                          ("+ Row", "+ Column"))
 
+    def test_raw_highlight_reads_visible_lines_only_without_modifying_document(self):
+        class HighlightText:
+            def __init__(self, lines):
+                self.lines = lines
+                self.reads = 0
+                self.tags = []
+                self.removed = []
+
+            def index(self, value):
+                return "9000.0" if value == "@0,0" else "9010.0"
+
+            def winfo_height(self):
+                return 240
+
+            def get(self, first, _last):
+                self.reads += 1
+                return self.lines[int(first.split(".")[0]) - 1]
+
+            def tag_add(self, *args):
+                self.tags.append(args)
+
+            def tag_remove(self, *args):
+                self.removed.append(args)
+
+            def mark_set(self, *_args):
+                pass
+
+            def mark_gravity(self, *_args):
+                pass
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "visible.tsv"
+            lines = ["1\ta" for _ in range(10000)]
+            lines[8999:9003] = ["/pause", "// note", "$angle = 90", "1\ta\tls(90)"]
+            source.write_text("\n".join(lines), encoding="utf-8")
+            window = self._window(source)
+            original = window.document.text
+            window.text = HighlightText(lines)
+            window._view = "raw"
+            window._highlight_job = None
+            window._highlight_range = None
+            window.winfo_exists = lambda: True
+            jobs = []
+            window.after_idle = lambda callback: jobs.append(callback) or len(jobs)
+            self.editor_window.EditorWindow._schedule_highlight(window)
+            self.editor_window.EditorWindow._schedule_highlight(window)
+            self.assertEqual(len(jobs), 1)
+            jobs.pop(0)()
+            self.assertEqual(window.text.reads, 11)
+            self.assertTrue({"syntax_command", "syntax_comment", "syntax_variable",
+                             "syntax_duration", "syntax_input"} <=
+                            {item[0] for item in window.text.tags})
+            self.assertEqual(window.document.text, original)
+            self.assertFalse(window.document.modified)
+
     def _window(self, path):
         window = self.editor_window.EditorWindow.__new__(self.editor_window.EditorWindow)
         window.words = self.editor_window.LABELS["en"]
@@ -152,6 +207,7 @@ class TableWindowTests(unittest.TestCase):
         window._view = "raw"
         window.title = lambda value: None
         window._schedule_line_numbers = lambda: None
+        window._schedule_highlight = lambda: None
         window.on_saved = None
         window.on_convert = None
         window.can_convert = None

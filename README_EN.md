@@ -48,7 +48,7 @@ This example holds the left stick upward for five frames, then inputs A and the 
 
 The Japanese and English launchers use the same conversion behavior; only displayed language differs. `-l` is an interactive CLI option for repeated compilation and is not in the GUI.
 
-### Built-in editor (Phase 3B)
+### Built-in editor
 
 Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, Save & Convert, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, and `F5`. New, Open, and Close ask what to do with unsaved changes.
 
@@ -56,11 +56,13 @@ Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With n
 
 The Edit menu provides Undo/Redo, Cut/Copy/Paste, and Select All. Shortcuts are `Ctrl+Z`/`Ctrl+Y` and `Ctrl+X`/`Ctrl+C`/`Ctrl+V`/`Ctrl+A`. Open Find with `Ctrl+F` or Replace with `Ctrl+H`; `F3`/`Shift+F3` searches next/previous. The dialog can replace the current match or all matches. Search is case-sensitive. Line numbers and a status bar show the line, column, modified state, and file kind (TSV-TAS/nx-TAS).
 
-For `.tsv` files and new unsaved documents, switch between **Raw Text** and **Table**. Table splits each line only at TAB characters and preserves empty cells, blank lines, and trailing TABs. It shows cell borders, A/B/C… column headers, row numbers, and highlights for the active cell and selected range. A single click selects a cell; Shift+click and drag select a range. Typing an ASCII character into a selected cell starts editing and replaces its previous value. F2 or double-click edits the existing value; Left/Right and Home/End then move the text caret. While editing, Tab/Shift+Tab commits and selects the right/left cell, Enter/Shift+Enter commits and selects the cell below/above, and Escape discards the edit. While only selecting, Tab/Shift+Tab/Enter/Shift+Enter/arrow keys move between cells, and Shift+arrow keys extend the range. For Japanese IME input, open the cell editor with F2 or double-click. Switching views without editing does not change the file content or modified state. `.txt` (nx-TAS) remains Raw Text only. Undo/Redo, Save, and Save & Convert also work after table edits.
+For `.tsv` files and new unsaved documents, switch between **Raw Text** and **Table**. Table splits each line only at TAB characters and preserves empty cells, blank lines, and trailing TABs. It shows cell borders, A/B/C… column headers, row numbers, and highlights for the active cell and selected range. A single click selects a cell; Shift+click and drag select a range. Typing an ASCII character into a selected cell starts editing and replaces its previous value. F2 or double-click edits the existing value; Left/Right and Home/End then move the text caret. With no suggestion popup open, Tab/Shift+Tab commits and selects the right/left cell, Enter/Shift+Enter commits and selects the cell below/above, and Escape discards the edit. While only selecting, Tab/Shift+Tab/Enter/Shift+Enter/arrow keys move between cells, and Shift+arrow keys extend the range. For Japanese IME input, open the cell editor with F2 or double-click. Switching views without editing does not change the file content or modified state. `.txt` (nx-TAS) remains Raw Text only. Undo/Redo, Save, and Save & Convert also work after table edits.
 
 With a range selected in Table, `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copies, cuts, or pastes cells using TABs and newlines. While editing text inside a cell, these shortcuts edit text normally; a paste containing TABs or newlines expands into the table. You can paste multiple rows and columns copied from an external spreadsheet; pasting starts at the selection's top-left cell and expands rows or columns as needed. Delete/Backspace clears selected cells. Click a row number or column heading to select the whole row or column; Shift+click selects multiple rows or columns. Right-click a cell, row number, or column heading for cut/copy/paste and structural actions. The **Table** menu also inserts rows above/below, duplicates or deletes rows, and inserts columns left/right or deletes them. **+ Row**/**+ Column** beside Table inserts below the active row or right of the active column. Deleting multiple rows or columns selected through their headers removes the whole selection. Each table operation takes one Undo step.
 
 At the last row, Enter or Down moves to an unsaved virtual row. Moving alone adds no blank line. Entering and committing text there adds only the needed rows. After Tab or Enter navigation, the cell remains selected so you can type the next value directly.
+
+While editing a Table cell, typing `l` or `/` can show suggestions for buttons, sticks, acceleration/gyro, 2P input, and STAS commands. Use Up/Down to select, then Tab/Enter or a click to insert a suggestion and continue editing. Escape first closes only the popup. Candidates with parentheses or arguments insert a template with its value selected, ready to replace. The **Input Palette** offers common buttons, left/right sticks, and STAS commands: it starts editing the selected cell or inserts at the caret while editing. Raw Text for `.tsv` colors comments, commands, variables, and inputs; Table colors duration, command, and input cells. Colors and suggestions are **editing aids**, not syntax validation. The converter processes STAS commands when producing STAS output.
 
 Table does not interpret TSV-TAS syntax or apply its own formatting on save. Column operations affect every row, including command and comment lines. Both views preserve UTF-8 and original line endings where possible. `tsv-tas.py` still interprets scripts.
 
@@ -151,7 +153,7 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 | `nx-tas-to-tsv-tas.py` | nx-TAS→TSV-TAS converter matching upstream |
 | `python_to_exe/main_jp.py`, `main_en.py` | Japanese/English launchers |
 | `python_to_exe/converter_gui.py`, `converter_logic.py` | Shared GUI, argument construction, Python discovery, and FTP settings |
-| `python_to_exe/editor/` | Raw Text/Table editor window, file state, and find/replace operations |
+| `python_to_exe/editor/` | Raw Text/Table editor window, file state, find/replace, and input hints |
 | `ftp_config.json` | FTP connection settings; do not commit real credentials |
 | `tests/test_conversion.py` | Local conversion and GUI argument tests |
 

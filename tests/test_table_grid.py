@@ -120,6 +120,18 @@ class EntryStub:
     def icursor(self, index):
         self.cursor = len(self.value) if index == "end" else index
 
+    def index(self, index):
+        if index == "insert":
+            return self.cursor
+        if index == "sel.first" and self.selected_range is not None:
+            return self.selected_range[0]
+        if index == "sel.last" and self.selected_range is not None:
+            return len(self.value) if self.selected_range[1] == "end" else self.selected_range[1]
+        raise ValueError(index)
+
+    def selection_present(self):
+        return self.selected_range is not None
+
     def type_text(self, text):
         self.value = self.value[:self.cursor] + text + self.value[self.cursor:]
         self.cursor += len(text)
@@ -131,12 +143,51 @@ class EntryStub:
         return not self.destroyed
 
 
+class ListboxStub:
+    def __init__(self, _parent, **_options):
+        self.items = []
+        self.bindings = {}
+        self.selected = ()
+        self.placement = None
+
+    def bind(self, sequence, callback):
+        self.bindings[sequence] = callback
+
+    def delete(self, _start, _end):
+        self.items.clear()
+
+    def insert(self, _index, value):
+        self.items.append(value)
+
+    def selection_set(self, index):
+        self.selected = (index,)
+
+    def selection_clear(self, _start, _end):
+        self.selected = ()
+
+    def activate(self, _index):
+        pass
+
+    def see(self, _index):
+        pass
+
+    def curselection(self):
+        return self.selected
+
+    def place(self, **options):
+        self.placement = options
+
+    def place_forget(self):
+        self.placement = None
+
+
 class TableGridTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         fake_tk = types.ModuleType("tkinter")
         fake_tk.Frame = type("FakeFrame", (), {"winfo_exists": lambda self: True})
         fake_tk.TclError = RuntimeError
+        fake_tk.Listbox = ListboxStub
         with patch.dict(sys.modules, {"tkinter": fake_tk}):
             sys.modules.pop("python_to_exe.editor.grid", None)
             cls.module = importlib.import_module("python_to_exe.editor.grid")
@@ -157,7 +208,15 @@ class TableGridTests(unittest.TestCase):
         grid._draw_job = None
         grid._editor = None
         grid.selection.move_to(9999, 2, extend=True)
-        grid._draw_visible()
+        before = grid.model.to_text()
+        classifier = self.module.classify_cell
+        classified = []
+        with patch.object(self.module, "classify_cell",
+                          side_effect=lambda value, column: classified.append((value, column))
+                          or classifier(value, column)):
+            grid._draw_visible()
+        self.assertEqual(grid.model.to_text(), before)
+        self.assertLess(len(classified), 100)
         self.assertLess(grid.canvas.rectangles, 150)
         self.assertLess(grid.canvas.labels, 150)
 
@@ -273,6 +332,8 @@ class TableGridTests(unittest.TestCase):
         grid.font = None
         grid._editor = None
         grid._entry_widget = None
+        grid._completion = self.module.CompletionState()
+        grid._popup = None
         grid._edit_job = None
         grid._draw_job = None
         grid._scroll_region = None
@@ -469,6 +530,7 @@ class TableGridTests(unittest.TestCase):
             self.assertEqual(grid.selection.bounds, (1, 1, 1, 1))
             editor.type_text("s(90)")
             self.assertEqual(editor.value, "ls(90)")
+            editor.bindings["<KeyRelease>"](types.SimpleNamespace(widget=editor, keysym="parenright"))
             self.assertEqual(editor.bindings["<Tab>"](
                 types.SimpleNamespace(widget=editor)), "break")
             self.assertEqual(grid.model.to_text(), "abc\tkeep\nbottom\tls(90)")
@@ -484,6 +546,9 @@ class TableGridTests(unittest.TestCase):
                 self.assertEqual(editor.value, char)
                 self.assertEqual(editor.bindings["<Escape>"](
                     types.SimpleNamespace(widget=editor)), "break")
+                if grid._editor is not None:
+                    self.assertEqual(editor.bindings["<Escape>"](
+                        types.SimpleNamespace(widget=editor)), "break")
             self.assertEqual(grid.model.to_text(), "abc\tkeep\nbottom\tls(90)")
             self.assertEqual(EntryStub.created, 1)
             for _ in range(100):
@@ -818,6 +883,106 @@ class TableGridTests(unittest.TestCase):
         self.assertEqual(grid._selection_bounds(), (0, 9999, 0, 0))
         grid._draw_visible()
         self.assertLess(grid.canvas.rectangles, 150)
+
+    def test_autocomplete_popup_keyboard_mouse_and_escape(self):
+        grid, _, _ = self._navigation_grid("old")
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            self.assertEqual(grid._type_to_edit(types.SimpleNamespace(char="l", state=0)),
+                             "break")
+            editor = grid._editor
+            self.assertTrue(grid._completion.open)
+            self.assertIsNotNone(grid._popup.placement)
+            self.assertEqual(editor.bindings["<Down>"](
+                types.SimpleNamespace(widget=editor)), "break")
+            self.assertEqual(editor.bindings["<Down>"](
+                types.SimpleNamespace(widget=editor)), "break")
+            self.assertEqual(grid._completion.current.text, "ls(0)")
+            self.assertEqual(editor.bindings["<Up>"](
+                types.SimpleNamespace(widget=editor)), "break")
+            self.assertEqual(grid._completion.current.text, "ls")
+            editor.bindings["<Down>"](types.SimpleNamespace(widget=editor))
+            self.assertEqual(editor.bindings["<Tab>"](
+                types.SimpleNamespace(widget=editor)), "break")
+            self.assertIs(grid._editor, editor)
+            self.assertFalse(grid._completion.open)
+            self.assertEqual(editor.value, "ls(0)")
+            self.assertEqual(editor.selected_range, (3, 4))
+            self.assertEqual(grid.selected, (0, 0))
+            self.assertEqual(editor.bindings["<Tab>"](
+                types.SimpleNamespace(widget=editor)), "break")
+            self.assertIsNone(grid._editor)
+            self.assertEqual(grid.selected, (0, 1))
+            self.assertEqual(grid.model.to_text(), "ls(0)")
+
+            grid.selected = (0, 0)
+            grid._type_to_edit(types.SimpleNamespace(char="/", state=0))
+            editor = grid._editor
+            self.assertEqual(len(grid._completion.items), 8)
+            grid._popup.selection_clear(0, "end")
+            grid._popup.selection_set(4)
+            grid._popup.bindings["<ButtonRelease-1>"](types.SimpleNamespace())
+            self.assertEqual(editor.value, "/pause")
+            self.assertIs(grid._editor, editor)
+            self.assertFalse(grid._completion.open)
+            editor.bindings["<Return>"](types.SimpleNamespace(widget=editor))
+            self.assertEqual(grid.selected, (1, 0))
+            self.assertEqual(grid.model.to_text(), "/pause")
+
+            grid.selected = (0, 0)
+            grid._type_to_edit(types.SimpleNamespace(char="/", state=0))
+            self.assertTrue(grid._completion.open)
+            self.assertEqual(editor.bindings["<Escape>"](
+                types.SimpleNamespace(widget=editor)), "break")
+            self.assertIs(grid._editor, editor)
+            self.assertFalse(grid._completion.open)
+            editor.bindings["<KeyRelease>"](
+                types.SimpleNamespace(widget=editor, keysym="c", state=0x0004))
+            self.assertFalse(grid._completion.open)
+            self.assertEqual(editor.bindings["<Escape>"](
+                types.SimpleNamespace(widget=editor)), "break")
+            self.assertIsNone(grid._editor)
+
+    def test_popup_enter_accepts_without_navigation(self):
+        grid, _, _ = self._navigation_grid("old")
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            grid._type_to_edit(types.SimpleNamespace(char="/", state=0))
+            editor = grid._editor
+            for _ in range(4):
+                editor.bindings["<Down>"](types.SimpleNamespace(widget=editor))
+            self.assertEqual(grid._completion.current.text, "/pause")
+            self.assertEqual(editor.bindings["<Return>"](
+                types.SimpleNamespace(widget=editor)), "break")
+            self.assertEqual(editor.value, "/pause")
+            self.assertIs(grid._editor, editor)
+            self.assertEqual(grid.selected, (0, 0))
+            self.assertEqual(grid.model.to_text(), "old")
+            self.assertEqual(editor.bindings["<Return>"](
+                types.SimpleNamespace(widget=editor)), "break")
+            self.assertEqual(grid.selected, (1, 0))
+            self.assertEqual(grid.model.to_text(), "/pause")
+
+    def test_palette_starts_edit_and_inserts_at_caret(self):
+        from python_to_exe.editor.tsv_syntax import CANDIDATES
+
+        grid, _, _ = self._navigation_grid("old\tkeep")
+        stick = next(item for item in CANDIDATES if item.label == "ls(angle)")
+        button = next(item for item in CANDIDATES if item.text == "a")
+        grid.selected = (0, 1)
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            grid.insert_candidate(stick)
+            editor = grid._editor
+            self.assertEqual(editor.value, "ls(0)")
+            self.assertEqual(editor.selected_range, (3, 4))
+            self.assertEqual(grid.model.to_text(), "old\tkeep")
+            grid.insert_candidate(button)
+            self.assertEqual(editor.value, "ls(a)")
+            self.assertTrue(grid.commit_edit())
+            self.assertEqual(grid.model.to_text(), "old\tls(a)")
+            grid.begin_edit()
+            editor.icursor(2)
+            grid.insert_candidate(button)
+            self.assertEqual(editor.value, "lsa(a)")
+            self.assertIs(grid._editor, editor)
 
 
 if __name__ == "__main__":

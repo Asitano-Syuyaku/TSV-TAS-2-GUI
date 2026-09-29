@@ -3,6 +3,8 @@
 import tkinter as tk
 
 from .table_model import CellSelection, TableModel, visible_span
+from .tsv_syntax import (CompletionState, candidates_for, classify_cell,
+                         completion_span, insert_template)
 
 
 CANVAS_BACKGROUND = "#f2f5f9"
@@ -15,6 +17,8 @@ SELECTION_BACKGROUND = "#c9e0fb"
 SELECTION_LINE = "#4e86bf"
 ACTIVE_BACKGROUND = "#a9d0fb"
 ACTIVE_LINE = "#075ca8"
+SYNTAX_COLORS = {"duration": "#295fa3", "command": "#8741a8",
+                 "comment": "#53805a", "variable": "#9a621f", "input": "#234a84"}
 
 
 def column_label(index):
@@ -50,6 +54,8 @@ class TableGrid(tk.Frame):
         self._drag_ready = False
         self._selection_axis = None
         self._drag_axis = None
+        self._completion = CompletionState()
+        self._popup = None
 
         self.canvas = tk.Canvas(self, background=CANVAS_BACKGROUND, highlightthickness=0,
                                 takefocus=True)
@@ -223,7 +229,9 @@ class TableGrid(tk.Frame):
                 if value:
                     canvas.create_text(x1 + 6, y1 + self.row_height / 2,
                                        text=self._display(value), anchor="w",
-                                       fill="#1f2937", font=self.font, tags="grid")
+                                       fill=SYNTAX_COLORS.get(classify_cell(value, column),
+                                                              "#1f2937"),
+                                       font=self.font, tags="grid")
         if top != bottom or left != right:
             x1, y1, _, _ = self._cell_box(top, left)
             _, _, x2, y2 = self._cell_box(bottom, right)
@@ -287,8 +295,29 @@ class TableGrid(tk.Frame):
         bottom = min(y + self.row_height, self.canvas.winfo_height())
         if left >= right or top >= bottom:
             self._editor.place_forget()
+            if getattr(self, "_popup", None) is not None:
+                self._popup.place_forget()
         else:
             self._editor.place(x=left, y=top, width=right - left, height=bottom - top)
+            self._position_popup(left, top, right - left, bottom - top)
+
+    def _position_popup(self, x, y, width, height):
+        completion = getattr(self, "_completion", None)
+        if completion is None or not completion.open or self._popup is None:
+            return
+        desired = min(8, len(completion.items)) * self.row_height
+        below = y + height
+        room_below = self.canvas.winfo_height() - below
+        room_above = y - self.header_height
+        if room_below >= room_above:
+            popup_height = min(desired, max(self.row_height, room_below))
+            top = below
+        else:
+            popup_height = min(desired, max(self.row_height, room_above))
+            top = y - popup_height
+        popup_width = min(max(width, 220), max(1, self.canvas.winfo_width() - self.gutter_width))
+        x = max(self.gutter_width, min(x, self.canvas.winfo_width() - popup_width))
+        self._popup.place(x=x, y=top, width=popup_width, height=popup_height)
 
     def _hit_cell(self, event, clamp=False):
         x, y = event.x, event.y
@@ -445,13 +474,18 @@ class TableGrid(tk.Frame):
             editor.icursor(f"@{max(0, int(caret_x - left))}")
         self.on_select()
         self._schedule_draw()
+        if initial is not None:
+            self._refresh_completion()
 
     def _bind_entry_navigation(self, editor):
-        for key, delta in (("Return", (1, 0)), ("Shift-Return", (-1, 0)),
-                           ("Tab", (0, 1)),
-                           ("Shift-Tab", (0, -1))):
+        for key, delta in (("Return", (1, 0)), ("Tab", (0, 1))):
+            editor.bind(f"<{key}>", lambda event, move=delta: self._completion_or_move(event, *move))
+        for key, delta in (("Shift-Return", (-1, 0)), ("Shift-Tab", (0, -1))):
             editor.bind(f"<{key}>", lambda event, move=delta: self._entry_move(event, *move))
-        editor.bind("<Escape>", lambda event: self.cancel_edit())
+        editor.bind("<Escape>", self._completion_or_cancel)
+        editor.bind("<Up>", lambda event: self._popup_step(event, -1))
+        editor.bind("<Down>", lambda event: self._popup_step(event, 1))
+        editor.bind("<KeyRelease>", self._entry_key_released)
         editor.bind("<Control-a>", self._entry_select_all)
         editor.bind("<Control-v>", self._entry_paste)
         editor.bind("<Control-z>", lambda event: self._entry_history(event, self.on_undo))
@@ -474,6 +508,7 @@ class TableGrid(tk.Frame):
     def _entry_move(self, event, row_delta, column_delta, extend=False):
         if event.widget is not self._editor:
             return "break"  # Ignore a key event from an editor already closed.
+        self._close_popup()
         if not self._apply_editor_value():
             return "break"
         self._close_editor()
@@ -498,8 +533,115 @@ class TableGrid(tk.Frame):
         if editor is None:
             return
         self._editor = None
+        self._close_popup()
         editor.place_forget()
         self.canvas.focus_set()
+
+    def _close_popup(self):
+        if hasattr(self, "_completion"):
+            self._completion.close()
+        if getattr(self, "_popup", None) is not None:
+            self._popup.place_forget()
+
+    def _refresh_completion(self):
+        if self._editor is None:
+            self._close_popup()
+            return
+        editor = self._editor
+        choices = candidates_for(editor.get(), editor.index("insert"), self.selected[1])
+        if not choices:
+            self._close_popup()
+            return
+        self._completion.show(choices)
+        if self._popup is None:
+            self._popup = tk.Listbox(self.canvas, font=self.font, exportselection=False,
+                                     activestyle="dotbox", takefocus=False)
+            self._popup.bind("<ButtonRelease-1>", self._popup_mouse)
+        self._popup.delete(0, "end")
+        for item in choices:
+            self._popup.insert("end", item.label)
+        self._popup.selection_set(0)
+        self._popup.activate(0)
+        self._position_editor()
+
+    def _entry_key_released(self, event):
+        if event.widget is not self._editor:
+            return
+        key = getattr(event, "keysym", "")
+        state = getattr(event, "state", 0)
+        if (key in ("Up", "Down", "Return", "Tab", "Escape",
+                    "Control_L", "Control_R", "Alt_L", "Alt_R") or
+                state & 0x0008 or (state & 0x0004 and key.lower() not in ("v", "x"))):
+            return
+        self._refresh_completion()
+
+    def _popup_step(self, event, delta):
+        if event.widget is not self._editor or not self._completion.open:
+            return None
+        self._completion.step(delta)
+        self._popup.selection_clear(0, "end")
+        self._popup.selection_set(self._completion.index)
+        self._popup.activate(self._completion.index)
+        self._popup.see(self._completion.index)
+        return "break"
+
+    def _accept_completion(self):
+        candidate = self._completion.current
+        if candidate is None:
+            return False
+        editor = self._editor
+        span = completion_span(editor.get(), editor.index("insert"), self.selected[1])
+        if span is None:
+            self._close_popup()
+            return False
+        self._insert_candidate(candidate, span[0], span[1])
+        return True
+
+    def _completion_or_move(self, event, row_delta, column_delta):
+        if event.widget is not self._editor:
+            return "break"
+        if self._completion.open and self._accept_completion():
+            return "break"
+        return self._entry_move(event, row_delta, column_delta)
+
+    def _completion_or_cancel(self, event):
+        if event.widget is not self._editor:
+            return "break"
+        if self._completion.open:
+            self._close_popup()
+            self._editor.focus_set()
+            return "break"
+        return self.cancel_edit()
+
+    def _popup_mouse(self, _event):
+        selected = self._popup.curselection()
+        if selected and self._completion.open:
+            self._completion.index = int(selected[0])
+            self._accept_completion()
+        return "break"
+
+    def _insert_candidate(self, candidate, start, end):
+        editor = self._editor
+        updated, caret, selection = insert_template(editor.get(), start, end, candidate)
+        editor.delete(0, "end")
+        editor.insert(0, updated)
+        editor.icursor(caret)
+        if selection is not None:
+            editor.select_range(*selection)
+            editor.icursor(selection[1])
+        self._close_popup()
+        editor.focus_set()
+
+    def insert_candidate(self, candidate):
+        """Palette insertion replaces a selected cell or inserts at the Entry caret."""
+        if self._editor is None:
+            self.begin_edit(initial="")
+        editor = self._editor
+        if editor.selection_present():
+            start, end = editor.index("sel.first"), editor.index("sel.last")
+        else:
+            start = end = editor.index("insert")
+        self._insert_candidate(candidate, start, end)
 
     def _entry_paste(self, _event=None):
         try:
