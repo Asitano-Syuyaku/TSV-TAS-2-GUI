@@ -29,7 +29,7 @@ Python 3 and Tkinter are required. The GUI exe also requires a separate Python 3
    ```
 
 2. From the repository root, run `python3 python_to_exe/main_en.py` (English) or `python3 python_to_exe/main_jp.py` (Japanese). On Windows, `python` or `py -3` also works.
-3. Set Input to `sample.tsv`, Output Directory to the destination, and Output File Name to a name without an extension (for example, `sample`). Choose a format and click **Start Conversion／変換実行**.
+3. Select `sample.tsv` as Input. If Output Directory is empty, it fills with the input file's folder. Change it if needed, and set Output File Name to a name without an extension (for example, `sample`). Choose a format and click **Start Conversion／変換実行**.
 4. The destination will contain `sample`, `sample.stas`, or `sample.txt`, depending on the format. You can enable Debug first and inspect `sample-debug.csv` (or `sample.stas-debug.csv` for STAS) to see the frames.
 
 This example holds the left stick upward for five frames, then inputs A and the right stick for one frame, and waits three frames. The reference table below explains the loop and stick interpolation.
@@ -39,7 +39,7 @@ This example holds the left stick upward for five frames, then inputs A and the 
 | Field | How to use it |
 | --- | --- |
 | Input Script File／入力スクリプトファイル | `.tsv` compiles directly. `.txt` is treated as nx-TAS and converted to TSV first |
-| Output Directory／出力ディレクトリ | Select an existing destination folder. An intermediate `.tsv` from `.txt` input is also saved here |
+| Output Directory／出力ディレクトリ | If empty, fills with the input file's folder when Input is selected. An existing destination is not overwritten. An intermediate `.tsv` from `.txt` input is also saved here |
 | Output File Name／出力ファイル名 | Enter a base name without an extension or folder. The GUI adds the format's extension |
 | Output format／出力形式 | Choose LunaKit binary, STAS, or nx-TAS |
 | Skip empty frames／空フレームを省略 | Available only for nx-TAS; upstream `-e` |
@@ -48,9 +48,11 @@ This example holds the left stick upward for five frames, then inputs A and the 
 
 The Japanese and English launchers use the same conversion behavior; only displayed language differs. `-l` is an interactive CLI option for repeated compilation and is not in the GUI.
 
-### Built-in editor (Phase 1)
+### Built-in editor (Phase 2A)
 
 Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, and `Ctrl+Shift+S`. New, Open, and Close ask what to do with unsaved changes.
+
+The Edit menu provides Undo/Redo, Cut/Copy/Paste, and Select All. Shortcuts are `Ctrl+Z`/`Ctrl+Y` and `Ctrl+X`/`Ctrl+C`/`Ctrl+V`/`Ctrl+A`. Open Find with `Ctrl+F` or Replace with `Ctrl+H`; `F3`/`Shift+F3` searches next/previous. The dialog can replace the current match or all matches. Search is case-sensitive. Line numbers and a status bar show the line, column, modified state, and file kind (TSV-TAS/nx-TAS).
 
 For now, this is a **raw text editor** that preserves tabs, UTF-8, and original line endings. It does not offer a spreadsheet view, interpret TSV-TAS syntax, or reformat files on save. `tsv-tas.py` remains responsible for interpreting scripts.
 
@@ -141,7 +143,7 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 | `nx-tas-to-tsv-tas.py` | nx-TAS→TSV-TAS converter matching upstream |
 | `python_to_exe/main_jp.py`, `main_en.py` | Japanese/English launchers |
 | `python_to_exe/converter_gui.py`, `converter_logic.py` | Shared GUI, argument construction, Python discovery, and FTP settings |
-| `python_to_exe/editor/` | Independent raw text editor window and file-state management |
+| `python_to_exe/editor/` | Independent raw text editor window, file state, and find/replace operations |
 | `ftp_config.json` | FTP connection settings; do not commit real credentials |
 | `tests/test_conversion.py` | Local conversion and GUI argument tests |
 

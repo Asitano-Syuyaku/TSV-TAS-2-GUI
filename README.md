@@ -29,7 +29,7 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
    ```
 
 2. repositoryのルートで `python3 python_to_exe/main_jp.py`（日本語）または `python3 python_to_exe/main_en.py`（English）を起動します。Windowsでは `python` または `py -3` でも実行できます。
-3. Inputに `sample.tsv`、Output Directoryに保存先、Output File Nameに拡張子なしの名前（例: `sample`）を指定します。形式を選び、**Start Conversion／変換実行**を押します。
+3. Inputに `sample.tsv` を選びます。Output Directoryが空なら入力ファイルと同じフォルダーが自動設定されます。必要なら変更し、Output File Nameに拡張子なしの名前（例: `sample`）を指定します。形式を選び、**Start Conversion／変換実行**を押します。
 4. 選んだ形式に応じて `sample`、`sample.stas`、または `sample.txt` が保存先にできます。まずはDebugを有効にして `sample-debug.csv`（STASなら `sample.stas-debug.csv`）でフレームを確認できます。
 
 この例は最初に左スティックを5フレーム上方向へ倒し、次にAボタンと右スティックを1フレーム入力し、3フレーム待機します。ループとスティック補間の詳細は下の早見表にあります。
@@ -39,7 +39,7 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 | 項目 | 使い方 |
 | --- | --- |
 | Input Script File／入力スクリプトファイル | `.tsv` は直接コンパイル。`.txt` はnx-TAS入力として先にTSVへ変換 |
-| Output Directory／出力ディレクトリ | 出力先の既存フォルダーを選択。`.txt` 入力の中間 `.tsv` もここに保存 |
+| Output Directory／出力ディレクトリ | 空欄ならInput選択時にそのファイルのフォルダーを自動設定。指定済みの出力先は上書きしない。`.txt` 入力の中間 `.tsv` もここに保存 |
 | Output File Name／出力ファイル名 | 拡張子やフォルダーを含まないベース名。形式に応じた拡張子をGUIが付加 |
 | Output format／出力形式 | LunaKit binary、STAS、nx-TASから選択 |
 | Skip empty frames／空フレームを省略 | nx-TASを選んだ場合だけ有効。upstreamの `-e` |
@@ -48,9 +48,11 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 
 日本語版と英語版は表示言語以外、同じ変換処理を使います。`-l` は対話的に再生成するCLI専用オプションで、GUIにはありません。
 
-### 内蔵エディター（Phase 1）
+### 内蔵エディター（Phase 2A）
 
 Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
+
+編集メニューにはUndo／Redo、Cut／Copy／Paste、Select Allがあります。ショートカットは `Ctrl+Z`／`Ctrl+Y`、`Ctrl+X`／`Ctrl+C`／`Ctrl+V`／`Ctrl+A` です。`Ctrl+F` で検索、`Ctrl+H` で置換を開けます。`F3`／`Shift+F3` で次／前を検索でき、ダイアログでは現在の一致箇所または全一致箇所を置換できます。検索は大文字小文字を区別します。行番号と、行・列・編集状態・ファイル種別（TSV-TAS／nx-TAS）を示すステータスバーも表示します。
 
 現時点ではタブ・UTF-8・元の改行を保持する**raw text editor**です。Spreadsheet表示やTSV-TAS構文の意味解析、保存時の整形はしません。TSV-TASの解釈は引き続き `tsv-tas.py` が担当します。
 
@@ -141,7 +143,7 @@ python -m PyInstaller --noconsole --onefile python_to_exe/main_en.py
 | `nx-tas-to-tsv-tas.py` | upstreamと同じnx-TAS→TSV-TAS converter |
 | `python_to_exe/main_jp.py`、`main_en.py` | 日本語／Englishの起動スクリプト |
 | `python_to_exe/converter_gui.py`、`converter_logic.py` | 共通GUI、引数生成、Python探索、FTP設定 |
-| `python_to_exe/editor/` | 独立したraw text editorの画面とファイル状態管理 |
+| `python_to_exe/editor/` | 独立したraw text editorの画面、ファイル状態、検索・置換の処理 |
 | `ftp_config.json` | FTP接続設定。実credentialをcommitしないこと |
 | `tests/test_conversion.py` | ローカル変換とGUI引数のテスト |
 

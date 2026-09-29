@@ -139,6 +139,9 @@ class TASConverterApp(tk.Tk):
         self.input_entry.insert(0, str(path))
         self.outname_entry.delete(0, tk.END)
         self.outname_entry.insert(0, os.path.splitext(os.path.basename(path))[0])
+        if not self.output_entry.get().strip():
+            self.output_entry.delete(0, tk.END)
+            self.output_entry.insert(0, os.path.dirname(os.path.abspath(path)))
 
     def open_editor(self):
         # Import on demand so conversion-only startup does not load editor widgets.

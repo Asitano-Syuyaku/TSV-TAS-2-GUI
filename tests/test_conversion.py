@@ -208,10 +208,22 @@ class GuiStartupTests(unittest.TestCase):
                 ja_app.open_editor()
             self.assertEqual([item[1]["language"] for item in opened], ["en", "ja"])
             self.assertTrue(all(item[1]["initial_path"] is None for item in opened))
+            sample = Path("example with spaces") / "sample.tsv"
+            another = sample.with_name("another.txt")
+            next_input = Path("next input") / "test.tsv"
             for app, options in opened:
-                options["on_saved"](Path("/example with spaces/sample.tsv"))
-                self.assertEqual(app.input_entry.get(), "/example with spaces/sample.tsv")
+                options["on_saved"](sample)
+                self.assertEqual(app.input_entry.get(), str(sample))
                 self.assertEqual(app.outname_entry.get(), "sample")
+                self.assertEqual(app.output_entry.get(), os.path.dirname(os.path.abspath(sample)))
+                app.output_entry.delete(0, fake_tk.END)
+                app.output_entry.insert(0, "chosen output")
+                options["on_saved"](another)
+                self.assertEqual(app.output_entry.get(), "chosen output")
+                app.output_entry.delete(0, fake_tk.END)
+                fake_tk.filedialog.askopenfilename = lambda **kwargs: str(next_input)
+                app.browse_input()
+                self.assertEqual(app.output_entry.get(), os.path.dirname(os.path.abspath(next_input)))
             with tempfile.TemporaryDirectory() as directory:
                 source = Path(directory) / "script with spaces.tsv"
                 source.write_text("1\ta\n")
