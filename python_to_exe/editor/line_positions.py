@@ -32,6 +32,26 @@ class LinePositions:
     def for_line(self, line):
         return self.rows.get(line)
 
+    def for_range(self, first, last):
+        """Summarize contiguous positive converter intervals in selected source rows."""
+        first, last = sorted((first, last))
+        positions = [self.rows.get(line) for line in range(first, last + 1)]
+        if not positions or any(row is None or row.duration < 0 for row in positions):
+            return None
+        positive = [row for row in positions if row.duration > 0]
+        if not positive:
+            return (LinePosition(positions[0].start, 0, None)
+                    if all(row.start == positions[0].start for row in positions) else None)
+        start = expected = positive[0].start
+        for row in positions:
+            if row.start != expected:
+                return None
+            if row.duration > 0:
+                if row.end is None:
+                    return None
+                expected = row.end + 1
+        return LinePosition(start, expected - start, expected - 1)
+
 
 @dataclass(frozen=True)
 class PositionResult:

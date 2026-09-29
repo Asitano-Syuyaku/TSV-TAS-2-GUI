@@ -438,7 +438,12 @@ class EditorWindow(tk.Toplevel):
             message = (self.words["frame_updating"] if self._position_job is not None or
                        self._position_worker_active else self.words["frame_error"])
         else:
-            position = self._positions.for_line(line)
+            if self._view == "table":
+                top, bottom = self.table_grid.selection.bounds[:2]
+                position = (self._positions.for_line(top + 1) if top == bottom else
+                            self._positions.for_range(top + 1, bottom + 1))
+            else:
+                position = self._positions.for_line(line)
             start = f"{position.start}f" if position else "—"
             duration = f"{position.duration}f" if position else "—"
             end = f"{position.end}f" if position and position.end is not None else "—"

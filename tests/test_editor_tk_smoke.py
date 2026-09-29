@@ -17,6 +17,46 @@ from python_to_exe.editor.window import EditorWindow
 
 
 class RealTkSmokeTests(unittest.TestCase):
+    def test_multirow_frame_position_uses_selection_not_active_row(self):
+        try:
+            app = TASConverterApp("en")
+        except tk.TclError as error:
+            self.skipTest(f"graphical Tk display unavailable: {error}")
+        self.addCleanup(app.destroy)
+        with tempfile.TemporaryDirectory(prefix="tas selection ") as folder:
+            source = Path(folder) / "eighteen.tsv"
+            source.write_text("1\ta\n\n5\n" + "1\n" * 11 + "1\tzl\n",
+                              encoding="utf-8")
+            app._set_input_path(source)
+            with patch("python_to_exe.editor.line_positions.analyze_positions",
+                       wraps=analyze_positions) as analyze:
+                app.open_editor()
+                editor = next(child for child in app.winfo_children()
+                              if isinstance(child, EditorWindow))
+                deadline = time.monotonic() + 6
+                while editor._positions is None and time.monotonic() < deadline:
+                    app.update()
+                    time.sleep(0.02)
+                self.assertIsNotNone(editor._positions)
+                self.assertTrue(editor.show_table())
+                grid = editor.table_grid
+                grid.selection.move_to(0, 0)
+                grid.selection.move_to(14, 0, extend=True)
+                grid.on_select()
+                expected = "Start: 0f | Duration: 18f | End: 17f | Total: 18f"
+                self.assertEqual(editor.frame_status.cget("text"), expected)
+                self.assertEqual(grid.selected[0], 14)
+                grid.selection.move_to(14, 0)
+                grid.selection.move_to(0, 0, extend=True)
+                grid.on_select()
+                self.assertEqual(editor.frame_status.cget("text"), expected)
+                grid.selection.move_to(0, 0)
+                grid.on_select()
+                self.assertEqual(editor.frame_status.cget("text"),
+                                 "Start: 0f | Duration: 1f | End: 0f | Total: 18f")
+                self.assertEqual(analyze.call_count, 1)
+                self.assertFalse(editor.document.modified)
+
     def test_selected_line_frame_position_refresh_and_stale_result(self):
         try:
             app = TASConverterApp("en")

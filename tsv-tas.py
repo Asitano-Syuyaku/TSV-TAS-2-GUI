@@ -1280,6 +1280,8 @@ while loop or do_once:
     # count frames roughly to initialize array
     with open(infile, encoding="utf-8" if line_map else None) as f:
         for lineIn in f:
+            if not lineIn.strip():
+                continue
             duration = 1
             first = lineIn.split(separator)[0]
             try:
@@ -1340,6 +1342,11 @@ while loop or do_once:
             source_line = lineInNumber
             if debug:
                 print(lineIn)
+            if not lineIn.strip():
+                if line_map:
+                    line_map_rows.append((source_line, indexStart, 0))
+                lineInNumber += 1
+                continue
             lineIn = lineIn.split("\t")  # type: ignore
             lineIn[-1] = lineIn[-1].strip()  # type: ignore
 
@@ -1475,7 +1482,7 @@ while loop or do_once:
 
         # calculate angular velocity if gyroscope and angular velocity are not independent, or calculate proper gyroscope if a motion macro is used
         # angular velocity is change in gyroscope in degrees times -3/400
-        if not independent_gyro:
+        if not independent_gyro and script.frames_P1:
             calculateAngularVelocity(False)
             if script.is_two_player:
                 calculateAngularVelocity(True)
@@ -1568,7 +1575,7 @@ while loop or do_once:
         # Script Header
         size += outf.write(struct.pack("<I", 0))  # TODO: Command Count
         size += outf.write(
-            struct.pack("<I", script.frames[-1].step)
+            struct.pack("<I", script.frames[-1].step if script.frames else 0)
         )  # TODO: This is bad
         size += outf.write(struct.pack("<I", 0))  # Editing time in seconds
         size += outf.write(
