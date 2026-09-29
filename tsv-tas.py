@@ -18,6 +18,7 @@ ANG_VEL_FACTOR = -3 / 200.0
 
 ftp = False
 debug = False
+line_map = False
 nxtas = False
 remove_empty = (
     False  # won't work for lunakit/exlaunch format until mod treats y accel as -1
@@ -30,6 +31,7 @@ if sys.argv[1][0] == "-":
     options = sys.argv[1]
     ftp = "f" in options
     debug = "d" in options
+    line_map = "m" in options
     nxtas = "n" in options
     remove_empty = "e" in options
     same_path = "p" in options
@@ -1276,7 +1278,7 @@ while loop or do_once:
     lineInNumber = 1
 
     # count frames roughly to initialize array
-    with open(infile) as f:
+    with open(infile, encoding="utf-8" if line_map else None) as f:
         for lineIn in f:
             duration = 1
             first = lineIn.split(separator)[0]
@@ -1330,10 +1332,12 @@ while loop or do_once:
     indexStop = 0
 
     vars = dict()
+    line_map_rows = []
 
-    with open(infile) as f:
+    with open(infile, encoding="utf-8" if line_map else None) as f:
         prevLineInDuration = 1
         for lineIn in f:
+            source_line = lineInNumber
             if debug:
                 print(lineIn)
             lineIn = lineIn.split("\t")  # type: ignore
@@ -1387,6 +1391,8 @@ while loop or do_once:
                         # add variable values to dictionary
                         value = prepareToken(value, True, 0)
                         vars.update({var: value})
+                        if line_map:
+                            line_map_rows.append((source_line, indexStart, 0))
                         lineInNumber += 1
                         continue
                     else:
@@ -1399,12 +1405,16 @@ while loop or do_once:
                                 )
                             )
                         except:
+                            if line_map:
+                                line_map_rows.append((source_line, indexStart, 0))
                             lineInNumber += 1
                             continue
                 elif first[0] == "/" and first[1] != "/":  # commands
                     for _ in range(len(script.commands), indexStart + 1):
                         script.commands.append([])
                     script.commands[indexStart].append(first[1:])
+                    if line_map:
+                        line_map_rows.append((source_line, indexStart, 0))
                     lineInNumber += 1
                     continue
                 else:
@@ -1417,6 +1427,8 @@ while loop or do_once:
                             )
                         )
                     except:
+                        if line_map:
+                            line_map_rows.append((source_line, indexStart, 0))
                         lineInNumber += 1
                         continue
 
@@ -1435,6 +1447,8 @@ while loop or do_once:
 
             if lineInDuration == "*":
                 lineInDuration = 0
+            if line_map:
+                line_map_rows.append((source_line, indexStart, lineInDuration))
             indexStart += lineInDuration
             lineInNumber += 1
             prevLineInDuration = lineInDuration
@@ -1493,6 +1507,15 @@ while loop or do_once:
 
     # write all 1P and 2P frames to the same array
     script.combineFrames()
+
+    if line_map:
+        total_frames = len(script.frames_P1)
+        with open(outfile + "-lines.csv", "w", encoding="utf-8", newline="") as lineFile:
+            line_writer = csv.writer(lineFile)
+            line_writer.writerow(("SourceLine", "StartFrame", "Duration", "EndFrame", "TotalFrames"))
+            for source_line, start, duration in line_map_rows:
+                end = start + duration - 1 if duration > 0 else ""
+                line_writer.writerow((source_line, start, duration, end, total_frames))
 
     if debug:
         with open(outfile + "-debug.csv", "w", encoding="utf-8", newline="") as debugFile:

@@ -33,7 +33,7 @@ def python_command():
 
 def build_commands(input_path, output_dir, base_name, output_format,
                    skip_empty=False, debug=False, ftp=False,
-                   base_dir=None, interpreter=None):
+                   base_dir=None, interpreter=None, line_map=False):
     if output_format not in FORMATS:
         raise ValueError("Unknown output format")
     if not input_path or not output_dir or not base_name:
@@ -70,7 +70,7 @@ def build_commands(input_path, output_dir, base_name, output_format,
         raise ValueError("Output file would overwrite the input file")
     options = "".join(("f" if ftp else "", "n" if output_format == "nxtas" else "",
                        "s" if output_format == "stas" else "", "e" if skip_empty else "",
-                       "d" if debug else ""))
+                       "d" if debug else "", "m" if line_map else ""))
     command = interpreter + [str(base_dir / "tsv-tas.py")]
     if options:
         command.append("-" + options)

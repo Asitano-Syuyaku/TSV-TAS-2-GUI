@@ -48,7 +48,7 @@ def column_heading(index, labels=None):
 
 class TableGrid(tk.Frame):
     def __init__(self, master, font, on_change, on_transform, on_select,
-                 on_undo, on_redo, labels=None):
+                 on_undo, on_redo, labels=None, on_edit_change=None):
         super().__init__(master)
         self.font = font
         self.on_change = on_change
@@ -56,6 +56,7 @@ class TableGrid(tk.Frame):
         self.on_select = on_select
         self.on_undo = on_undo
         self.on_redo = on_redo
+        self.on_edit_change = on_edit_change
         self.labels = labels or {}
         self.row_height = max(font.metrics("linespace") + 8, 24)
         self.column_width = max(font.measure("0" * 18) + 12, 160)
@@ -591,16 +592,22 @@ class TableGrid(tk.Frame):
         self._selection_axis = None
         editor = self._entry_widget
         if editor is None:
+            options = {}
+            if getattr(self, "on_edit_change", None) is not None:
+                self._entry_value = tk.StringVar(self)
+                self._entry_value.trace_add("write", lambda *_: self._notify_edit_change())
+                options["textvariable"] = self._entry_value
             editor = tk.Entry(self.canvas, font=self.font, exportselection=False,
                               background=ACTIVE_BACKGROUND, relief="flat",
                               highlightthickness=3, highlightbackground=ACTIVE_LINE,
-                              highlightcolor=ACTIVE_LINE)
+                              highlightcolor=ACTIVE_LINE, **options)
             self._entry_widget = editor
             self._bind_entry_navigation(editor)
         editor.delete(0, "end")
         editor.insert(0, self.model.cell(row, column) if initial is None else initial)
         editor.xview_moveto(0)
         self._editor = editor
+        self._notify_edit_change()
         self._position_editor()
         editor.focus_set()
         editor.selection_clear()
@@ -614,6 +621,13 @@ class TableGrid(tk.Frame):
         self._schedule_draw()
         if initial is not None:
             self._refresh_completion()
+
+    def _notify_edit_change(self):
+        callback = getattr(self, "on_edit_change", None)
+        if callback is not None:
+            editor = self._editor
+            callback(editor is not None and
+                     editor.get() != self.model.cell(*self.selected))
 
     def _bind_entry_navigation(self, editor):
         for key, delta in (("Return", (1, 0)), ("Tab", (0, 1))):
@@ -671,6 +685,7 @@ class TableGrid(tk.Frame):
         if editor is None:
             return
         self._editor = None
+        self._notify_edit_change()
         self._close_popup()
         editor.place_forget()
         self.canvas.focus_set()

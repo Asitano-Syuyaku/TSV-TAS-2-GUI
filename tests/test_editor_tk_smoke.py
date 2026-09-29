@@ -1,19 +1,141 @@
 """Real Tk integration: run explicitly under WSLg or another graphical desktop."""
 
 import tempfile
+import threading
 import time
 import tkinter as tk
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from python_to_exe.converter_gui import TASConverterApp
 from python_to_exe.editor.debug_csv import DebugFrames
 from python_to_exe.editor.frame_inspector import HEADER_HEIGHT, ROW_HEIGHT
+from python_to_exe.editor.line_positions import analyze_positions
 from python_to_exe.editor.window import EditorWindow
 
 
 class RealTkSmokeTests(unittest.TestCase):
+    def test_selected_line_frame_position_refresh_and_stale_result(self):
+        try:
+            app = TASConverterApp("en")
+        except tk.TclError as error:
+            self.skipTest(f"graphical Tk display unavailable: {error}")
+        self.addCleanup(app.destroy)
+        with tempfile.TemporaryDirectory(prefix="tas positions ") as folder:
+            source = Path(folder) / "positions.tsv"
+            original = "1\ta\n33\tb\n"
+            source.write_text(original, encoding="utf-8")
+            app._set_input_path(source)
+            app.ftp_var.set(True)
+            app.debug_var.set(True)
+            settings = (app.ftp_var.get(), app.debug_var.get(), app.output_entry.get(),
+                        app.outname_entry.get())
+            with patch("python_to_exe.editor.line_positions.analyze_positions",
+                       wraps=analyze_positions) as analyze:
+                app.open_editor()
+                editor = next(child for child in app.winfo_children()
+                              if isinstance(child, EditorWindow))
+                deadline = time.monotonic() + 6
+                while editor._positions is None and time.monotonic() < deadline:
+                    app.update()
+                    time.sleep(0.02)
+                self.assertIsNotNone(editor._positions)
+                self.assertEqual(analyze.call_count, 1)
+                editor.text.mark_set("insert", "1.0")
+                editor._update_status()
+                self.assertIn("Start: 0f | Duration: 1f | End: 0f | Total: 34f",
+                              editor.frame_status.cget("text"))
+                self.assertTrue(editor.show_table())
+                editor.table_grid.jump_to_row(1)
+                self.assertIn("Start: 1f | Duration: 33f | End: 33f | Total: 34f",
+                              editor.frame_status.cget("text"))
+                editor.table_grid.begin_edit()
+                self.assertIn("Start: 1f", editor.frame_status.cget("text"))
+                editor.table_grid._editor.insert("end", "x")
+                self.assertIn("updating", editor.frame_status.cget("text"))
+                editor.table_grid.cancel_edit()
+                self.assertIn("Start: 1f", editor.frame_status.cget("text"))
+                editor.table_grid._move(0, 1)
+                self.assertIn("Start: 1f", editor.frame_status.cget("text"))
+                self.assertTrue(editor.show_raw())
+                editor.text.mark_set("insert", "1.0")
+                editor._update_status()
+                self.assertIn("Start: 0f", editor.frame_status.cget("text"))
+                editor.text.mark_set("insert", "2.0")
+                editor._update_status()
+                self.assertIn("Start: 1f", editor.frame_status.cget("text"))
+                self.assertEqual(analyze.call_count, 1)
+
+                editor.text.delete("2.1", "2.2")
+                app.update()
+                self.assertEqual(analyze.call_count, 1)
+                editor.text.insert("2.1", "4")
+                app.update()
+                self.assertIn("updating", editor.frame_status.cget("text"))
+                self.assertEqual(analyze.call_count, 1)
+                deadline = time.monotonic() + 6
+                while (editor._positions is None and time.monotonic() < deadline):
+                    app.update()
+                    time.sleep(0.02)
+                self.assertIsNotNone(editor._positions)
+                self.assertEqual(analyze.call_count, 2)
+                self.assertIn("Start: 1f | Duration: 34f | End: 34f | Total: 35f",
+                              editor.frame_status.cget("text"))
+                self.assertEqual(source.read_text(encoding="utf-8"), original)
+                self.assertTrue(editor.document.modified)
+                self.assertEqual((app.ftp_var.get(), app.debug_var.get(),
+                                  app.output_entry.get(), app.outname_entry.get()), settings)
+
+                editor.text.delete("2.0", "2.0 lineend")
+                editor.text.insert("2.0", "1\tls(")
+                app.update()
+                self.assertIn("updating", editor.frame_status.cget("text"))
+                deadline = time.monotonic() + 6
+                while ((editor._position_job is not None or editor._position_worker_active)
+                       and time.monotonic() < deadline):
+                    app.update()
+                    time.sleep(0.02)
+                self.assertIsNone(editor._positions)
+                self.assertIn("unavailable", editor.frame_status.cget("text"))
+                self.assertEqual(analyze.call_count, 3)
+                self.assertTrue(editor.undo())
+                self.assertTrue(editor.document.modified)
+
+            editor.destroy()
+            started = threading.Event()
+            release = threading.Event()
+            calls = []
+
+            def delayed(snapshot, base_dir=None):
+                calls.append(snapshot)
+                if len(calls) == 1:
+                    started.set()
+                    release.wait(5)
+                return analyze_positions(snapshot, base_dir=base_dir)
+
+            with patch("python_to_exe.editor.line_positions.analyze_positions", delayed):
+                app.open_editor()
+                editor = next(child for child in app.winfo_children()
+                              if isinstance(child, EditorWindow))
+                deadline = time.monotonic() + 6
+                while not started.is_set() and time.monotonic() < deadline:
+                    app.update()
+                    time.sleep(0.02)
+                self.assertTrue(started.is_set())
+                editor.text.delete("2.0", "2.0 lineend")
+                editor.text.insert("2.0", "2\tb")
+                app.update()
+                release.set()
+                deadline = time.monotonic() + 6
+                while (editor._positions is None and time.monotonic() < deadline):
+                    app.update()
+                    time.sleep(0.02)
+                self.assertEqual(len(calls), 2)
+                self.assertIn("Total: 3f", editor.frame_status.cget("text"))
+                self.assertEqual(source.read_text(encoding="utf-8"), original)
+
     def test_analyze_frames_inspector_and_problems(self):
         try:
             app = TASConverterApp("en")

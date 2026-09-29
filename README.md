@@ -56,7 +56,9 @@ Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入
 
 **Validate**（`F6`）は現在のセル編集を確定し、変更を保存してから、現在選択中の出力形式で既存converterを一時フォルダーへ実行します。新規文書ではSave Asが必要で、キャンセルすると実行しません。成功時は「エラーなし」、失敗時は下部のProblemsにconverterのメッセージをそのまま表示します。明示的な行番号があるメッセージをダブルクリックすると、その行へ移動します。行番号を特定できないエラーや、`.txt` から変換した中間TSVのエラーには推測でジャンプ先を付けません。ValidateはConverterの出力設定を変更せず、FTP送信とDebug CSV生成も行いません。通常の出力を作る場合は引き続き **Save & Convert** を使ってください。
 
-**フレーム解析**（`F7`）は編集内容を保存し、既存converterでDebug CSVを一時生成して別ウィンドウのFrame Inspectorに表示します。ConverterのDebugチェック状態や出力設定は変えず、FTP送信もしません。上部の**総フレーム数**はCSVの最大`Frame`番号＋1です。同じframeの1P／2P行を二重に数えません。一覧にはボタン、LS／RS、commandなどを表示し、行を選ぶと加速度・ジャイロを含むCSVの全項目を詳細欄で確認できます。frame番号を入力して**移動**できます。解析失敗時はProblemsにエラーを表示し、以前のInspector結果には旧結果である旨を表示します。現行Debug CSVには確実な元TSV行情報がないため、frameから元の行へのジャンプは行いません。
+上部右側には、選択中のTSV行の**開始／長さ／終了／全体**frameを0始まりで表示します。表ではactive cellの行、テキストではcursor行が対象です。編集後は約0.5秒の待機を挟んで、未保存の内容を一時TSVとして既存converterでbackground解析し、結果を自動更新します。保存やFTP送信は行いません。値はconverterが確定した行のdurationと総frame数に基づき、更新中・解析失敗時は未確定として表示します。選択行を移動するだけなら再解析せず、結果をすぐ切り替えます。`.txt` は対象外です。
+
+詳細なDebug CSVを見る場合は、Fileメニューの**フレーム解析**（`F7`）から別ウィンドウのFrame Inspectorを開けます。この操作は編集内容を保存し、既存converterでDebug CSVを一時生成します。ConverterのDebugチェック状態や出力設定は変えず、FTP送信もしません。上部の**総フレーム数**はCSVの最大`Frame`番号＋1です。同じframeの1P／2P行を二重に数えません。一覧にはボタン、LS／RS、commandなどを表示し、行を選ぶと加速度・ジャイロを含むCSVの全項目を詳細欄で確認できます。frame番号を入力して**移動**できます。解析失敗時はProblemsにエラーを表示し、以前のInspector結果には旧結果である旨を表示します。現行Debug CSVには確実な元TSV行情報がないため、frameから元の行へのジャンプは行いません。
 
 編集メニューにはUndo／Redo、Cut／Copy／Paste、Select Allがあります。ショートカットは `Ctrl+Z`／`Ctrl+Y`、`Ctrl+X`／`Ctrl+C`／`Ctrl+V`／`Ctrl+A` です。`Ctrl+F` で検索、`Ctrl+H` で置換を開けます。`F3`／`Shift+F3` で次／前を検索でき、ダイアログでは現在の一致箇所または全一致箇所を置換できます。検索は大文字小文字を区別します。行番号と、行・列・編集状態・ファイル種別（TSV-TAS／nx-TAS）を示すステータスバーも表示します。
 
@@ -138,6 +140,7 @@ python3 tsv-tas.py -fsd input.tsv output.stas
 | `-e` | nx-TASで空フレームを省略 |
 | `-l` | Enter入力のたびに再生成（CLI専用） |
 | `-d` | `<output>-debug.csv` を生成 |
+| `-m` | このGUI fork専用。`<output>-lines.csv` にconverterが確定したsource行のframe位置を出力（Editorの自動表示で使用） |
 
 optionは `-ne` のように1つのハイフンの後へまとめます。`-n` と `-s` は別々の出力形式なので、同時に指定しないでください。`-e` は `-n` と組み合わせてください。
 

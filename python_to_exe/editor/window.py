@@ -1,6 +1,9 @@
 """Text editor with a literal TSV table view, shared by both GUI languages."""
 
+import threading
 import tkinter as tk
+import traceback
+from queue import Empty, SimpleQueue
 from tkinter import filedialog, font as tkfont, messagebox
 
 from .document import EditorDocument
@@ -50,6 +53,10 @@ LABELS = {
         "invalid_frame": "Enter a frame number", "frame_not_found": "Frame not found",
         "previous_frames": "Previous analysis; run Analyze Frames again",
         "stale_analysis": "Document changed; analyze again",
+        "frame_updating": "Frame: updating...", "frame_error": "Frame: unavailable",
+        "frame_unavailable": "Frame: TSV-TAS only",
+        "frame_start": "Start", "frame_duration": "Duration",
+        "frame_end": "End", "frame_total": "Total",
     },
     "ja": {
         "title": "TSV-TAS エディター", "untitled": "無題", "file": "ファイル",
@@ -87,6 +94,10 @@ LABELS = {
         "invalid_frame": "フレーム番号を入力してください", "frame_not_found": "フレームが見つかりません",
         "previous_frames": "以前の解析結果です。再度フレーム解析してください",
         "stale_analysis": "文書が変更されました。再度解析してください",
+        "frame_updating": "Frame: 更新中...", "frame_error": "Frame: 未確定",
+        "frame_unavailable": "Frame: TSV-TASのみ",
+        "frame_start": "開始", "frame_duration": "長さ",
+        "frame_end": "終了", "frame_total": "全体",
     },
 }
 
@@ -109,6 +120,15 @@ class EditorWindow(tk.Toplevel):
         self._analysis_pending = False
         self._frame_inspector = None
         self._inspector_snapshot = None
+        self._positions = None
+        self._position_key = None
+        self._position_revision = 0
+        self._position_job = None
+        self._position_poll_job = None
+        self._position_worker_active = False
+        self._position_waiting = False
+        self._frame_edit_pending = False
+        self._position_queue = SimpleQueue()
         self.find_query = tk.StringVar(self)
         self.replace_value = tk.StringVar(self)
         self._find_dialog = None
@@ -169,7 +189,8 @@ class EditorWindow(tk.Toplevel):
                                        command=self.show_table)
         self._table_button.pack(side="left")
         tk.Button(view_bar, text=self.words["validate"], command=self.validate).pack(side="left")
-        tk.Button(view_bar, text=self.words["analyze"], command=self.analyze_frames).pack(side="left")
+        self.frame_status = tk.Label(view_bar, anchor="e")
+        self.frame_status.pack(side="right", padx=8)
         self.table_tools = tk.Frame(view_bar)
         tk.Button(self.table_tools, text=self.words["add_row"],
                   command=lambda: self._table_action("insert_row_below")).pack(side="left")
@@ -203,7 +224,8 @@ class EditorWindow(tk.Toplevel):
         self.table_area = tk.Frame(self)
         self.table_grid = TableGrid(self.table_area, fixed_font, self._table_cell_changed,
                                     self._table_text_changed, self._update_status,
-                                    self.undo, self.redo, self.words)
+                                    self.undo, self.redo, self.words,
+                                    on_edit_change=self._table_edit_pending)
         self._build_input_palette()
         self.table_grid.pack(side="left", fill="both", expand=True)
         self.status = tk.Label(self, anchor="w")
@@ -260,6 +282,8 @@ class EditorWindow(tk.Toplevel):
         self._schedule_highlight()
         if initial_path:
             self.open_file(initial_path)
+        else:
+            self._position_document_changed()
 
     def _build_input_palette(self):
         self.input_palette = tk.Frame(self.table_area, width=330, relief="groove",
@@ -362,7 +386,8 @@ class EditorWindow(tk.Toplevel):
 
     def _on_destroy(self, event):
         if event.widget is self:
-            for name in ("_gutter_job", "_highlight_job"):
+            for name in ("_gutter_job", "_highlight_job", "_position_job",
+                         "_position_poll_job"):
                 job = getattr(self, name, None)
                 if job is not None:
                     self.after_cancel(job)
@@ -401,6 +426,94 @@ class EditorWindow(tk.Toplevel):
         state = self.words["modified"] if self.document.modified else self.words["saved"]
         self.status.config(text=f"{self.words['line']} {line}, {self.words['column']} {column}"
                                 f"  |  {state}  |  {file_kind(self.document.path)}")
+        if hasattr(self, "frame_status"):
+            self._update_frame_info(line)
+
+    def _update_frame_info(self, line):
+        if not self._table_available():
+            message = self.words["frame_unavailable"]
+        elif self._frame_edit_pending:
+            message = self.words["frame_updating"]
+        elif self._positions is None:
+            message = (self.words["frame_updating"] if self._position_job is not None or
+                       self._position_worker_active else self.words["frame_error"])
+        else:
+            position = self._positions.for_line(line)
+            start = f"{position.start}f" if position else "—"
+            duration = f"{position.duration}f" if position else "—"
+            end = f"{position.end}f" if position and position.end is not None else "—"
+            message = (f"{self.words['frame_start']}: {start} | "
+                       f"{self.words['frame_duration']}: {duration} | "
+                       f"{self.words['frame_end']}: {end} | "
+                       f"{self.words['frame_total']}: {self._positions.total_frames}f")
+        self.frame_status.configure(text=message)
+
+    def _table_edit_pending(self, changed):
+        self._frame_edit_pending = changed
+        self._update_frame_info(self._current_line())
+
+    def _position_document_changed(self):
+        key = (self._table_available(), self.document.text)
+        if key == self._position_key:
+            return
+        self._position_key = key
+        self._position_revision += 1
+        self._positions = None
+        if self._position_job is not None:
+            self.after_cancel(self._position_job)
+            self._position_job = None
+        if key[0] and key[1]:
+            self._position_job = self.after(500, self._start_position_analysis)
+        self._update_frame_info(self._current_line())
+
+    def _current_line(self):
+        if self._view == "table":
+            return self.table_grid.selected[0] + 1
+        return int(self.text.index("insert").split(".")[0])
+
+    def _start_position_analysis(self):
+        self._position_job = None
+        if not self._position_key[0] or not self._position_key[1]:
+            return
+        if self._position_worker_active:
+            self._position_waiting = True
+            return
+        from .line_positions import PositionResult, analyze_positions
+        revision = self._position_revision
+        snapshot = self.document.text
+        base_dir = getattr(self.master, "base_dir", None)
+        self._position_worker_active = True
+        self._position_waiting = False
+
+        def worker():
+            try:
+                result = analyze_positions(snapshot, base_dir=base_dir)
+            except Exception as error:
+                traceback.print_exc()
+                result = PositionResult(error=str(error))
+            self._position_queue.put((revision, result))
+
+        try:
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception:
+            self._position_worker_active = False
+            raise
+        if self._position_poll_job is None:
+            self._position_poll_job = self.after(50, self._poll_position_analysis)
+
+    def _poll_position_analysis(self):
+        self._position_poll_job = None
+        try:
+            revision, result = self._position_queue.get_nowait()
+        except Empty:
+            self._position_poll_job = self.after(50, self._poll_position_analysis)
+            return
+        self._position_worker_active = False
+        if revision == self._position_revision:
+            self._positions = result.positions if result.success else None
+            self._update_frame_info(self._current_line())
+        if self._position_waiting and self._position_job is None:
+            self._start_position_analysis()
 
     def _update_title(self):
         name = self.document.path.name if self.document.path else self.words["untitled"]
@@ -408,7 +521,10 @@ class EditorWindow(tk.Toplevel):
         self.title(f"{name}{mark} — {self.words['title']}")
 
     def _sync_text(self):
+        before = self.document.text
         self.document.set_text(self.text.get("1.0", "end-1c"))
+        if self.document.text != before and hasattr(self, "frame_status"):
+            self._position_document_changed()
         self._update_title()
 
     def _commit_table_edit(self):
@@ -534,6 +650,8 @@ class EditorWindow(tk.Toplevel):
         self.text.insert("1.0", self.document.text)
         self.text.edit_reset()
         self.text.edit_modified(False)
+        if hasattr(self, "frame_status"):
+            self._position_document_changed()
         self._update_title()
         self._update_status()
         self._update_view_button()
@@ -930,6 +1048,8 @@ class EditorWindow(tk.Toplevel):
             messagebox.showerror(self.words["error"], str(error), parent=self)
             return False
         self._update_title()
+        if hasattr(self, "frame_status"):
+            self._position_document_changed()
         self._update_status()
         if getattr(self, "_view", "raw") == "table" and saved_path.suffix.lower() != ".tsv":
             self.show_raw()
