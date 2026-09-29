@@ -137,18 +137,6 @@ class EditorWindow(tk.Toplevel):
                   command=lambda: self._table_action("insert_row_below")).pack(side="left")
         tk.Button(self.table_tools, text=self.words["add_column"],
                   command=lambda: self._table_action("insert_column_right")).pack(side="left")
-        palette_button = tk.Menubutton(self.table_tools, text=self.words["input_palette"],
-                                       relief="raised")
-        palette = tk.Menu(palette_button, tearoff=False)
-        for category in PALETTE_CATEGORIES:
-            group = tk.Menu(palette, tearoff=False)
-            for candidate in CANDIDATES:
-                if candidate.category == category:
-                    group.add_command(label=candidate.label,
-                                      command=lambda item=candidate: self.table_grid.insert_candidate(item))
-            palette.add_cascade(label=self.words[category], menu=group)
-        palette_button.configure(menu=palette)
-        palette_button.pack(side="left")
 
         frame = tk.Frame(self)
         frame.pack(fill="both", expand=True)
@@ -174,9 +162,12 @@ class EditorWindow(tk.Toplevel):
 
         # Import lazily so file/document logic remains usable without Tk widgets.
         from .grid import TableGrid
-        self.table_grid = TableGrid(self, fixed_font, self._table_cell_changed,
+        self.table_area = tk.Frame(self)
+        self.table_grid = TableGrid(self.table_area, fixed_font, self._table_cell_changed,
                                     self._table_text_changed, self._update_status,
                                     self.undo, self.redo, self.words)
+        self._build_input_palette()
+        self.table_grid.pack(side="left", fill="both", expand=True)
         self.status = tk.Label(self, anchor="w")
         self.status.pack(fill="x")
         self._update_view_button()
@@ -217,6 +208,34 @@ class EditorWindow(tk.Toplevel):
         self._schedule_highlight()
         if initial_path:
             self.open_file(initial_path)
+
+    def _build_input_palette(self):
+        self.input_palette = tk.Frame(self.table_area, width=240, relief="groove",
+                                      borderwidth=1)
+        self.input_palette.pack_propagate(False)
+        self.input_palette.pack(side="right", fill="y")
+        tk.Label(self.input_palette, text=self.words["input_palette"],
+                 anchor="w").pack(fill="x", padx=6, pady=4)
+        body = tk.Frame(self.input_palette)
+        body.pack(fill="both", expand=True)
+        canvas = tk.Canvas(body, highlightthickness=0)
+        scrollbar = tk.Scrollbar(body, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        content = tk.Frame(canvas)
+        content_id = canvas.create_window((0, 0), window=content, anchor="nw")
+        content.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(content_id, width=event.width))
+        for category in PALETTE_CATEGORIES:
+            tk.Label(content, text=self.words[category], anchor="w").pack(
+                fill="x", padx=6, pady=(8, 2))
+            for candidate in CANDIDATES:
+                if candidate.category == category:
+                    tk.Button(content, text=candidate.label, anchor="w",
+                              command=lambda item=candidate: self.table_grid.insert_candidate(item)).pack(
+                                  fill="x", padx=6, pady=1)
+        self.palette_canvas = canvas
 
     @staticmethod
     def _shortcut(action):
@@ -324,7 +343,7 @@ class EditorWindow(tk.Toplevel):
         if getattr(self, "_view", "raw") == "table":
             if not self._commit_table_edit():
                 return False
-            self.table_grid.pack_forget()
+            self.table_area.pack_forget()
             if hasattr(self, "table_tools"):
                 self.table_tools.pack_forget()
             self.raw_frame.pack(fill="both", expand=True, before=self.status)
@@ -342,7 +361,7 @@ class EditorWindow(tk.Toplevel):
         self._sync_text()
         self.table_grid.set_text(self.document.text)
         self.raw_frame.pack_forget()
-        self.table_grid.pack(fill="both", expand=True, before=self.status)
+        self.table_area.pack(fill="both", expand=True, before=self.status)
         if hasattr(self, "table_tools"):
             self.table_tools.pack(side="left", after=self._table_button)
         self._view = "table"
@@ -403,7 +422,7 @@ class EditorWindow(tk.Toplevel):
 
     def _show_document(self):
         if getattr(self, "_view", "raw") == "table":
-            self.table_grid.pack_forget()
+            self.table_area.pack_forget()
             if hasattr(self, "table_tools"):
                 self.table_tools.pack_forget()
             self.raw_frame.pack(fill="both", expand=True, before=self.status)

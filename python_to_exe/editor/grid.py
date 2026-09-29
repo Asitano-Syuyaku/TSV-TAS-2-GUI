@@ -51,6 +51,8 @@ class TableGrid(tk.Frame):
         self._entry_widget = None
         self._draw_job = None
         self._scroll_region = None
+        self.display_row_count = 0
+        self.display_column_count = 0
         self._drag_ready = False
         self._selection_axis = None
         self._drag_axis = None
@@ -70,7 +72,7 @@ class TableGrid(tk.Frame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        self.canvas.bind("<Configure>", lambda event: self._schedule_draw())
+        self.canvas.bind("<Configure>", self._canvas_resized)
         self.canvas.bind("<Button-1>", self._click)
         self.canvas.bind("<Double-Button-1>", self._double_click)
         self.canvas.bind("<B1-Motion>", self._drag)
@@ -174,16 +176,26 @@ class TableGrid(tk.Frame):
         self.on_select()
 
     def _update_region(self):
-        columns = max(self.model.column_count, self.selected[1] + 1,
-                      self.selection.anchor[1] + 1)
-        rows = max(self.model.row_count + 1, self.selected[0] + 1,
-                   self.selection.anchor[0] + 1)
-        width = self.gutter_width + columns * self.column_width
-        height = self.header_height + rows * self.row_height
+        viewport_columns = max(1, (max(0, self.canvas.winfo_width() - self.gutter_width)
+                                   + self.column_width - 1) // self.column_width)
+        viewport_rows = max(1, (max(0, self.canvas.winfo_height() - self.header_height)
+                                + self.row_height - 1) // self.row_height)
+        self.display_column_count = max(getattr(self, "display_column_count", 0),
+                                        self.model.column_count + 1, self.selected[1] + 1,
+                                        self.selection.anchor[1] + 1, viewport_columns)
+        self.display_row_count = max(getattr(self, "display_row_count", 0),
+                                     self.model.row_count + 1, self.selected[0] + 1,
+                                     self.selection.anchor[0] + 1, viewport_rows)
+        width = self.gutter_width + self.display_column_count * self.column_width
+        height = self.header_height + self.display_row_count * self.row_height
         region = (0, 0, width, height)
         if region != self._scroll_region:
             self.canvas.configure(scrollregion=region)
             self._scroll_region = region
+
+    def _canvas_resized(self, _event=None):
+        self._update_region()
+        self._schedule_draw()
 
     def _on_view(self, scrollbar, first, last):
         scrollbar.set(first, last)
@@ -205,13 +217,14 @@ class TableGrid(tk.Frame):
         canvas = self.canvas
         x0, y0 = canvas.canvasx(0), canvas.canvasy(0)
         width, height = canvas.winfo_width(), canvas.winfo_height()
-        rows = visible_span(y0, height, self.header_height,
-                            self.row_height, max(self.model.row_count + 1,
-                                                 self.selected[0] + 1,
-                                                 self.selection.anchor[0] + 1))
+        rows = visible_span(y0, height, self.header_height, self.row_height,
+                            max(getattr(self, "display_row_count", 0),
+                                self.model.row_count + 1, self.selected[0] + 1,
+                                self.selection.anchor[0] + 1))
         columns = visible_span(x0, width, self.gutter_width,
                                self.column_width,
-                               max(self.model.column_count, self.selected[1] + 1,
+                               max(getattr(self, "display_column_count", 0),
+                                   self.model.column_count + 1, self.selected[1] + 1,
                                    self.selection.anchor[1] + 1))
         canvas.delete("grid")
         top, bottom, left, right = self._selection_bounds()
@@ -328,8 +341,10 @@ class TableGrid(tk.Frame):
             return None
         row = int((self.canvas.canvasy(y) - self.header_height) // self.row_height)
         column = int((self.canvas.canvasx(x) - self.gutter_width) // self.column_width)
-        last_row = max(self.model.row_count, self.selected[0] + 1)
-        last_column = max(self.model.column_count, self.selected[1] + 1)
+        last_row = max(getattr(self, "display_row_count", 0) - 1,
+                       self.model.row_count, self.selected[0])
+        last_column = max(getattr(self, "display_column_count", 0) - 1,
+                          self.model.column_count, self.selected[1])
         if not clamp and (row > last_row or column > last_column):
             return None
         return max(0, min(row, last_row)), max(0, min(column, last_column))
@@ -339,12 +354,14 @@ class TableGrid(tk.Frame):
             return None
         if event.x < self.gutter_width:
             row = int((self.canvas.canvasy(event.y) - self.header_height) // self.row_height)
-            if 0 <= row <= max(self.model.row_count, self.selected[0] + 1):
+            if 0 <= row < max(getattr(self, "display_row_count", 0),
+                              self.model.row_count + 1, self.selected[0] + 1):
                 return "row", row
             return None
         if event.y < self.header_height:
             column = int((self.canvas.canvasx(event.x) - self.gutter_width) // self.column_width)
-            if 0 <= column <= max(self.model.column_count, self.selected[1] + 1):
+            if 0 <= column < max(getattr(self, "display_column_count", 0),
+                                 self.model.column_count + 1, self.selected[1] + 1):
                 return "column", column
             return None
         cell = self._hit_cell(event)
@@ -412,8 +429,10 @@ class TableGrid(tk.Frame):
                      self.canvas.canvasx(coordinate) - self.gutter_width)
             size = self.row_height if self._drag_axis == "row" else self.column_width
             index = max(0, int(world // size))
-            limit = (max(self.model.row_count, self.selected[0] + 1) if self._drag_axis == "row"
-                     else max(self.model.column_count, self.selected[1] + 1))
+            limit = (max(getattr(self, "display_row_count", 0) - 1,
+                         self.model.row_count, self.selected[0]) if self._drag_axis == "row"
+                     else max(getattr(self, "display_column_count", 0) - 1,
+                              self.model.column_count, self.selected[1]))
             self._select_header(self._drag_axis, min(index, limit), extend=True)
         self._update_region()
         self.on_select()

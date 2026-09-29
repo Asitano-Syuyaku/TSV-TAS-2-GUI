@@ -2,10 +2,13 @@
 
 import importlib
 import sys
+import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
+from python_to_exe.editor.document import EditorDocument
 from python_to_exe.editor.table_model import TableModel
 
 
@@ -346,6 +349,78 @@ class TableGridTests(unittest.TestCase):
         grid._update_region()
         grid._bind_canvas_navigation()
         return grid, pending, changes
+
+    def test_display_extent_persists_after_navigation_and_selection(self):
+        grid, _, changes = self._navigation_grid("A\tB")
+        original = grid.model.to_text()
+        self.assertGreaterEqual(grid.display_column_count, 3)
+        self.assertGreaterEqual(grid.display_row_count, 4)
+        grid._move(19, 9)
+        expanded = (grid.display_row_count, grid.display_column_count)
+        region = grid.canvas.scrollregion
+        grid._move(-19, -9)
+        grid._click(types.SimpleNamespace(x=60, y=35, state=0))
+        self.assertEqual(grid.selected, (0, 0))
+        self.assertEqual((grid.display_row_count, grid.display_column_count), expanded)
+        self.assertEqual(grid.canvas.scrollregion, region)
+        self.assertEqual(grid._hit_target(types.SimpleNamespace(x=370, y=83)),
+                         ("cell", (2, 2)))
+        self.assertEqual(grid.model.to_text(), original)
+        self.assertEqual(grid.model.column_count, 2)
+        self.assertEqual(grid.model.row_count, 1)
+        self.assertEqual(changes, [])
+
+        with tempfile.TemporaryDirectory() as folder:
+            document = EditorDocument()
+            document.set_text(grid.model.to_text())
+            path = Path(folder) / "virtual.tsv"
+            document.save(path)
+            self.assertEqual(path.read_bytes(), b"A\tB")
+
+    def test_new_document_and_resize_fill_viewport_without_serializing(self):
+        grid, _, _ = self._navigation_grid("")
+        grid.font = types.SimpleNamespace(measure=lambda value: len(value) * 8)
+        self.assertGreaterEqual(grid.display_column_count, 3)
+        self.assertGreaterEqual(grid.display_row_count, 4)
+        self.module.TableGrid._draw_visible(grid)
+        self.assertTrue(any(coords == grid._cell_box(2, 2)
+                            for coords, _ in grid.canvas.boxes))
+        self.assertEqual(grid.model.to_text(), "")
+        grid.canvas.width = 950
+        grid.canvas.height = 400
+        grid._canvas_resized()
+        large = (grid.display_row_count, grid.display_column_count)
+        self.assertGreaterEqual(large[0], 16)
+        self.assertGreaterEqual(large[1], 6)
+        grid.canvas.width = 470
+        grid.canvas.height = 120
+        grid._canvas_resized()
+        self.assertEqual((grid.display_row_count, grid.display_column_count), large)
+        self.assertEqual(grid.model.to_text(), "")
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "new.tsv"
+            document = EditorDocument()
+            document.save(path)
+            self.assertEqual(path.read_bytes(), b"")
+
+    def test_far_virtual_cell_writes_only_on_commit(self):
+        grid, _, changes = self._navigation_grid("A\tB")
+        transformations = []
+        grid.on_transform = lambda before, after: transformations.append((before, after)) or True
+        grid._move(19, 9)
+        self.assertEqual(grid.model.to_text(), "A\tB")
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            grid.begin_edit(initial="猫")
+            self.assertEqual(grid.model.to_text(), "A\tB")
+            self.assertTrue(grid.commit_edit())
+        self.assertEqual(grid.model.row_count, 20)
+        self.assertEqual(grid.model.column_count, 10)
+        self.assertEqual(grid.model.to_text(), "A\tB" + "\n" * 19 + "\t" * 9 + "猫")
+        self.assertEqual(len(changes), 0)  # Virtual row uses the bulk change path.
+        self.assertEqual(transformations, [("A\tB", grid.model.to_text())])
+        grid._move(-19, -9)
+        self.assertGreaterEqual(grid.display_row_count, 20)
+        self.assertGreaterEqual(grid.display_column_count, 10)
 
     def test_burst_tab_moves_virtual_active_cell_without_creating_entries(self):
         EntryStub.created = 0
@@ -971,6 +1046,7 @@ class TableGridTests(unittest.TestCase):
         with patch.object(self.module.tk, "Entry", EntryStub, create=True):
             grid.insert_candidate(stick)
             editor = grid._editor
+            self.assertEqual(grid.selected, (0, 1))
             self.assertEqual(editor.value, "ls(0)")
             self.assertEqual(editor.selected_range, (3, 4))
             self.assertEqual(grid.model.to_text(), "old\tkeep")
@@ -983,6 +1059,28 @@ class TableGridTests(unittest.TestCase):
             grid.insert_candidate(button)
             self.assertEqual(editor.value, "lsa(a)")
             self.assertIs(grid._editor, editor)
+
+    def test_palette_only_marks_document_modified_after_cell_commit(self):
+        from python_to_exe.editor.tsv_syntax import CANDIDATES
+
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "palette.tsv"
+            source.write_text("A\tB", encoding="utf-8")
+            document = EditorDocument()
+            document.open(source)
+            grid, _, _ = self._navigation_grid(document.text)
+            grid.selected = (0, 1)
+            grid.on_change = lambda _row, _old, new: document.set_text(new) or True
+            button = next(item for item in CANDIDATES if item.text == "a")
+            with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+                grid.insert_candidate(button)
+                self.assertEqual(grid.selected, (0, 1))
+                self.assertFalse(document.modified)
+                self.assertTrue(grid.commit_edit())
+            self.assertTrue(document.modified)
+            self.assertEqual(document.text, "A\ta")
+            document.save()
+            self.assertEqual(source.read_bytes(), b"A\ta")
 
 
 if __name__ == "__main__":

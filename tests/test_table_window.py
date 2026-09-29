@@ -113,6 +113,17 @@ class GridStub:
         pass
 
 
+class PanelStub:
+    def __init__(self, visible=False):
+        self.visible = visible
+
+    def pack(self, **_kwargs):
+        self.visible = True
+
+    def pack_forget(self):
+        self.visible = False
+
+
 class TableWindowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -136,6 +147,88 @@ class TableWindowTests(unittest.TestCase):
                          ("+ 行", "+ 列"))
         self.assertEqual((labels["en"]["add_row"], labels["en"]["add_column"]),
                          ("+ Row", "+ Column"))
+
+    def test_table_sidebar_is_visible_only_in_table_without_changing_document(self):
+        window = self._window(None)
+        self.assertFalse(window.table_area.visible)
+        self.assertTrue(window.raw_frame.visible)
+        self.assertTrue(window.show_table())
+        self.assertTrue(window.table_area.visible)
+        self.assertFalse(window.raw_frame.visible)
+        self.assertFalse(window.document.modified)
+        self.assertTrue(window.show_raw())
+        self.assertFalse(window.table_area.visible)
+        self.assertTrue(window.raw_frame.visible)
+        self.assertEqual(window.document.text, "")
+        self.assertFalse(window.document.modified)
+
+    def test_sidebar_groups_existing_candidates_and_uses_table_insertion(self):
+        from python_to_exe.editor.tsv_syntax import CANDIDATES, PALETTE_CATEGORIES
+
+        widgets = []
+
+        class Widget:
+            def __init__(self, kind, master, **options):
+                self.kind = kind
+                self.master = master
+                self.options = options
+                self.placement = None
+                self.bindings = {}
+                widgets.append(self)
+
+            def pack(self, **options):
+                self.placement = options
+
+            def pack_propagate(self, value):
+                self.propagate = value
+
+            def bind(self, sequence, callback):
+                self.bindings[sequence] = callback
+
+            def configure(self, **options):
+                self.options.update(options)
+
+            def create_window(self, *_args, **_kwargs):
+                return 1
+
+            def itemconfigure(self, *_args, **_kwargs):
+                pass
+
+            def bbox(self, _target):
+                return (0, 0, 220, 1000)
+
+            def yview(self, *_args):
+                pass
+
+            def set(self, *_args):
+                pass
+
+        window = self.editor_window.EditorWindow.__new__(self.editor_window.EditorWindow)
+        window.words = self.editor_window.LABELS["en"]
+        window.table_area = object()
+        inserted = []
+        window.table_grid = SimpleNamespace(insert_candidate=inserted.append)
+        with patch.multiple(self.editor_window.tk, create=True,
+                            Frame=lambda master, **kw: Widget("frame", master, **kw),
+                            Canvas=lambda master, **kw: Widget("canvas", master, **kw),
+                            Scrollbar=lambda master, **kw: Widget("scrollbar", master, **kw),
+                            Label=lambda master, **kw: Widget("label", master, **kw),
+                            Button=lambda master, **kw: Widget("button", master, **kw)):
+            window._build_input_palette()
+        self.assertEqual(window.input_palette.options["width"], 240)
+        self.assertEqual(window.input_palette.placement, {"side": "right", "fill": "y"})
+        self.assertFalse(window.input_palette.propagate)
+        labels = [item.options["text"] for item in widgets if item.kind == "label"]
+        self.assertEqual(labels, [window.words["input_palette"]] +
+                         [window.words[category] for category in PALETTE_CATEGORIES])
+        buttons = [item for item in widgets if item.kind == "button"]
+        expected = [item for item in CANDIDATES if item.category in PALETTE_CATEGORIES]
+        self.assertEqual([item.options["text"] for item in buttons],
+                         [item.label for item in expected])
+        buttons[-1].options["command"]()
+        self.assertIs(inserted[0], expected[-1])
+        self.assertEqual(window.palette_canvas.kind, "canvas")
+        self.assertTrue(any(item.kind == "scrollbar" for item in widgets))
 
     def test_raw_highlight_reads_visible_lines_only_without_modifying_document(self):
         class HighlightText:
@@ -200,7 +293,8 @@ class TableWindowTests(unittest.TestCase):
             window.document.open(path)
         window.text = TextStub(window.document.text)
         window.status = SimpleNamespace(config=lambda **kwargs: None)
-        window.raw_frame = SimpleNamespace(pack=lambda **kwargs: None, pack_forget=lambda: None)
+        window.raw_frame = PanelStub(visible=True)
+        window.table_area = PanelStub()
         window.table_grid = GridStub(window._table_cell_changed)
         window._table_button = SimpleNamespace(configure=lambda **kwargs: None, state=None)
         window._table_button.configure = lambda **kwargs: vars(window._table_button).update(kwargs)
