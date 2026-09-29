@@ -25,6 +25,8 @@ class TextStub:
             return len(self.value)
         if index == "insert":
             return 0
+        if index.startswith("1.0+") and index.endswith("c"):
+            return int(index[4:-1])
         base, _, suffix = index.partition(" ")
         line = int(base.split(".")[0])
         start = sum(len(part) + 1 for part in self.value.split("\n")[:line - 1])
@@ -51,6 +53,13 @@ class TextStub:
                 self._undo.append(self._before)
                 self._redo.clear()
             self._before = None
+
+    def cget(self, name):
+        return getattr(self, name, True)
+
+    def configure(self, **options):
+        for name, value in options.items():
+            setattr(self, name, value)
 
     def edit_undo(self):
         self._redo.append(self.value)
@@ -197,6 +206,84 @@ class TableWindowTests(unittest.TestCase):
             window = self._window(source)
             self.assertFalse(window.show_table())
             self.assertEqual(window._view, "raw")
+
+    def test_bulk_changes_are_one_undo_step_and_keep_save_paths(self):
+        with tempfile.TemporaryDirectory(prefix="spreadsheet 日本語 ") as folder:
+            source = Path(folder) / "my script.tsv"
+            source.write_bytes(b"A\tB\t\r\nC\tD\t\r\n")
+            window = self._window(source)
+            self.assertTrue(window.show_table())
+            original = window.document.text
+            model = TableModel(original)
+            model.paste(0, 0, "猫\t犬\r\n鳥\t魚\r\n")
+            pasted = model.to_text()
+            self.assertTrue(window._table_text_changed(original, pasted))
+            window.table_grid.set_text(pasted)
+            self.assertTrue(window.document.modified)
+            self.assertEqual(len(window.text._undo), 1)
+            self.assertTrue(window.undo())
+            self.assertEqual(window.document.text, original)
+            self.assertFalse(window.document.modified)
+            self.assertTrue(window.redo())
+            self.assertEqual(window.document.text, pasted)
+
+            model.insert_row(1)
+            inserted = model.to_text()
+            self.assertTrue(window._table_text_changed(pasted, inserted))
+            window.table_grid.set_text(inserted)
+            self.assertTrue(window.undo())
+            self.assertEqual(window.document.text, pasted)
+            self.assertTrue(window.undo())
+            self.assertEqual(window.document.text, original)
+            self.assertTrue(window.redo())
+            self.assertTrue(window.redo())
+            self.assertEqual(window.document.text, inserted)
+            self.assertTrue(window.save())
+            self.assertEqual(source.read_bytes(), "猫\t犬\t\r\n\r\n鳥\t魚\t\r\n".encode())
+
+            renamed = Path(folder) / "保存 先.tsv"
+            with patch.object(self.editor_window.filedialog, "asksaveasfilename", return_value=str(renamed),
+                              create=True):
+                self.assertTrue(window.save_as())
+            self.assertEqual(renamed.read_bytes(), source.read_bytes())
+            model.delete_column(2)
+            updated = model.to_text()
+            self.assertTrue(window._table_text_changed(inserted, updated))
+            window.table_grid.set_text(updated)
+            converted = []
+            window.on_convert = lambda path: converted.append(path.read_bytes()) or True
+            self.assertTrue(window.save_and_convert())
+            self.assertEqual(converted, ["猫\t犬\r\n\r\n鳥\t魚\r\n".encode()])
+            self.assertFalse(window.document.modified)
+
+    def test_each_range_and_structure_edit_uses_one_text_undo_step(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "undo.tsv"
+            source.write_text("A\tB\t\nC\tD\t\n", encoding="utf-8")
+            changes = (
+                ("clear_range", ((0, 1, 0, 1),)),
+                ("insert_row", (1,)), ("delete_row", (0,)),
+                ("duplicate_row", (0,)),
+                ("insert_column", (1,)), ("delete_column", (1,)),
+            )
+            for operation, args in changes:
+                with self.subTest(operation=operation):
+                    window = self._window(source)
+                    self.assertTrue(window.show_table())
+                    original = window.document.text
+                    model = TableModel(original)
+                    getattr(model, operation)(*args)
+                    updated = model.to_text()
+                    self.assertNotEqual(original, updated)
+                    self.assertTrue(window._table_text_changed(original, updated))
+                    window.table_grid.set_text(updated)
+                    self.assertEqual(len(window.text._undo), 1)
+                    self.assertTrue(window.undo())
+                    self.assertEqual(window.document.text, original)
+                    self.assertFalse(window.document.modified)
+                    self.assertTrue(window.redo())
+                    self.assertEqual(window.document.text, updated)
+                    self.assertTrue(window.document.modified)
 
 
 if __name__ == "__main__":

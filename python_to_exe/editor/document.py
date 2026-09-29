@@ -5,6 +5,7 @@ import re
 import stat
 import tempfile
 from collections import Counter
+from difflib import SequenceMatcher
 from pathlib import Path
 
 
@@ -54,8 +55,22 @@ class EditorDocument:
             return self._raw_text
         lines = self.text.split("\n")
         preferred = Counter(self._endings).most_common(1)[0][0] if self._endings else "\n"
+        endings = self._endings
+        saved_lines = self._saved_text.split("\n")
+        if len(lines) != len(saved_lines) and len(set(endings)) > 1:
+            # When rows move, keep mixed line endings with matching source rows.
+            aligned = [None] * (len(lines) - 1)
+            for kind, old_start, old_end, new_start, new_end in SequenceMatcher(
+                    None, saved_lines, lines).get_opcodes():
+                if kind not in ("equal", "replace"):
+                    continue
+                for offset in range(min(old_end - old_start, new_end - new_start)):
+                    old, new = old_start + offset, new_start + offset
+                    if old < len(endings) and new < len(aligned):
+                        aligned[new] = endings[old]
+            endings = [ending or preferred for ending in aligned]
         return "".join(
-            line + (self._endings[i] if i < len(self._endings) else preferred)
+            line + (endings[i] if i < len(endings) else preferred)
             for i, line in enumerate(lines[:-1])
         ) + lines[-1]
 

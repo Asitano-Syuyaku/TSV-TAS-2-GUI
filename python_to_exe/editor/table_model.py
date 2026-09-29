@@ -1,6 +1,32 @@
 """Literal tab-separated rows for the table view; no TSV-TAS interpretation."""
 
 
+class CellSelection:
+    """Anchor and active cell define one rectangular selection."""
+
+    def __init__(self, anchor=(0, 0), active=None):
+        self.anchor = anchor
+        self.active = active if active is not None else anchor
+
+    @property
+    def bounds(self):
+        return (min(self.anchor[0], self.active[0]),
+                max(self.anchor[0], self.active[0]),
+                min(self.anchor[1], self.active[1]),
+                max(self.anchor[1], self.active[1]))
+
+    def move_to(self, row, column, extend=False):
+        if not extend:
+            self.anchor = row, column
+        self.active = row, column
+
+    def clamp(self, row_count, column_count):
+        def inside(cell):
+            return min(cell[0], row_count - 1), min(cell[1], column_count)
+        self.anchor = inside(self.anchor)
+        self.active = inside(self.active)
+
+
 class TableModel:
     def __init__(self, text):
         # split preserves blank rows and trailing empty cells, including a final TAB.
@@ -32,6 +58,80 @@ class TableModel:
     def update_line(self, row, line):
         self.rows[row] = line.split("\t")
         self.column_count = max(self.column_count, len(self.rows[row]))
+
+    def copy(self):
+        duplicate = object.__new__(TableModel)
+        duplicate.rows = [cells.copy() for cells in self.rows]
+        duplicate.column_count = self.column_count
+        return duplicate
+
+    def _recount(self):
+        self.column_count = max(map(len, self.rows))
+
+    def copy_range(self, bounds):
+        top, bottom, left, right = bounds
+        return "\n".join("\t".join(self.cell(row, column)
+                                for column in range(left, right + 1))
+                         for row in range(top, bottom + 1))
+
+    def clear_range(self, bounds):
+        top, bottom, left, right = bounds
+        for row in range(top, bottom + 1):
+            cells = self.rows[row]
+            for column in range(left, min(right + 1, len(cells))):
+                cells[column] = ""
+
+    @staticmethod
+    def clipboard_rows(text):
+        # Spreadsheet clipboards commonly include one terminal row separator.
+        lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        if len(lines) > 1 and lines[-1] == "":
+            lines.pop()
+        return [line.split("\t") for line in lines]
+
+    def paste(self, row, column, text):
+        block = self.clipboard_rows(text)
+        for offset, values in enumerate(block):
+            target = row + offset
+            while target >= self.row_count:
+                self.rows.append([""])
+            cells = self.rows[target]
+            width = column + len(values)
+            if len(cells) < width:
+                cells.extend([""] * (width - len(cells)))
+            cells[column:width] = values
+        self._recount()
+        return len(block), max(map(len, block))
+
+    def insert_row(self, row):
+        self.rows.insert(row, [""])
+        self._recount()
+
+    def delete_row(self, row):
+        if self.row_count == 1:
+            self.rows[0] = [""]
+        else:
+            self.rows.pop(row)
+        self._recount()
+
+    def duplicate_row(self, row):
+        self.rows.insert(row + 1, self.rows[row].copy())
+        self._recount()
+
+    def insert_column(self, column):
+        for cells in self.rows:
+            if column > len(cells):
+                cells.extend([""] * (column - len(cells)))
+            cells.insert(column, "")
+        self._recount()
+
+    def delete_column(self, column):
+        for cells in self.rows:
+            if column < len(cells):
+                cells.pop(column)
+            if not cells:
+                cells.append("")
+        self._recount()
 
     def to_text(self):
         return "\n".join("\t".join(cells) for cells in self.rows)

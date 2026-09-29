@@ -22,6 +22,10 @@ LABELS = {
         "replace_all": "Replace All", "not_found": "Not found", "saved": "Unmodified",
         "modified": "Modified", "line": "Line", "column": "Column",
         "raw_view": "Raw Text", "table_view": "Table",
+        "table_menu": "Table", "insert_row": "Insert Row",
+        "delete_row": "Delete Row", "duplicate_row": "Duplicate Row",
+        "insert_column": "Insert Column", "delete_column": "Delete Column",
+        "clear_cells": "Clear Cells",
     },
     "ja": {
         "title": "TSV-TAS エディター", "untitled": "無題", "file": "ファイル",
@@ -37,6 +41,10 @@ LABELS = {
         "not_found": "見つかりません", "saved": "未編集", "modified": "編集済み",
         "line": "行", "column": "列",
         "raw_view": "テキスト", "table_view": "表",
+        "table_menu": "表", "insert_row": "行を追加",
+        "delete_row": "行を削除", "duplicate_row": "行を複製",
+        "insert_column": "列を追加", "delete_column": "列を削除",
+        "clear_cells": "セルを消去",
     },
 }
 
@@ -84,6 +92,16 @@ class EditorWindow(tk.Toplevel):
         ):
             search_menu.add_command(label=self.words[key], command=command, accelerator=shortcut)
         menu.add_cascade(label=self.words["search"], menu=search_menu)
+        table_menu = tk.Menu(menu, tearoff=False)
+        for key, action in (("insert_row", "insert_row"),
+                            ("delete_row", "delete_row"),
+                            ("duplicate_row", "duplicate_row"),
+                            ("insert_column", "insert_column"),
+                            ("delete_column", "delete_column"),
+                            ("clear_cells", "clear_selection")):
+            table_menu.add_command(label=self.words[key],
+                                   command=lambda name=action: self._table_action(name))
+        menu.add_cascade(label=self.words["table_menu"], menu=table_menu)
         self.config(menu=menu)
 
         view_bar = tk.Frame(self)
@@ -116,7 +134,8 @@ class EditorWindow(tk.Toplevel):
         # Import lazily so file/document logic remains usable without Tk widgets.
         from .grid import TableGrid
         self.table_grid = TableGrid(self, fixed_font, self._table_cell_changed,
-                                    self._update_status, self.undo, self.redo)
+                                    self._table_text_changed, self._update_status,
+                                    self.undo, self.redo)
         self.status = tk.Label(self, anchor="w")
         self.status.pack(fill="x")
         self._update_view_button()
@@ -253,14 +272,42 @@ class EditorWindow(tk.Toplevel):
         last = f"{row + 1}.0 lineend"
         if self.text.get(first, last) != old_line:
             return False
-        self.text.edit_separator()
-        self.text.delete(first, last)
-        self.text.insert(first, new_line)
-        self.text.edit_separator()
+        self._replace_table_text(first, last, new_line)
+        return True
+
+    def _replace_table_text(self, first, last, value):
+        automatic = self.text.cget("autoseparators")
+        self.text.configure(autoseparators=False)
+        try:
+            self.text.edit_separator()
+            self.text.delete(first, last)
+            self.text.insert(first, value)
+            self.text.edit_separator()
+        finally:
+            self.text.configure(autoseparators=automatic)
         self._sync_text()
         self._update_status()
         self._schedule_line_numbers()
+
+    def _table_text_changed(self, original, updated):
+        if self.text.get("1.0", "end-1c") != original:
+            return False
+        prefix = 0
+        while prefix < min(len(original), len(updated)) and original[prefix] == updated[prefix]:
+            prefix += 1
+        suffix = 0
+        while (suffix < min(len(original), len(updated)) - prefix and
+               original[len(original) - suffix - 1] == updated[len(updated) - suffix - 1]):
+            suffix += 1
+        first = f"1.0+{prefix}c"
+        last = f"1.0+{len(original) - suffix}c"
+        self._replace_table_text(first, last, updated[prefix:len(updated) - suffix])
         return True
+
+    def _table_action(self, name):
+        if getattr(self, "_view", "raw") != "table":
+            return False
+        return getattr(self.table_grid, name)()
 
     def _on_modified(self, _event=None):
         if self.text.edit_modified():
@@ -274,6 +321,8 @@ class EditorWindow(tk.Toplevel):
             self.table_grid.pack_forget()
             self.raw_frame.pack(fill="both", expand=True, before=self.status)
             self._view = "raw"
+        if hasattr(self, "table_grid"):
+            self.table_grid.selected = (0, 0)
         self.text.delete("1.0", "end")
         self.text.insert("1.0", self.document.text)
         self.text.edit_reset()
@@ -312,16 +361,22 @@ class EditorWindow(tk.Toplevel):
         return True
 
     def cut(self):
+        if getattr(self, "_view", "raw") == "table":
+            return self.table_grid.clipboard_action("Cut")
         if not self.show_raw():
             return
         self.text.event_generate("<<Cut>>")
 
     def copy(self):
+        if getattr(self, "_view", "raw") == "table":
+            return self.table_grid.clipboard_action("Copy")
         if not self.show_raw():
             return
         self.text.event_generate("<<Copy>>")
 
     def paste(self):
+        if getattr(self, "_view", "raw") == "table":
+            return self.table_grid.clipboard_action("Paste")
         if not self.show_raw():
             return
         self.text.event_generate("<<Paste>>")

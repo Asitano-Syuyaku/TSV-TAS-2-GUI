@@ -48,7 +48,7 @@ This example holds the left stick upward for five frames, then inputs A and the 
 
 The Japanese and English launchers use the same conversion behavior; only displayed language differs. `-l` is an interactive CLI option for repeated compilation and is not in the GUI.
 
-### Built-in editor (Phase 3A)
+### Built-in editor (Phase 3B)
 
 Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, Save & Convert, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, and `F5`. New, Open, and Close ask what to do with unsaved changes.
 
@@ -56,9 +56,11 @@ Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With n
 
 The Edit menu provides Undo/Redo, Cut/Copy/Paste, and Select All. Shortcuts are `Ctrl+Z`/`Ctrl+Y` and `Ctrl+X`/`Ctrl+C`/`Ctrl+V`/`Ctrl+A`. Open Find with `Ctrl+F` or Replace with `Ctrl+H`; `F3`/`Shift+F3` searches next/previous. The dialog can replace the current match or all matches. Search is case-sensitive. Line numbers and a status bar show the line, column, modified state, and file kind (TSV-TAS/nx-TAS).
 
-For `.tsv` files, switch between **Raw Text** and **Table**. Table splits each line only at TAB characters and preserves empty cells, blank lines, and trailing TABs. Click a cell to edit it, commit with Enter/Tab, and move with arrow keys. Switching views without editing does not change the file content or modified state. `.txt` (nx-TAS) remains Raw Text only. Undo/Redo, Save, and Save & Convert also work after table edits.
+For `.tsv` files, switch between **Raw Text** and **Table**. Table splits each line only at TAB characters and preserves empty cells, blank lines, and trailing TABs. Click a cell to edit it, commit with Enter/Tab, and move with arrow keys. Select a rectangular range with Shift+click, drag, or Shift+arrow keys. Switching views without editing does not change the file content or modified state. `.txt` (nx-TAS) remains Raw Text only. Undo/Redo, Save, and Save & Convert also work after table edits.
 
-Table does not interpret TSV-TAS syntax or apply its own formatting on save. Both views preserve UTF-8 and original line endings where possible. `tsv-tas.py` still interprets scripts. Multi-cell selection and bulk row/column operations are not available yet.
+With a range selected in Table, `Ctrl+C`/`Ctrl+X`/`Ctrl+V` copies, cuts, or pastes cells using TABs and newlines. While editing text inside a cell, these shortcuts edit text normally; a paste containing TABs or newlines expands into the table. You can paste multiple rows and columns copied from an external spreadsheet; pasting starts at the selection's top-left cell and expands rows or columns as needed. Delete/Backspace clears selected cells. The **Table** menu inserts a row or column at the active cell, deletes the active row or column, duplicates a row, or clears cells. Each of these table operations takes one Undo step.
+
+Table does not interpret TSV-TAS syntax or apply its own formatting on save. Column operations affect every row, including command and comment lines. Both views preserve UTF-8 and original line endings where possible. `tsv-tas.py` still interprets scripts.
 
 ### FTP setup
 

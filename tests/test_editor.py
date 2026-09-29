@@ -53,6 +53,18 @@ class EditorDocumentTests(unittest.TestCase):
         self.document.save()
         self.assertEqual(path.read_bytes(), b"1\ta\r\n2\tb\r\n")
 
+    def test_row_insert_delete_keeps_mixed_endings_with_original_rows(self):
+        path = self.folder / "mixed.tsv"
+        original = b"a\r\nb\nc\r\n"
+        path.write_bytes(original)
+        self.document.open(path)
+        self.document.set_text("a\n\nb\nc\n")
+        self.document.save()
+        self.assertEqual(path.read_bytes(), b"a\r\n\r\nb\nc\r\n")
+        self.document.set_text("a\nb\nc\n")
+        self.document.save()
+        self.assertEqual(path.read_bytes(), original)
+
     @unittest.skipUnless(os.name == "posix", "POSIX file modes only")
     def test_save_preserves_existing_file_mode(self):
         path = self.folder / "mode.tsv"
