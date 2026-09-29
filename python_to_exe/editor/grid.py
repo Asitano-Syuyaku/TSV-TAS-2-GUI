@@ -5,6 +5,28 @@ import tkinter as tk
 from .table_model import CellSelection, TableModel, visible_span
 
 
+CANVAS_BACKGROUND = "#f2f5f9"
+CELL_BACKGROUND = "#ffffff"
+GRID_LINE = "#8d9aab"
+HEADER_BACKGROUND = "#e4ebf3"
+HEADER_SELECTED = "#c9d9ec"
+HEADER_LINE = "#65768b"
+SELECTION_BACKGROUND = "#c9e0fb"
+SELECTION_LINE = "#4e86bf"
+ACTIVE_BACKGROUND = "#a9d0fb"
+ACTIVE_LINE = "#075ca8"
+
+
+def column_label(index):
+    """Spreadsheet-style column heading, starting at A."""
+    label = ""
+    number = index + 1
+    while number:
+        number, letter = divmod(number - 1, 26)
+        label = chr(65 + letter) + label
+    return label
+
+
 class TableGrid(tk.Frame):
     def __init__(self, master, font, on_change, on_transform, on_select,
                  on_undo, on_redo):
@@ -27,7 +49,7 @@ class TableGrid(tk.Frame):
         self._drag_moved = False
         self._drag_ready = False
 
-        self.canvas = tk.Canvas(self, background="white", highlightthickness=0,
+        self.canvas = tk.Canvas(self, background=CANVAS_BACKGROUND, highlightthickness=0,
                                 takefocus=True)
         vertical = tk.Scrollbar(self, orient="vertical", command=self._scroll_y)
         horizontal = tk.Scrollbar(self, orient="horizontal", command=self._scroll_x)
@@ -118,6 +140,11 @@ class TableGrid(tk.Frame):
         if self._draw_job is None:
             self._draw_job = self.after_idle(self._draw_visible)
 
+    def _cell_box(self, row, column):
+        x = self.gutter_width + column * self.column_width
+        y = self.header_height + row * self.row_height
+        return x, y, x + self.column_width, y + self.row_height
+
     def _draw_visible(self):
         self._draw_job = None
         if not self.winfo_exists():
@@ -134,41 +161,60 @@ class TableGrid(tk.Frame):
         canvas.delete("grid")
         top, bottom, left, right = self.selection.bounds
         for row in rows:
-            y = self.header_height + row * self.row_height
             for column in columns:
-                x = self.gutter_width + column * self.column_width
-                canvas.create_rectangle(x, y, x + self.column_width, y + self.row_height,
-                                        fill="#dcecff" if top <= row <= bottom and
-                                        left <= column <= right else "white",
-                                        outline="gray", tags="grid")
+                x1, y1, x2, y2 = self._cell_box(row, column)
+                chosen = top <= row <= bottom and left <= column <= right
+                canvas.create_rectangle(x1, y1, x2, y2,
+                                        fill=(ACTIVE_BACKGROUND if (row, column) == self.selected
+                                              else SELECTION_BACKGROUND if chosen
+                                              else CELL_BACKGROUND),
+                                        outline=GRID_LINE, width=2, tags="grid")
                 value = self.model.cell(row, column)
                 if value:
-                    canvas.create_text(x + 5, y + self.row_height / 2,
+                    canvas.create_text(x1 + 6, y1 + self.row_height / 2,
                                        text=self._display(value), anchor="w",
-                                       font=self.font, tags="grid")
-        row, column = self.selected
-        if row in rows and column in columns:
-            x = self.gutter_width + column * self.column_width
-            y = self.header_height + row * self.row_height
-            canvas.create_rectangle(x + 1, y + 1, x + self.column_width - 1,
-                                    y + self.row_height - 1, outline="blue",
-                                    width=2, tags="grid")
+                                       fill="#1f2937", font=self.font, tags="grid")
+        if top != bottom or left != right:
+            x1, y1, _, _ = self._cell_box(top, left)
+            _, _, x2, y2 = self._cell_box(bottom, right)
+            canvas.create_rectangle(x1 + 1, y1 + 1, x2 - 1, y2 - 1,
+                                    outline=SELECTION_LINE, width=2, tags="grid")
         # Opaque headers cover cells scrolled beneath the fixed row-number gutter.
         for row in rows:
             y = self.header_height + row * self.row_height
             canvas.create_rectangle(x0, y, x0 + self.gutter_width, y + self.row_height,
-                                    fill="white", outline="gray", tags="grid")
+                                    fill=HEADER_SELECTED if top <= row <= bottom
+                                    else HEADER_BACKGROUND,
+                                    outline=HEADER_LINE, width=2, tags="grid")
             canvas.create_text(x0 + self.gutter_width - 5, y + self.row_height / 2,
-                               text=str(row + 1), anchor="e", font=self.font, tags="grid")
+                               text=str(row + 1), anchor="e", fill="#26384d",
+                               font=self.font, tags="grid")
         for column in columns:
             x = self.gutter_width + column * self.column_width
             canvas.create_rectangle(x, y0, x + self.column_width, y0 + self.header_height,
-                                    fill="white", outline="gray", tags="grid")
+                                    fill=HEADER_SELECTED if left <= column <= right
+                                    else HEADER_BACKGROUND,
+                                    outline=HEADER_LINE, width=2, tags="grid")
             canvas.create_text(x + self.column_width / 2, y0 + self.header_height / 2,
-                               text=str(column + 1), font=self.font, tags="grid")
+                               text=column_label(column), fill="#26384d",
+                               font=self.font, tags="grid")
         canvas.create_rectangle(x0, y0, x0 + self.gutter_width,
-                                y0 + self.header_height, fill="white",
-                                outline="gray", tags="grid")
+                                y0 + self.header_height, fill=HEADER_BACKGROUND,
+                                outline=HEADER_LINE, width=2, tags="grid")
+        canvas.create_line(x0 + self.gutter_width, y0,
+                           x0 + self.gutter_width, y0 + height,
+                           fill=HEADER_LINE, width=3, tags="grid")
+        canvas.create_line(x0, y0 + self.header_height,
+                           x0 + width, y0 + self.header_height,
+                           fill=HEADER_LINE, width=3, tags="grid")
+        row, column = self.selected
+        if row in rows and column in columns:
+            x1, y1, x2, y2 = self._cell_box(row, column)
+            x1 = max(x1, x0 + self.gutter_width)
+            y1 = max(y1, y0 + self.header_height)
+            if x1 < x2 and y1 < y2:
+                canvas.create_rectangle(x1, y1, x2, y2,
+                                        outline=ACTIVE_LINE, width=3, tags="grid")
         self._position_editor()
 
     def _display(self, value):
@@ -182,14 +228,17 @@ class TableGrid(tk.Frame):
         if self._editor is None:
             return
         row, column = self.selected
-        x = self.gutter_width + column * self.column_width - self.canvas.canvasx(0)
-        y = self.header_height + row * self.row_height - self.canvas.canvasy(0)
-        if (x + self.column_width <= self.gutter_width or
-                y + self.row_height <= self.header_height or
-                x >= self.canvas.winfo_width() or y >= self.canvas.winfo_height()):
+        x1, y1, _, _ = self._cell_box(row, column)
+        x = x1 - self.canvas.canvasx(0)
+        y = y1 - self.canvas.canvasy(0)
+        left = max(x, self.gutter_width)
+        top = max(y, self.header_height)
+        right = min(x + self.column_width, self.canvas.winfo_width())
+        bottom = min(y + self.row_height, self.canvas.winfo_height())
+        if left >= right or top >= bottom:
             self._editor.place_forget()
         else:
-            self._editor.place(x=x, y=y, width=self.column_width, height=self.row_height)
+            self._editor.place(x=left, y=top, width=right - left, height=bottom - top)
 
     def _hit_cell(self, event, clamp=False):
         x, y = event.x, event.y
@@ -263,7 +312,10 @@ class TableGrid(tk.Frame):
         if self._editor is not None:
             return
         row, column = self.selected
-        editor = tk.Entry(self.canvas, font=self.font, exportselection=False)
+        editor = tk.Entry(self.canvas, font=self.font, exportselection=False,
+                          background=ACTIVE_BACKGROUND, relief="flat",
+                          highlightthickness=3, highlightbackground=ACTIVE_LINE,
+                          highlightcolor=ACTIVE_LINE)
         editor.insert(0, self.model.cell(row, column))
         self._editor = editor
         self._position_editor()
