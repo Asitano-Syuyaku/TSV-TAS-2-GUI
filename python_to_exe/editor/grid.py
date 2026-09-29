@@ -46,6 +46,7 @@ class TableGrid(tk.Frame):
         self._editor = None
         self._draw_job = None
         self._edit_job = None
+        self._entry_move_pending = False
         self._drag_moved = False
         self._drag_ready = False
 
@@ -325,14 +326,29 @@ class TableGrid(tk.Frame):
                            ("Left", (0, -1)), ("Right", (0, 1)),
                            ("Return", (1, 0)), ("Tab", (0, 1)),
                            ("Shift-Tab", (0, -1))):
-            editor.bind(f"<{key}>", lambda event, move=delta: self._move(*move))
+            editor.bind(f"<{key}>", lambda event, move=delta: self._entry_move(event, *move))
         for key, delta in (("Up", (-1, 0)), ("Down", (1, 0)),
                            ("Left", (0, -1)), ("Right", (0, 1))):
             editor.bind(f"<Shift-{key}>",
-                        lambda event, move=delta: self._move(*move, extend=True))
+                        lambda event, move=delta: self._entry_move(event, *move, extend=True))
         editor.bind("<Escape>", lambda event: self.cancel_edit())
         editor.bind("<Control-v>", self._entry_paste)
         self._bind_history(editor)
+
+    def _entry_move(self, event, row_delta, column_delta, extend=False):
+        # Destroying and replacing an Entry during its own key dispatch is unsafe
+        # on Tk/Windows, especially when the next cell starts horizontal scrolling.
+        if not self._entry_move_pending:
+            self._entry_move_pending = True
+            editor = event.widget
+            self.after(0, lambda: self._finish_entry_move(
+                editor, row_delta, column_delta, extend))
+        return "break"
+
+    def _finish_entry_move(self, editor, row_delta, column_delta, extend):
+        self._entry_move_pending = False
+        if self._editor is editor:
+            self._move(row_delta, column_delta, extend=extend)
 
     def _entry_paste(self, _event=None):
         try:
@@ -482,7 +498,7 @@ class TableGrid(tk.Frame):
         row, column = self.selected
         self.selection.move_to(
             max(0, min(self.model.row_count - 1, row + row_delta)),
-            max(0, min(self.model.column_count, column + column_delta)),
+            max(0, column + column_delta),
             extend=extend)
         self._update_region()
         self._ensure_visible()

@@ -133,12 +133,14 @@ class TableWindowTests(unittest.TestCase):
         window = self.editor_window.EditorWindow.__new__(self.editor_window.EditorWindow)
         window.words = self.editor_window.LABELS["en"]
         window.document = EditorDocument()
-        window.document.open(path)
+        if path is not None:
+            window.document.open(path)
         window.text = TextStub(window.document.text)
         window.status = SimpleNamespace(config=lambda **kwargs: None)
         window.raw_frame = SimpleNamespace(pack=lambda **kwargs: None, pack_forget=lambda: None)
         window.table_grid = GridStub(window._table_cell_changed)
-        window._table_button = SimpleNamespace(configure=lambda **kwargs: None)
+        window._table_button = SimpleNamespace(configure=lambda **kwargs: None, state=None)
+        window._table_button.configure = lambda **kwargs: vars(window._table_button).update(kwargs)
         window._view = "raw"
         window.title = lambda value: None
         window._schedule_line_numbers = lambda: None
@@ -146,6 +148,52 @@ class TableWindowTests(unittest.TestCase):
         window.on_convert = None
         window.can_convert = None
         return window
+
+    def test_new_document_table_edit_save_as_and_cancel(self):
+        with tempfile.TemporaryDirectory() as folder:
+            window = self._window(None)
+            window._update_view_button()
+            self.assertEqual(window._table_button.state, "normal")
+            self.assertTrue(window.show_table())
+            self.assertFalse(window.document.modified)
+            window.table_grid.pending = (0, 0, "猫")
+            with patch.object(self.editor_window.filedialog, "asksaveasfilename", return_value="",
+                              create=True):
+                self.assertFalse(window.save_as())
+            self.assertEqual(window._view, "table")
+            self.assertEqual(window.document.text, "")
+            self.assertIsNone(window.document.path)
+            self.assertEqual(window.table_grid.pending, (0, 0, "猫"))
+            self.assertEqual(window._table_button.state, "normal")
+
+            target = Path(folder) / "new 日本語.tsv"
+            with patch.object(self.editor_window.filedialog, "asksaveasfilename",
+                              return_value=str(target), create=True):
+                self.assertTrue(window.save_as())
+            self.assertEqual(target.read_text(encoding="utf-8"), "猫")
+            self.assertEqual(window.document.path, target)
+            self.assertEqual(window._view, "table")
+            self.assertEqual(window._table_button.state, "normal")
+            self.assertFalse(window.document.modified)
+
+    def test_table_save_as_txt_commits_and_switches_raw(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "script.tsv"
+            source.write_text("A\tB", encoding="utf-8")
+            window = self._window(source)
+            window._update_view_button()
+            self.assertEqual(window._table_button.state, "normal")
+            self.assertTrue(window.show_table())
+            window.table_grid.pending = (0, 1, "犬")
+            target = Path(folder) / "script.txt"
+            with patch.object(self.editor_window.filedialog, "asksaveasfilename",
+                              return_value=str(target), create=True):
+                self.assertTrue(window.save_as())
+            self.assertEqual(target.read_text(encoding="utf-8"), "A\t犬")
+            self.assertEqual(window._view, "raw")
+            self.assertEqual(window._table_button.state, "disabled")
+            self.assertFalse(window.show_table())
+            self.assertFalse(window.document.modified)
 
     def test_view_only_is_lossless_edit_undo_redo_save_and_convert(self):
         with tempfile.TemporaryDirectory(prefix="table 日本語 ") as folder:
@@ -204,8 +252,19 @@ class TableWindowTests(unittest.TestCase):
             source = Path(folder) / "script.txt"
             source.write_text("0\tKEY_A", encoding="utf-8")
             window = self._window(source)
+            window._update_view_button()
+            self.assertEqual(window._table_button.state, "disabled")
             self.assertFalse(window.show_table())
             self.assertEqual(window._view, "raw")
+
+            tsv = Path(folder) / "script.tsv"
+            tsv.write_text("A\tB", encoding="utf-8")
+            window = self._window(tsv)
+            self.assertTrue(window.show_table())
+            self.assertTrue(window.open_file(source))
+            self.assertEqual(window._view, "raw")
+            self.assertEqual(window.document.path, source)
+            self.assertEqual(window._table_button.state, "disabled")
 
     def test_bulk_changes_are_one_undo_step_and_keep_save_paths(self):
         with tempfile.TemporaryDirectory(prefix="spreadsheet 日本語 ") as folder:

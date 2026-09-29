@@ -236,11 +236,14 @@ class EditorWindow(tk.Toplevel):
         return (getattr(self, "_view", "raw") != "table" or
                 self.table_grid.commit_edit())
 
+    def _table_available(self):
+        return (self.document.path is None or
+                self.document.path.suffix.lower() == ".tsv")
+
     def _update_view_button(self):
         if hasattr(self, "_table_button"):
-            available = (self.document.path is not None and
-                         self.document.path.suffix.lower() == ".tsv")
-            self._table_button.configure(state="normal" if available else "disabled")
+            self._table_button.configure(
+                state="normal" if self._table_available() else "disabled")
 
     def show_raw(self):
         if getattr(self, "_view", "raw") == "table":
@@ -254,7 +257,7 @@ class EditorWindow(tk.Toplevel):
         return True
 
     def show_table(self):
-        if self.document.path is None or self.document.path.suffix.lower() != ".tsv":
+        if not self._table_available():
             return False
         if getattr(self, "_view", "raw") == "table":
             return True

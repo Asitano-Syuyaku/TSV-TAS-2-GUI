@@ -20,6 +20,8 @@ class CanvasStub:
         self.boxes = []
         self.texts = []
         self.lines = []
+        self.scrollregion = (0, 0, width, height)
+        self.horizontal_moves = 0
 
     def canvasx(self, value):
         return self.origin_x + value
@@ -32,6 +34,18 @@ class CanvasStub:
 
     def winfo_height(self):
         return self.height
+
+    def configure(self, **options):
+        self.scrollregion = options.get("scrollregion", self.scrollregion)
+
+    def xview_moveto(self, fraction):
+        extent = self.scrollregion[2]
+        self.origin_x = max(0, min(extent - self.width, fraction * extent))
+        self.horizontal_moves += 1
+
+    def yview_moveto(self, fraction):
+        extent = self.scrollregion[3]
+        self.origin_y = max(0, min(extent - self.height, fraction * extent))
 
     def delete(self, tag):
         pass
@@ -177,6 +191,101 @@ class TableGridTests(unittest.TestCase):
         self.assertEqual(grid.selected, (1, 1))
         self.assertEqual(grid._move(0, -1), "break")
         self.assertEqual(grid.selected, (1, 0))
+
+    def test_repeated_entry_tab_extends_past_viewport_without_extra_tabs(self):
+        class EntryStub:
+            def __init__(self, _parent, **_options):
+                self.value = ""
+                self.destroyed = False
+                self.bindings = {}
+                self.placement = None
+
+            def insert(self, _index, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def bind(self, sequence, callback):
+                self.bindings[sequence] = callback
+
+            def place(self, **options):
+                self.placement = options
+
+            def place_forget(self):
+                self.placement = None
+
+            def focus_set(self):
+                pass
+
+            def select_range(self, _start, _end):
+                pass
+
+            def destroy(self):
+                self.destroyed = True
+
+        grid = self.module.TableGrid.__new__(self.module.TableGrid)
+        grid.canvas = CanvasStub(origin_y=0, width=470, height=120)
+        grid.model = TableModel("A")
+        grid.selected = (0, 0)
+        grid.gutter_width = 48
+        grid.header_height = grid.row_height = 24
+        grid.column_width = 160
+        grid.font = None
+        grid._editor = None
+        grid._edit_job = None
+        grid._entry_move_pending = False
+        grid._schedule_draw = lambda: None
+        grid.on_select = lambda: None
+        changes = []
+        grid.on_change = lambda row, old, new: changes.append((old, new)) or True
+        pending = []
+        grid.after = lambda delay, callback: pending.append(callback)
+        grid._update_region()
+
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            grid.begin_edit()
+
+            def tab():
+                previous = grid._editor
+                self.assertEqual(previous.bindings["<Tab>"](types.SimpleNamespace(widget=previous)),
+                                 "break")
+                # The active Entry must survive its own key callback.
+                self.assertFalse(previous.destroyed)
+                self.assertIs(grid._editor, previous)
+                self.assertEqual(len(pending), 1)
+                pending.pop(0)()
+                self.assertTrue(previous.destroyed)
+                self.assertIsNot(grid._editor, previous)
+                x1, y1, x2, y2 = grid._cell_box(*grid.selected)
+                left = max(x1 - grid.canvas.origin_x, grid.gutter_width)
+                top = max(y1 - grid.canvas.origin_y, grid.header_height)
+                self.assertEqual(grid._editor.placement,
+                                 {"x": left, "y": top,
+                                  "width": min(x2 - grid.canvas.origin_x,
+                                               grid.canvas.width) - left,
+                                  "height": min(y2 - grid.canvas.origin_y,
+                                                grid.canvas.height) - top})
+
+            for index in range(40):
+                grid._editor.value = f"v{index}"
+                tab()
+                self.assertEqual(grid.model.column_count, index + 1)
+                self.assertEqual(grid.selected, (0, index + 1))
+                self.assertEqual(grid.model.to_text(),
+                                 "\t".join(f"v{i}" for i in range(index + 1)))
+            self.assertGreater(grid.canvas.horizontal_moves, 0)
+            before = grid.model.to_text()
+            tab()
+            tab()
+            self.assertEqual(grid.selected, (0, 42))
+            self.assertEqual(grid.model.column_count, 40)
+            self.assertEqual(grid.model.to_text(), before)
+            grid._editor.value = "終わり"
+            tab()
+            self.assertEqual(grid.model.column_count, 43)
+            self.assertEqual(grid.model.to_text(), before + "\t\t\t終わり")
+            self.assertEqual(len(changes), 41)
 
     def test_horizontal_scroll_keeps_gutter_fixed_and_hits_visible_cell(self):
         grid = self.module.TableGrid.__new__(self.module.TableGrid)
