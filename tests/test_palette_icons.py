@@ -38,6 +38,9 @@ class PaletteAssetTests(unittest.TestCase):
             self.assertTrue(palette_icon_path(item.icon_key).is_file())
         self.assertEqual((BUTTON_KEYS["plus"], BUTTON_KEYS["minus"]),
                          ("button_plus", "button_minus"))
+        self.assertEqual({item.text: item.short_label for item in buttons
+                          if item.text in ("ls", "rs")},
+                         {"ls": "stick", "rs": "stick"})
         self.assertTrue(all(item.icon_key is None for item in CANDIDATES
                             if item.category != "buttons"))
 
@@ -86,13 +89,17 @@ class PaletteTkTests(unittest.TestCase):
                 self.assertEqual(editor.input_palette.winfo_manager(), "pack")
                 self.assertEqual(editor.input_palette.winfo_width(), 330)
                 palette_buttons = list(buttons_in(editor.input_palette))
+                icon_buttons = []
                 for item in (item for item in CANDIDATES if item.category == "buttons"):
                     button = next(button for button in palette_buttons
-                                  if button.cget("text") == item.short_label)
+                                  if button.cget("image") == str(editor._palette_icons[item.icon_key]))
+                    icon_buttons.append(button)
+                    self.assertEqual(button.cget("text"), item.short_label)
                     self.assertEqual(button.cget("image"), str(editor._palette_icons[item.icon_key]))
                     self.assertEqual(button.cget("compound"), "left")
                     self.assertIn(int(button.grid_info()["column"]), (0, 1))
                     self.assertGreaterEqual(button.winfo_height(), 24)
+                self.assertEqual(len({button.winfo_height() for button in icon_buttons}), 1)
                 self.assertTrue(all(icon.width() == icon.height() == 24
                                     for icon in editor._palette_icons.values()))
                 self.assertTrue(any(isinstance(child, tk.Scrollbar)

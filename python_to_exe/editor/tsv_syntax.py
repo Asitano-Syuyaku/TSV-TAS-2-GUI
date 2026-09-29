@@ -27,7 +27,7 @@ _BUTTON_ICONS = {
     "plus": ("Plus", "button_plus"), "minus": ("Minus", "button_minus"),
     "dp-u": ("Up", "dpad_up"), "dp-d": ("Down", "dpad_down"),
     "dp-l": ("Left", "dpad_left"), "dp-r": ("Right", "dpad_right"),
-    "ls": ("LS", "stick_left_click"), "rs": ("RS", "stick_right_click"),
+    "ls": ("stick", "stick_left_click"), "rs": ("stick", "stick_right_click"),
 }
 
 

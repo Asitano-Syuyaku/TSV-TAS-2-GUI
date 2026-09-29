@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#202020" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
   <circle cx="12" cy="12" r="9"/>
   <circle cx="12" cy="12" r="6.5"/>
-  <text x="12" y="15.5" fill="#202020" stroke="none" font-family="Arial, DejaVu Sans, sans-serif" font-size="8" font-weight="700" text-anchor="middle">LS</text>
+  <text x="12" y="15.5" fill="#202020" stroke="none" font-family="Arial, DejaVu Sans, sans-serif" font-size="9" font-weight="700" text-anchor="middle">L</text>
 </svg>
