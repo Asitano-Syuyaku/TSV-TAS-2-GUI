@@ -1,53 +1,148 @@
 # TSV-TAS-2-GUI
 
-This repository is a GUI wrapper and fork of [xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2). The converter scripts are based on upstream **`stas-dev`**, commit `245d5600c8ccc5dd97857b135341e6ba2cbe86e6` (not upstream `main`). The GUI runs the companion Python scripts as subprocesses; it does not reimplement script parsing, motion, gyro, or STAS output.
+[English](README_EN.md) | 日本語
 
-`tsv-tas.py` compiles TSV-TAS scripts to LunaKit binary (default), STAS for newer LunaKit, or nx-TAS for smo-practice. `nx-tas-to-tsv-tas.py` converts nx-TAS text to TSV-TAS. For the script format, see the [upstream documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing).
+Super Mario Odyssey のTAS用スクリプトを変換する、[xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2/tree/stas-dev) のGUI forkです。converterはupstream **`stas-dev` の commit `245d5600c8ccc5dd97857b135341e6ba2cbe86e6`** を基準とし、GUIは同梱のPythonスクリプトをsubprocessで実行します。高度な書式は [TSV-TAS-2 Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing) を参照してください。
 
-## GUI
+## 出力形式と必要環境
 
-Run `python3 python_to_exe/main_en.py` for English or `python3 python_to_exe/main_jp.py` for Japanese. Python 3 with Tkinter is required. Both launchers use the same interface and conversion logic; only labels and messages differ.
+| GUIの選択肢 | 出力 | 用途 |
+| --- | --- | --- |
+| LunaKit binary | 拡張子なし | 従来のLunaKit用バイナリ。CLIの既定値 |
+| STAS | `.stas` | 新しいLunaKit用のSTAS形式。後述のscript commandを出力可能 |
+| nx-TAS | `.txt` | smo-practice用のテキスト形式。空フレームの省略に対応 |
 
-Choose an input, output directory and base name, then select LunaKit binary, STAS or nx-TAS. The GUI gives STAS output a `.stas` extension and nx-TAS output a `.txt` extension; LunaKit binary keeps the entered base name without an extension. `.tsv` input goes directly to the compiler. As in the previous GUI, `.txt` input is treated as nx-TAS and first converted to an intermediate `.tsv` file in the output directory. For a tab-separated TSV-TAS script saved as `.txt`, use the CLI directly or rename it `.tsv`.
+Python 3とTkinterが必要です。GUI exeもconverterを動かすために別途Python 3が必要です。Windows exeを作る場合だけPyInstallerが必要です。生成ファイルをSwitchで使うには、選んだ形式に対応するmodが必要です。FTP送信にはSwitch側のFTPサーバーと接続情報が必要です。
 
-**Skip empty frames** enables upstream `-e` only for nx-TAS output. **Debug output** enables `-d` and writes `<output file>-debug.csv` beside the output. **Send via FTP** enables `-f` for the selected output format and uses the settings entered in the GUI. The GUI saves `ip` (string), `port` (integer), `user` (string), and `passwd` (string) in `ftp_config.json` beside the converter scripts. The upstream compiler reads that file from its working directory. Keep credentials out of commits and shared copies of the repository.
+## まず1本作る
 
-The GUI writes local output first. FTP then uploads the generated file to `SMO/tas/scripts/` on the Switch. A Switch and working FTP server are required to verify transfer.
+1. 表計算ソフトまたはテキストエディターで `sample.tsv` を作ります。**列はタブで区切り**、1列目をduration（フレーム数）、2列目以降を同時に行う入力にします。次は実際のタブ区切りの例です。
 
-## CLI
+   ```text
+   $angle = 90
+   // 最初のコメント行
+   5	ls($angle)
+   1	a	rs(0)
+   3
+   4	b	ls(0)/ls(90)
+   6	ls(0)->ls(50)
+   ```
 
-Run from the repository root:
+2. repositoryのルートで `python3 python_to_exe/main_jp.py`（日本語）または `python3 python_to_exe/main_en.py`（English）を起動します。Windowsでは `python` または `py -3` でも実行できます。
+3. Inputに `sample.tsv`、Output Directoryに保存先、Output File Nameに拡張子なしの名前（例: `sample`）を指定します。形式を選び、**Start Conversion／変換実行**を押します。
+4. 選んだ形式に応じて `sample`、`sample.stas`、または `sample.txt` が保存先にできます。まずはDebugを有効にして `sample-debug.csv`（STASなら `sample.stas-debug.csv`）でフレームを確認できます。
+
+この例は最初に左スティックを5フレーム上方向へ倒し、次にAボタンと右スティックを1フレーム入力し、3フレーム待機します。ループとスティック補間の詳細は下の早見表にあります。
+
+## GUIの項目
+
+| 項目 | 使い方 |
+| --- | --- |
+| Input Script File／入力スクリプトファイル | `.tsv` は直接コンパイル。`.txt` はnx-TAS入力として先にTSVへ変換 |
+| Output Directory／出力ディレクトリ | 出力先の既存フォルダーを選択。`.txt` 入力の中間 `.tsv` もここに保存 |
+| Output File Name／出力ファイル名 | 拡張子やフォルダーを含まないベース名。形式に応じた拡張子をGUIが付加 |
+| Output format／出力形式 | LunaKit binary、STAS、nx-TASから選択 |
+| Skip empty frames／空フレームを省略 | nx-TASを選んだ場合だけ有効。upstreamの `-e` |
+| Debug output／Debug出力 | upstreamの `-d`。出力ファイル名に `-debug.csv` を加えたCSVを保存 |
+| Send via FTP／FTPで送信 | upstreamの `-f`。ローカル出力後、`SMO/tas/scripts/` へ送信 |
+
+日本語版と英語版は表示言語以外、同じ変換処理を使います。`-l` は対話的に再生成するCLI専用オプションで、GUIにはありません。
+
+### FTP設定
+
+FTPを有効にするとIP、port、user、passwordの入力欄が表示されます。GUIはconverterと同じフォルダーの `ftp_config.json` に `ip`（文字列）、`port`（整数）、`user`（文字列）、`passwd`（文字列）を保存します。CLIで `-f` を使う場合も、このファイルを設定して**repositoryのルートから**実行してください。秘密情報が入るため、設定後のファイルをcommit・共有しないでください。FTPは選択した3形式のどれとも組み合わせられます。実機転送の成否はSwitch側の環境で確認してください。
+
+## TSV-TASの基本書式
+
+| 書式 | 例と意味 |
+| --- | --- |
+| duration | `5` は5フレーム。duration欄を空にすると1フレーム。`3` だけの行は3フレーム待機 |
+| ボタン | `1<TAB>a<TAB>zl` はAとZLを同じ1フレームで入力。`a`、`b`、`x`、`y`、`zl`、`zr` などを使用 |
+| スティック | `ls(90)` は左スティックを半径1、90度へ。`rs(0.5; 180)` は右スティックを半径0.5、180度へ。角度の単位は度 |
+| 2P／Cappy | 例: `$is_two_player = true` を独立行に置き、`1<TAB>ca<TAB>cls(45)` で2P側のAと左スティックを入力。詳細と対象modの制限はDocumentationを参照 |
+| ループ | `6<TAB>a/b` はA、Bを交互に6フレーム入力。`/` で同じセル内の入力を区切る |
+| スティック補間 | `6<TAB>ls(0)->ls(50)` は6フレームで左スティックを0度から50度へ補間 |
+| 式と変数 | `$angle = 90` を独立行に置き、`4<TAB>ls($angle + 45)` のように利用。加減乗除に対応 |
+| コメント | duration欄を `//` で始めた行は実行しない。例: `// 説明` |
+
+上の `<TAB>` は説明用の記号です。ファイル内では**実際のタブ文字**に置き換えてください。1行に複数の入力を書けます。スティックの座標指定、局所duration、sequence、motionやgyroなどは [Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing) を参照してください。
+
+### STASのscript command（実験的）
+
+commandはduration欄の先頭に `/` を付けて独立行に書きます。現在のconverterは**STAS出力時**に次のcommandを処理します。command行そのものは余分なlogical frameを追加しません。新しいcommandの引数は現在の `tsv-tas.py` に合わせています。
+
+| command | 現在の実装での指定 |
+| --- | --- |
+| `/tp x y z`、`/ctp x y z` | Mario／Cappyの座標を指定。回転を含む形はDocumentationを参照 |
+| `/absStick on`、`/absStick off` | absolute stickの有効／無効を指定 |
+| `/speed 2` | speedを整数 **1～10** で指定 |
+| `/pause` | pause commandを出力。引数なし |
+| `/loadFile 1` | save-file IDを整数で指定してload commandを出力 |
+| `/reloadFile` | reload commandを出力。引数なし |
+| `/demo on`、`/demo off` | demo flagの有効／無効を指定 |
+
+たとえば `1<TAB>a` の次に `/pause`、その次に `1<TAB>b` を書くと、2行目の入力開始時点にcommandが配置されます。`/absStick`、`/demo` の有効値として `true`、`1`、`on`、`y`、`yes` を受け付けます。commandのSwitch上での効果は対応するLunaKitで確認してください。
+
+## nx-TASからTSV-TASへ
+
+GUIでnx-TASの `.txt` を選ぶと、まず `nx-tas-to-tsv-tas.py` が保存先に同名の `.tsv` を作り、そのTSVを選択した形式へコンパイルします。TSVへの変換だけならCLIで次を実行します。
 
 ```text
-python3 tsv-tas.py [options] input.tsv output
 python3 nx-tas-to-tsv-tas.py input.txt output.tsv
 ```
 
-The compiler also accepts tab-separated `.txt` input. Upstream recognizes a `.csv` suffix, but its current row parser still splits on tabs, so CSV rows are not reliable; the GUI does not offer CSV input. Options can be combined after one hyphen, for example `-ne` or `-fsd`:
+この逆変換はupstream由来で、すべてのnx-TAS要素の完全な往復変換は保証されません。元の `.txt` を出力で上書きしない名前・保存先を選んでください。
 
-| Option | Upstream behavior |
+## CLI
+
+repositoryのルートから実行します。outputは**ローカルファイルのpath**です。
+
+```text
+python3 tsv-tas.py input.tsv output
+python3 tsv-tas.py -s input.tsv output.stas
+python3 tsv-tas.py -ne input.tsv output.txt
+python3 tsv-tas.py -fsd input.tsv output.stas
+```
+
+| option | 動作 |
 | --- | --- |
-| `-f` | Upload the output file via FTP using `ftp_config.json` |
-| `-n` | Generate nx-TAS text |
-| `-s` | Generate STAS for newer LunaKit |
-| `-e` | Skip empty frames in nx-TAS output |
-| `-l` | Recompile in a loop after pressing Enter (CLI only) |
-| `-d` | Generate `<output file>-debug.csv` |
+| `-f` | `ftp_config.json` を使用して出力をFTP送信 |
+| `-n` | nx-TASテキストを生成 |
+| `-s` | STASを生成 |
+| `-e` | nx-TASで空フレームを省略 |
+| `-l` | Enter入力のたびに再生成（CLI専用） |
+| `-d` | `<output>-debug.csv` を生成 |
 
-With no format option, output is LunaKit binary. For FTP, configure `ftp_config.json` before running the CLI. The output argument is a local path; the GUI supplies the extension for STAS and nx-TAS. The upstream parser also recognizes `-p` for an output path based on the input, but the GUI supplies an explicit output path.
+optionは `-ne` のように1つのハイフンの後へまとめます。`-n` と `-s` は別々の出力形式なので、同時に指定しないでください。`-e` は `-n` と組み合わせてください。
 
-## Build Windows executables
+## Windows exeの作成と配置
 
-Install Python 3, Tkinter and PyInstaller, then run these commands from the repository root:
+WindowsでPython 3とPyInstallerを用意し、repositoryのルートで実行します。
 
 ```text
 python -m pip install pyinstaller
-python -m PyInstaller --noconsole --onefile python_to_exe/main_en.py
 python -m PyInstaller --noconsole --onefile python_to_exe/main_jp.py
+python -m PyInstaller --noconsole --onefile python_to_exe/main_en.py
 ```
 
-Place each resulting `dist/main_en.exe` or `dist/main_jp.exe` in the same folder as `tsv-tas.py`, `nx-tas-to-tsv-tas.py`, and `ftp_config.json`. The GUI executable bundles the interface only. Its companion scripts still require an installed Python 3; on Windows it uses the `py -3` launcher when available, then a Python executable on `PATH`. Source runs use the current Python interpreter. Input and output paths may contain spaces.
+できた `dist/main_jp.exe` または `dist/main_en.exe` を、`tsv-tas.py`、`nx-tas-to-tsv-tas.py`、`ftp_config.json` と**同じフォルダー**へ置きます。exeはGUIだけを内包し、converterは同じフォルダーの `.py` を起動します。Windowsでは `py -3`、次にPATH上のPythonを探すため、利用時にもPython 3をインストールしてください。pathに空白があってもGUIは引数を分けて渡します。
 
-## Changes from upstream
+## repository構成とupstreamとの差分
 
-The GUI adds Japanese and English launchers, file selection, output format and option controls, FTP settings, conversion logs, and PyInstaller entry points. `tsv-tas.py` otherwise follows upstream `stas-dev`; its one local FTP adjustment uploads the output file's basename so a local absolute output path does not become part of the remote path. `nx-tas-to-tsv-tas.py` matches the upstream version, including removal of an unused NumPy import.
+| path | 役割 |
+| --- | --- |
+| `tsv-tas.py` | `stas-dev` ベースのTSV-TAS converter。GUI固有のFTP変更ではremote名にローカルpathのbasenameだけを使用 |
+| `nx-tas-to-tsv-tas.py` | upstreamと同じnx-TAS→TSV-TAS converter |
+| `python_to_exe/main_jp.py`、`main_en.py` | 日本語／Englishの起動スクリプト |
+| `python_to_exe/converter_gui.py`、`converter_logic.py` | 共通GUI、引数生成、Python探索、FTP設定 |
+| `ftp_config.json` | FTP接続設定。実credentialをcommitしないこと |
+| `tests/test_conversion.py` | ローカル変換とGUI引数のテスト |
+
+GUI固有機能はファイル選択、3形式の選択、Debug・FTP・空フレーム省略の切り替え、日英表示、ログ表示、PyInstaller起動です。scriptの構文、motion、gyro、STASの生成はupstream converterに委ねています。
+
+## 注意事項・既知の制限
+
+- GUIは `.txt` をnx-TAS入力として扱います。タブ区切りのTSV-TASを `.txt` で保存した場合は `.tsv` に改名するかCLIで直接変換してください。
+- upstream compilerは `.csv` 拡張子を認識しますが、現在の行解析はタブで分割するためCSV入力は信頼できません。GUIは `.csv` を選択対象にしていません。
+- `-e` はnx-TAS専用です。STAS commandは実験的で、対象modでの動作確認が必要です。
+- GUI exeのWindows実行と実機FTP転送は利用環境で確認してください。READMEの例はローカルconverterで確認しています。
