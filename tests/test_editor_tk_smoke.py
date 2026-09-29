@@ -24,8 +24,8 @@ class RealTkSmokeTests(unittest.TestCase):
             self.skipTest(f"graphical Tk display unavailable: {error}")
         self.addCleanup(app.destroy)
         with tempfile.TemporaryDirectory(prefix="tas selection ") as folder:
-            source = Path(folder) / "eighteen.tsv"
-            source.write_text("1\ta\n\n5\n" + "1\n" * 11 + "1\tzl\n",
+            source = Path(folder) / "fifteen.tsv"
+            source.write_text("1\ta\n" + "\n" * 13 + "1\tzl\n",
                               encoding="utf-8")
             app._set_input_path(source)
             with patch("python_to_exe.editor.line_positions.analyze_positions",
@@ -43,7 +43,7 @@ class RealTkSmokeTests(unittest.TestCase):
                 grid.selection.move_to(0, 0)
                 grid.selection.move_to(14, 0, extend=True)
                 grid.on_select()
-                expected = "Start: 0f | Duration: 18f | End: 17f | Total: 18f"
+                expected = "Start: 0f | Duration: 15f | End: 14f | Total: 15f"
                 self.assertEqual(editor.frame_status.cget("text"), expected)
                 self.assertEqual(grid.selected[0], 14)
                 grid.selection.move_to(14, 0)
@@ -53,7 +53,7 @@ class RealTkSmokeTests(unittest.TestCase):
                 grid.selection.move_to(0, 0)
                 grid.on_select()
                 self.assertEqual(editor.frame_status.cget("text"),
-                                 "Start: 0f | Duration: 1f | End: 0f | Total: 18f")
+                                 "Start: 0f | Duration: 1f | End: 0f | Total: 15f")
                 self.assertEqual(analyze.call_count, 1)
                 self.assertFalse(editor.document.modified)
 

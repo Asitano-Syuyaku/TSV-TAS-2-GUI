@@ -2,6 +2,7 @@
 
 import io
 import subprocess
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,36 +44,46 @@ class LinePositionTests(unittest.TestCase):
         self.assertEqual(positions.for_line(3), LinePosition(1, 0, None))
         self.assertEqual(positions.for_line(4), LinePosition(1, 0, None))
         self.assertEqual(positions.for_line(5), LinePosition(1, 0, None))
-        self.assertEqual(positions.for_line(6), LinePosition(1, 0, None))
-        self.assertEqual(positions.for_line(7), LinePosition(1, 1, 1))
-        self.assertEqual(positions.total_frames, 2)
+        self.assertEqual(positions.for_line(6), LinePosition(1, 1, 1))
+        self.assertEqual(positions.for_line(7), LinePosition(2, 1, 2))
+        self.assertEqual(positions.total_frames, 3)
 
-    def test_only_completely_empty_rows_consume_zero_frames(self):
+    def test_blank_and_empty_first_cells_use_default_duration(self):
         positions = self.analyze("1\ta\n\n\t\n \t  \n\ta\n\tls(90)\n1\tb\n")
-        for line in (2, 3, 4):
-            self.assertEqual(positions.for_line(line), LinePosition(1, 0, None))
-        self.assertEqual(positions.for_line(5), LinePosition(1, 1, 1))
-        self.assertEqual(positions.for_line(6), LinePosition(2, 1, 2))
-        self.assertEqual(positions.for_line(7), LinePosition(3, 1, 3))
+        for line in range(2, 8):
+            self.assertEqual(positions.for_line(line), LinePosition(line - 1, 1, line - 1))
+        self.assertEqual(positions.total_frames, 7)
+
+    def test_blank_row_sets_previous_resolved_duration_to_default(self):
+        positions = self.analyze("2\ta\n\n!\tb\n")
+        self.assertEqual(positions.for_line(2), LinePosition(2, 1, 2))
+        self.assertEqual(positions.for_line(3), LinePosition(3, 1, 3))
         self.assertEqual(positions.total_frames, 4)
 
-    def test_blank_row_does_not_change_previous_resolved_duration(self):
-        positions = self.analyze("2\ta\n\n!\tb\n")
-        self.assertEqual(positions.for_line(2), LinePosition(2, 0, None))
-        self.assertEqual(positions.for_line(3), LinePosition(2, 2, 3))
+    def test_blank_physical_rows_are_each_one_frame(self):
+        self.assertEqual(self.analyze("\n").for_line(1), LinePosition(0, 1, 0))
+        self.assertEqual(self.analyze("\n" * 5).total_frames, 5)
+        positions = self.analyze("1\n\n\n1\n")
+        self.assertEqual(positions.for_line(1), LinePosition(0, 1, 0))
+        self.assertEqual(positions.for_line(2), LinePosition(1, 1, 1))
+        self.assertEqual(positions.for_line(3), LinePosition(2, 1, 2))
+        self.assertEqual(positions.for_line(4), LinePosition(3, 1, 3))
         self.assertEqual(positions.total_frames, 4)
+
+    def test_fifteen_physical_rows_resolve_to_fifteen_frames(self):
+        positions = self.analyze("1\ta\n" + "\n" * 13 + "1\tzl\n")
+        self.assertEqual(positions.for_range(1, 15), LinePosition(0, 15, 14))
+        self.assertEqual(positions.total_frames, 15)
 
     def test_eighteen_frames_and_zero_based_output_formats(self):
-        source_text = "1\ta\n\n5\n" + "1\n" * 11 + "1\tzl\n"
+        source_text = "1\ta\n5\n" + "1\n" * 11 + "1\tzl\n"
         positions = self.analyze(source_text)
         self.assertEqual(positions.total_frames, 18)
         self.assertEqual(positions.for_line(1), LinePosition(0, 1, 0))
-        self.assertEqual(positions.for_line(2), LinePosition(1, 0, None))
-        self.assertEqual(positions.for_line(15), LinePosition(17, 1, 17))
-        self.assertEqual(positions.for_range(1, 15), LinePosition(0, 18, 17))
-        self.assertEqual(positions.for_range(15, 1), LinePosition(0, 18, 17))
-        self.assertEqual(positions.for_range(2, 2), LinePosition(1, 0, None))
-        self.assertIsNone(positions.for_range(1, 16))
+        self.assertEqual(positions.for_line(14), LinePosition(17, 1, 17))
+        self.assertEqual(positions.for_range(1, 14), LinePosition(0, 18, 17))
+        self.assertEqual(positions.for_range(14, 1), LinePosition(0, 18, 17))
+        self.assertIsNone(positions.for_range(1, 15))
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "eighteen.tsv"
             source.write_text(source_text, encoding="utf-8")
@@ -97,18 +108,35 @@ class LinePositionTests(unittest.TestCase):
                     self.assertIn(prefix + (0).to_bytes(4, "little"), data)
                     self.assertIn(prefix + (17).to_bytes(4, "little"), data)
 
-    def test_blank_only_script_has_no_frames_in_each_output(self):
+    def test_blank_only_script_has_one_frame_per_physical_row_in_each_output(self):
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "blank.tsv"
             source.write_text("\n\t\n \t  \n", encoding="utf-8")
-            for format_name in ("binary", "stas", "nxtas"):
+            for format_name, suffix in (("binary", ""), ("stas", ".stas"),
+                                        ("nxtas", ".txt")):
                 commands = build_commands(source, folder, format_name, format_name,
-                                          line_map=True, base_dir=ROOT)
+                                          line_map=True, debug=True, base_dir=ROOT)
                 result = subprocess.run(commands[-1], cwd=ROOT, capture_output=True,
                                         text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                output = Path(folder) / (format_name + suffix)
+                self.assertEqual(load_debug_csv(str(output) + "-debug.csv").total_frames, 3)
+                with Path(str(output) + "-lines.csv").open(encoding="utf-8", newline="") as file:
+                    sidecar = parse_line_positions(file)
+                self.assertEqual(sidecar.total_frames, 3)
+                if format_name == "binary":
+                    self.assertEqual(struct.unpack_from("<I", output.read_bytes(), 4)[0], 3)
+                elif format_name == "stas":
+                    self.assertEqual(struct.unpack_from("<I", output.read_bytes(), 24)[0], 2)
+                else:
+                    self.assertEqual([int(line.split()[0]) for line in output.read_text().splitlines()],
+                                     [0, 1, 2])
                 positions = self.analyze(source.read_text(encoding="utf-8"))
-                self.assertEqual(positions.total_frames, 0)
+                self.assertEqual(positions.total_frames, 3)
+                for line in range(1, 4):
+                    self.assertEqual(positions.for_line(line),
+                                     LinePosition(line - 1, 1, line - 1))
+                    self.assertEqual(sidecar.for_line(line), positions.for_line(line))
 
     def test_loop_sequence_and_local_duration_keep_converter_row_duration(self):
         positions = self.analyze("3\ta[1]|b[?]\n3\ta[1]/b[1]\n3\ta[2]\n"
