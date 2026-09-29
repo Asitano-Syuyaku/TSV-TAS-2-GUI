@@ -17,7 +17,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python_to_exe"))
 
-from converter_logic import build_commands, python_command, save_ftp_config, scripts_dir
+from converter_logic import build_commands, load_ftp_config, python_command, save_ftp_config, scripts_dir
 
 
 class ConversionTests(unittest.TestCase):
@@ -64,6 +64,21 @@ class ConversionTests(unittest.TestCase):
         self.run_command(commands[1])
         self.assertEqual((self.work / "round trip").read_bytes()[:4], b"BOOB")
 
+    def test_txt_input_converts_to_each_output_format(self):
+        source = self.work / "nx input with spaces.txt"
+        source.write_text("0 KEY_A 0;0 0;0\n1 KEY_B 0;0 0;0\n")
+        for format_name, suffix, signature in (("binary", "", b"BOOB"),
+                                               ("stas", ".stas", b"STAS"),
+                                               ("nxtas", ".txt", b"0 ")):
+            base_name = "from nx " + format_name
+            commands = build_commands(source, self.work, base_name, format_name,
+                                      base_dir=ROOT, interpreter=[sys.executable])
+            self.assertEqual(len(commands), 2)
+            for command in commands:
+                self.run_command(command)
+            self.assertTrue((self.work / (base_name + ".tsv")).is_file())
+            self.assertTrue((self.work / (base_name + suffix)).read_bytes().startswith(signature))
+
     def test_debug_output(self):
         self.run_command(self.build("binary", debug=True)[0])
         debug_path = self.work / "output with spaces-debug.csv"
@@ -80,6 +95,10 @@ class ConversionTests(unittest.TestCase):
         config = json.loads((self.work / "ftp_config.json").read_text())
         self.assertEqual(set(config), {"ip", "port", "user", "passwd"})
         self.assertIsInstance(config["port"], int)
+
+    def test_malformed_ftp_config_does_not_break_startup(self):
+        (self.work / "ftp_config.json").write_text("[]")
+        self.assertEqual(load_ftp_config(self.work), {})
 
     def test_ftp_upload_uses_output_basename(self):
         save_ftp_config(self.work, "example.invalid", "5000", "tester", "")
@@ -184,15 +203,28 @@ class GuiStartupTests(unittest.TestCase):
                 for format_name in ("binary", "stas", "nxtas"):
                     captured = []
                     for app in (en_app, ja_app):
-                        app.after = lambda delay, callback, *args, **kwargs: callback(*args, **kwargs)
-                        app.log = lambda message: None
+                        app.after = lambda *args, **kwargs: self.fail("worker called Tk")
+                        messages = []
+                        app.log = messages.append
                         values = (str(source), directory, "out with spaces", format_name,
                                   format_name == "nxtas", True, False)
                         with patch("converter_gui.subprocess.run") as run:
                             run.return_value = types.SimpleNamespace(returncode=0, stdout="", stderr="")
                             app.convert(values, ("", "", "", ""))
                             captured.append(run.call_args.args[0])
+                        app.after = lambda delay, callback, *args, **kwargs: callback(*args, **kwargs)
+                        app._drain_events()
+                        self.assertEqual(app.convert_btn.state, "normal")
+                        self.assertEqual(len(messages), 1)
                     self.assertEqual(captured[0], captured[1])
+                with patch("converter_gui.subprocess.run") as run, \
+                     patch.object(fake_tk.messagebox, "showerror") as showerror:
+                    run.return_value = types.SimpleNamespace(returncode=1, stdout="", stderr="failed")
+                    en_app.convert((str(source), directory, "out with spaces", "binary",
+                                    False, False, False), ("", "", "", ""))
+                    en_app._drain_events()
+                    showerror.assert_called_once()
+                    self.assertEqual(en_app.convert_btn.state, "normal")
         for name in ("converter_gui", "main_en", "main_jp"):
             sys.modules.pop(name, None)
 

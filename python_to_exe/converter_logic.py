@@ -94,6 +94,7 @@ def save_ftp_config(base_dir, ip, port, user, password):
 def load_ftp_config(base_dir):
     try:
         with open(Path(base_dir) / "ftp_config.json", encoding="utf-8") as file:
-            return json.load(file)
+            config = json.load(file)
+            return config if isinstance(config, dict) else {}
     except (OSError, ValueError):
         return {}

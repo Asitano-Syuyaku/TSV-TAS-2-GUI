@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import threading
 import tkinter as tk
+from queue import Empty, SimpleQueue
 from tkinter import filedialog, messagebox
 
 if __package__:
@@ -65,6 +66,7 @@ class TASConverterApp(tk.Tk):
         self.title(self.words["title"])
         self.resizable(False, False)
         self.base_dir = scripts_dir()
+        self._events = SimpleQueue()
 
         tk.Label(self, text=self.words["input"]).grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.input_entry = tk.Entry(self, width=50)
@@ -165,6 +167,31 @@ class TASConverterApp(tk.Tk):
                       self.user_entry.get(), self.pass_entry.get())
         self.convert_btn.config(state="disabled")
         threading.Thread(target=self.convert, args=(values, ftp_values), daemon=True).start()
+        self.after(50, self._drain_events)
+
+    def _drain_events(self):
+        logs = []
+        while True:
+            try:
+                kind, message = self._events.get_nowait()
+            except Empty:
+                break
+            if kind == "log":
+                logs.append(message)
+                continue
+            if logs:
+                self.log("\n".join(logs))
+                logs.clear()
+            if kind == "success":
+                messagebox.showinfo(self.words["success_title"], message)
+            elif kind == "error":
+                messagebox.showerror(self.words["error_title"], message)
+            elif kind == "done":
+                self.convert_btn.config(state="normal")
+                return
+        if logs:
+            self.log("\n".join(logs))
+        self.after(50, self._drain_events)
 
     def convert(self, values, ftp_values):
         try:
@@ -173,23 +200,23 @@ class TASConverterApp(tk.Tk):
                 save_ftp_config(self.base_dir, *ftp_values)
             for command in commands:
                 display = subprocess.list2cmdline(command) if os.name == "nt" else shlex.join(command)
-                self.after(0, self.log, self.words["running"] + display)
+                self._events.put(("log", self.words["running"] + display))
                 result = subprocess.run(command, cwd=self.base_dir, capture_output=True,
                                         text=True, errors="replace",
                                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 if result.stdout:
-                    self.after(0, self.log, result.stdout.rstrip())
+                    self._events.put(("log", result.stdout.rstrip()))
                 if result.stderr:
-                    self.after(0, self.log, result.stderr.rstrip())
+                    self._events.put(("log", result.stderr.rstrip()))
                 if result.returncode:
                     script = next((os.path.basename(part) for part in command if part.endswith(".py")), command[0])
                     if self.language == "ja":
                         raise RuntimeError(f"{script} は終了コード {result.returncode} で失敗しました。")
                     raise RuntimeError(f"{script} exited with status {result.returncode}")
-            self.after(0, self.log, self.words["success"])
-            self.after(0, messagebox.showinfo, self.words["success_title"], self.words["success"])
+            self._events.put(("log", self.words["success"]))
+            self._events.put(("success", self.words["success"]))
         except Exception as error:
             detail = ERROR_JA.get(str(error), str(error)) if self.language == "ja" else str(error)
-            self.after(0, messagebox.showerror, self.words["error_title"], detail)
+            self._events.put(("error", detail))
         finally:
-            self.after(0, self.convert_btn.config, state="normal")
+            self._events.put(("done", None))
