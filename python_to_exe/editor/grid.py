@@ -44,10 +44,9 @@ class TableGrid(tk.Frame):
         self.model = TableModel("")
         self.selection = CellSelection()
         self._editor = None
+        self._entry_widget = None
         self._draw_job = None
-        self._edit_job = None
         self._scroll_region = None
-        self._drag_moved = False
         self._drag_ready = False
 
         self.canvas = tk.Canvas(self, background=CANVAS_BACKGROUND, highlightthickness=0,
@@ -68,6 +67,7 @@ class TableGrid(tk.Frame):
         self.canvas.bind("<Double-Button-1>", self._double_click)
         self.canvas.bind("<B1-Motion>", self._drag)
         self.canvas.bind("<ButtonRelease-1>", self._release)
+        self.canvas.bind("<KeyPress>", self._type_to_edit)
         self.canvas.bind("<MouseWheel>", self._wheel)
         self.canvas.bind("<Button-4>", lambda event: self._wheel_units(-1))
         self.canvas.bind("<Button-5>", lambda event: self._wheel_units(1))
@@ -84,8 +84,9 @@ class TableGrid(tk.Frame):
                            ("Tab", (0, 1)),
                            ("Shift-Tab", (0, -1))):
             self.canvas.bind(f"<{key}>", lambda event, move=delta: self._move(*move))
-        self.canvas.bind("<Return>", self._start_edit)
+        self.canvas.bind("<Return>", lambda event: self._move(1, 0))
         self.canvas.bind("<F2>", self._start_edit)
+        self.canvas.bind("<Shift-Return>", lambda event: self._move(-1, 0))
         for key, delta in (("Up", (-1, 0)), ("Down", (1, 0)),
                            ("Left", (0, -1)), ("Right", (0, 1))):
             self.canvas.bind(f"<Shift-{key}>",
@@ -264,12 +265,6 @@ class TableGrid(tk.Frame):
         return (max(0, min(row, self.model.row_count - 1)),
                 max(0, min(column, self.model.column_count)))
 
-    def _cancel_delayed_edit(self):
-        job = getattr(self, "_edit_job", None)
-        if job is not None:
-            self.after_cancel(job)
-            self._edit_job = None
-
     def _click(self, event):
         self._drag_ready = False
         cell = self._hit_cell(event)
@@ -277,9 +272,7 @@ class TableGrid(tk.Frame):
             return
         if not self.commit_edit():
             return
-        self._cancel_delayed_edit()
         self.selection.move_to(*cell, extend=bool(getattr(event, "state", 0) & 0x0001))
-        self._drag_moved = False
         self._drag_ready = True
         self._ensure_visible()
         self.on_select()
@@ -289,7 +282,7 @@ class TableGrid(tk.Frame):
     def _double_click(self, event):
         self._click(event)
         if self._drag_ready:
-            self.begin_edit()
+            self.begin_edit(caret_x=event.x)
         return "break"
 
     def _drag(self, event):
@@ -298,48 +291,49 @@ class TableGrid(tk.Frame):
         cell = self._hit_cell(event, clamp=True)
         if cell is None or cell == self.selected:
             return
-        self._cancel_delayed_edit()
-        self._drag_moved = True
         self.selection.move_to(*cell, extend=True)
         self.on_select()
         self._schedule_draw()
 
-    def _release(self, event):
-        if (self._drag_ready and self._editor is None and not self._drag_moved and
-                self._hit_cell(event) is not None and
-                not getattr(event, "state", 0) & 0x0001):
-            self._cancel_delayed_edit()
-            self._edit_job = self.after(250, self._begin_delayed_edit)
+    def _release(self, _event):
         self._drag_ready = False
 
-    def _begin_delayed_edit(self):
-        self._edit_job = None
-        self.begin_edit()
-
-    def begin_edit(self):
-        self._cancel_delayed_edit()
+    def begin_edit(self, initial=None, caret_x=None):
         if self._editor is not None:
             return
         row, column = self.selected
-        editor = tk.Entry(self.canvas, font=self.font, exportselection=False,
-                          background=ACTIVE_BACKGROUND, relief="flat",
-                          highlightthickness=3, highlightbackground=ACTIVE_LINE,
-                          highlightcolor=ACTIVE_LINE)
-        editor.insert(0, self.model.cell(row, column))
+        self.selection.move_to(row, column)
+        editor = self._entry_widget
+        if editor is None:
+            editor = tk.Entry(self.canvas, font=self.font, exportselection=False,
+                              background=ACTIVE_BACKGROUND, relief="flat",
+                              highlightthickness=3, highlightbackground=ACTIVE_LINE,
+                              highlightcolor=ACTIVE_LINE)
+            self._entry_widget = editor
+            self._bind_entry_navigation(editor)
+        editor.delete(0, "end")
+        editor.insert(0, self.model.cell(row, column) if initial is None else initial)
+        editor.xview_moveto(0)
         self._editor = editor
         self._position_editor()
         editor.focus_set()
-        editor.select_range(0, "end")
-        for key, delta in (("Up", (-1, 0)), ("Down", (1, 0)),
-                           ("Left", (0, -1)), ("Right", (0, 1)),
-                           ("Return", (1, 0)), ("Tab", (0, 1)),
+        editor.selection_clear()
+        if caret_x is None:
+            editor.icursor("end")
+        else:
+            x1, _, _, _ = self._cell_box(row, column)
+            left = max(x1 - self.canvas.canvasx(0), self.gutter_width)
+            editor.icursor(f"@{max(0, int(caret_x - left))}")
+        self.on_select()
+        self._schedule_draw()
+
+    def _bind_entry_navigation(self, editor):
+        for key, delta in (("Return", (1, 0)), ("Shift-Return", (-1, 0)),
+                           ("Tab", (0, 1)),
                            ("Shift-Tab", (0, -1))):
             editor.bind(f"<{key}>", lambda event, move=delta: self._entry_move(event, *move))
-        for key, delta in (("Up", (-1, 0)), ("Down", (1, 0)),
-                           ("Left", (0, -1)), ("Right", (0, 1))):
-            editor.bind(f"<Shift-{key}>",
-                        lambda event, move=delta: self._entry_move(event, *move, extend=True))
         editor.bind("<Escape>", lambda event: self.cancel_edit())
+        editor.bind("<Control-a>", self._entry_select_all)
         editor.bind("<Control-v>", self._entry_paste)
         editor.bind("<Control-z>", lambda event: self._entry_history(event, self.on_undo))
         editor.bind("<Control-y>", lambda event: self._entry_history(event, self.on_redo))
@@ -348,34 +342,45 @@ class TableGrid(tk.Frame):
         self.begin_edit()
         return "break"
 
+    def _type_to_edit(self, event):
+        char = getattr(event, "char", "")
+        # ASCII keys can start a cell directly. IME composition stays in Entry,
+        # opened with F2 or double click, using Tk's standard text input handling.
+        if (getattr(event, "state", 0) & 0x000c or len(char) != 1 or
+                not 32 <= ord(char) <= 126):
+            return None
+        self.begin_edit(initial=char)
+        return "break"
+
     def _entry_move(self, event, row_delta, column_delta, extend=False):
         if event.widget is not self._editor:
             return "break"  # Ignore a key event from an editor already closed.
         if not self._apply_editor_value():
             return "break"
-        self._close_editor(defer_destroy=True)
+        self._close_editor()
         return self._move(row_delta, column_delta, extend=extend)
 
     def _entry_history(self, event, action):
         if event.widget is not self._editor:
             return "break"
         if self._apply_editor_value():
-            self._close_editor(defer_destroy=True)
+            self._close_editor()
             action()
         return "break"
 
-    def _close_editor(self, defer_destroy=False):
+    def _entry_select_all(self, event):
+        if event.widget is self._editor:
+            self._editor.select_range(0, "end")
+            self._editor.icursor("end")
+        return "break"
+
+    def _close_editor(self):
         editor = self._editor
         if editor is None:
             return
         self._editor = None
-        if defer_destroy:
-            editor.place_forget()
-            self.canvas.focus_set()
-            # Only one cleanup is queued per actual edit, never per cell move.
-            self.after_idle(lambda: editor.destroy() if editor.winfo_exists() else None)
-        else:
-            editor.destroy()
+        editor.place_forget()
+        self.canvas.focus_set()
 
     def _entry_paste(self, _event=None):
         try:
@@ -385,7 +390,7 @@ class TableGrid(tk.Frame):
         if "\t" in data or "\n" in data or "\r" in data:
             if not self._apply_editor_value():
                 return "break"
-            self._close_editor(defer_destroy=True)
+            self._close_editor()
             self.paste_text(data)
             return "break"
         return None  # Let Entry paste ordinary cell text at its insertion point.
@@ -402,7 +407,7 @@ class TableGrid(tk.Frame):
 
     def cancel_edit(self):
         if self._editor is not None:
-            self._close_editor(defer_destroy=True)
+            self._close_editor()
             self._schedule_draw()
         return "break"
 
@@ -422,7 +427,6 @@ class TableGrid(tk.Frame):
         return True
 
     def commit_edit(self):
-        self._cancel_delayed_edit()
         if self._editor is None:
             return True
         if not self._apply_editor_value():

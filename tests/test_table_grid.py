@@ -82,12 +82,22 @@ class EntryStub:
         self.destroyed = False
         self.bindings = {}
         self.placement = None
+        self.cursor = 0
+        self.selected_range = None
+
+    def delete(self, _start, _end):
+        self.value = ""
+        self.cursor = 0
 
     def insert(self, _index, value):
         self.value = value
+        self.cursor = len(value)
 
     def get(self):
         return self.value
+
+    def xview_moveto(self, _fraction):
+        pass
 
     def bind(self, sequence, callback):
         self.bindings[sequence] = callback
@@ -102,7 +112,17 @@ class EntryStub:
         pass
 
     def select_range(self, _start, _end):
-        pass
+        self.selected_range = (_start, _end)
+
+    def selection_clear(self):
+        self.selected_range = None
+
+    def icursor(self, index):
+        self.cursor = len(self.value) if index == "end" else index
+
+    def type_text(self, text):
+        self.value = self.value[:self.cursor] + text + self.value[self.cursor:]
+        self.cursor += len(text)
 
     def destroy(self):
         self.destroyed = True
@@ -219,7 +239,8 @@ class TableGridTests(unittest.TestCase):
         grid.on_change = lambda row, old, new: events.append((row, old, new)) or True
         grid._update_region = lambda: None
         grid._schedule_draw = lambda: None
-        grid._editor = types.SimpleNamespace(get=lambda: "日本語", destroy=lambda: None)
+        grid.canvas = types.SimpleNamespace(focus_set=lambda: None)
+        grid._editor = types.SimpleNamespace(get=lambda: "日本語", place_forget=lambda: None)
         self.assertTrue(grid.commit_edit())
         self.assertEqual(events, [(0, "a\t\t", "a\t日本語\t")])
         self.assertEqual(grid.model.to_text(), "a\t日本語\t\n/pause")
@@ -251,6 +272,7 @@ class TableGridTests(unittest.TestCase):
         grid.column_width = 160
         grid.font = None
         grid._editor = None
+        grid._entry_widget = None
         grid._edit_job = None
         grid._draw_job = None
         grid._scroll_region = None
@@ -302,16 +324,16 @@ class TableGridTests(unittest.TestCase):
             self.assertEqual(editor.bindings["<Tab>"](types.SimpleNamespace(widget=editor)),
                              "break")
             self.assertIsNone(grid._editor)
-            self.assertFalse(editor.destroyed)  # No destroy during its key event.
+            self.assertFalse(editor.destroyed)
             self.assertEqual(grid.canvas.focus_count, 1)
             self.assertEqual(grid.selected, (0, 151))
             self.assertEqual(grid.model.column_count, 151)
             self.assertEqual(grid.model.to_text(), "A" + "\t" * 150 + "終わり")
             self.assertEqual(EntryStub.created, 1)
-            self.assertLessEqual(len(pending), 2)  # One cleanup, one redraw.
+            self.assertLessEqual(len(pending), 1)  # Only one redraw.
             while pending:
                 pending.pop(0)()
-            self.assertTrue(editor.destroyed)
+            self.assertFalse(editor.destroyed)
             self.assertEqual(len(changes), 1)
 
             self.assertEqual(grid.canvas.bindings["<Shift-Tab>"](
@@ -326,7 +348,7 @@ class TableGridTests(unittest.TestCase):
         EntryStub.created = 0
         grid, pending, changes = self._navigation_grid("A\t\nB\t")
         with patch.object(self.module.tk, "Entry", EntryStub, create=True):
-            self.assertEqual(grid.canvas.bindings["<Return>"](
+            self.assertEqual(grid.canvas.bindings["<F2>"](
                 types.SimpleNamespace()), "break")
             first = grid._editor
             first.value = "猫"
@@ -368,6 +390,29 @@ class TableGridTests(unittest.TestCase):
             self.assertIsNone(grid._editor)
             self.assertEqual(grid.model.to_text(), "犬\t\nB\t")
             self.assertEqual(len(changes), 2)
+            self.assertEqual(grid.canvas.bindings["<Shift-Return>"](
+                types.SimpleNamespace()), "break")
+            self.assertEqual(grid.selected, (0, 0))
+            self.assertEqual(grid.canvas.bindings["<Return>"](
+                types.SimpleNamespace()), "break")
+            self.assertEqual(grid.selected, (1, 0))
+
+            grid.begin_edit()
+            up_editor = grid._editor
+            up_editor.value = "鳥"
+            self.assertEqual(up_editor.bindings["<Shift-Return>"](
+                types.SimpleNamespace(widget=up_editor)), "break")
+            self.assertEqual(grid.selected, (0, 0))
+            self.assertEqual(grid.model.to_text(), "犬\t\n鳥\t")
+            grid.canvas.bindings["<Tab>"](types.SimpleNamespace())
+            grid.begin_edit()
+            left_editor = grid._editor
+            left_editor.value = "魚"
+            self.assertEqual(left_editor.bindings["<Shift-Tab>"](
+                types.SimpleNamespace(widget=left_editor)), "break")
+            self.assertEqual(grid.selected, (0, 0))
+            self.assertEqual(grid.model.to_text(), "犬\t魚\n鳥\t")
+            self.assertEqual(len(changes), 4)
             history = []
             grid.on_undo = lambda: history.append("undo")
             grid.on_redo = lambda: history.append("redo")
@@ -381,15 +426,17 @@ class TableGridTests(unittest.TestCase):
                 types.SimpleNamespace(widget=redo_editor)), "break")
             self.assertEqual(history, ["undo", "redo"])
             self.assertIsNone(grid._editor)
-            self.assertEqual(EntryStub.created, 5)
-            self.assertLessEqual(len(pending), 6)  # Cleanup per edit, one redraw.
+            self.assertEqual(EntryStub.created, 1)
+            self.assertLessEqual(len(pending), 1)
             while pending:
                 pending.pop(0)()
-            self.assertTrue(first.destroyed)
-            self.assertTrue(second.destroyed)
-            self.assertTrue(third.destroyed)
-            self.assertTrue(undo_editor.destroyed)
-            self.assertTrue(redo_editor.destroyed)
+            self.assertIs(first, second)
+            self.assertIs(first, third)
+            self.assertIs(first, undo_editor)
+            self.assertIs(first, redo_editor)
+            self.assertIs(first, up_editor)
+            self.assertIs(first, left_editor)
+            self.assertFalse(first.destroyed)
 
     def test_scroll_region_is_not_reconfigured_within_existing_columns(self):
         grid, pending, _ = self._navigation_grid("\t".join("x" for _ in range(10)))
@@ -402,6 +449,83 @@ class TableGridTests(unittest.TestCase):
         self.assertEqual(grid.canvas.region_updates, 1)
         self.assertGreater(grid.canvas.horizontal_moves, 0)
         self.assertEqual(len(pending), 1)
+
+    def test_direct_typing_replaces_cell_and_shortcuts_do_not_type(self):
+        EntryStub.created = 0
+        grid, pending, changes = self._navigation_grid("abc\tkeep\nbottom\tup")
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            for state, char in ((0x0004, "c"), (0x0008, "a"),
+                                (0, "\t"), (0, "あ")):
+                self.assertIsNone(grid._type_to_edit(types.SimpleNamespace(
+                    state=state, char=char)))
+            self.assertIsNone(grid._editor)
+            self.assertEqual(EntryStub.created, 0)
+
+            grid.selection.move_to(1, 1, extend=True)
+            self.assertEqual(grid._type_to_edit(types.SimpleNamespace(
+                state=0, char="l")), "break")
+            editor = grid._editor
+            self.assertEqual(editor.value, "l")
+            self.assertEqual(grid.selection.bounds, (1, 1, 1, 1))
+            editor.type_text("s(90)")
+            self.assertEqual(editor.value, "ls(90)")
+            self.assertEqual(editor.bindings["<Tab>"](
+                types.SimpleNamespace(widget=editor)), "break")
+            self.assertEqual(grid.model.to_text(), "abc\tkeep\nbottom\tls(90)")
+            self.assertEqual(changes, [("bottom\tup", "bottom\tls(90)")])
+            self.assertIsNone(grid._editor)
+            self.assertEqual(EntryStub.created, 1)
+
+            for char in ("/", "$", "1", "(", ")"):
+                grid.selected = (0, 0)
+                self.assertEqual(grid._type_to_edit(types.SimpleNamespace(
+                    state=0, char=char)), "break")
+                self.assertIs(grid._editor, editor)
+                self.assertEqual(editor.value, char)
+                self.assertEqual(editor.bindings["<Escape>"](
+                    types.SimpleNamespace(widget=editor)), "break")
+            self.assertEqual(grid.model.to_text(), "abc\tkeep\nbottom\tls(90)")
+            self.assertEqual(EntryStub.created, 1)
+            for _ in range(100):
+                grid.begin_edit()
+                self.assertIs(grid._editor, editor)
+                grid.cancel_edit()
+            self.assertEqual(EntryStub.created, 1)
+            self.assertLessEqual(len(pending), 1)
+
+    def test_click_f2_and_double_click_edit_existing_text_without_delayed_job(self):
+        EntryStub.created = 0
+        grid, _, _ = self._navigation_grid("abc\tkeep")
+        grid.after = lambda *_args: self.fail("Single click must not schedule editing")
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            event = types.SimpleNamespace(x=60, y=35, state=0)
+            grid._click(event)
+            grid._release(event)
+            self.assertIsNone(grid._editor)
+            self.assertEqual(EntryStub.created, 0)
+
+            self.assertEqual(grid.canvas.bindings["<F2>"](
+                types.SimpleNamespace()), "break")
+            editor = grid._editor
+            self.assertEqual(editor.value, "abc")
+            self.assertEqual(editor.cursor, 3)
+            self.assertNotIn("<Left>", editor.bindings)
+            self.assertNotIn("<Right>", editor.bindings)
+            self.assertNotIn("<Home>", editor.bindings)
+            self.assertNotIn("<End>", editor.bindings)
+            self.assertEqual(editor.bindings["<Control-a>"](
+                types.SimpleNamespace(widget=editor)), "break")
+            self.assertEqual(editor.selected_range, (0, "end"))
+            self.assertNotIn("<Control-c>", editor.bindings)
+            self.assertNotIn("<Control-x>", editor.bindings)
+            self.assertEqual(editor.bindings["<Escape>"](
+                types.SimpleNamespace(widget=editor)), "break")
+
+            grid._double_click(event)
+            self.assertIs(grid._editor, editor)
+            self.assertEqual(editor.value, "abc")
+            self.assertEqual(editor.cursor, "@12")
+            self.assertEqual(EntryStub.created, 1)
 
     def test_empty_virtual_edit_then_tab_does_not_add_trailing_tabs(self):
         with patch.object(self.module.tk, "Entry", EntryStub, create=True):
@@ -421,7 +545,7 @@ class TableGridTests(unittest.TestCase):
                     self.assertEqual(changes, [])
                     while pending:
                         pending.pop(0)()
-                    self.assertTrue(editor.destroyed)
+                    self.assertFalse(editor.destroyed)
 
     def test_horizontal_scroll_keeps_gutter_fixed_and_hits_visible_cell(self):
         grid = self.module.TableGrid.__new__(self.module.TableGrid)
@@ -531,7 +655,7 @@ class TableGridTests(unittest.TestCase):
         clipboard[0] = "猫\t犬\r\n鳥\t魚\r\n"
         self.assertEqual(grid._entry_paste(), "break")
         self.assertIsNone(grid._editor)
-        pending.pop(0)()
+        self.assertEqual(pending, [])
         self.assertEqual(grid.model.to_text(), "猫\t犬\n鳥\t魚")
         self.assertEqual(len(grid.changes), 1)
 
