@@ -1,6 +1,5 @@
 import struct
 import enum
-import numpy as np
 import math
 import sys
 import csv

@@ -1,0 +1,195 @@
+"""Shared Tk interface for the Japanese and English launchers."""
+
+import os
+import shlex
+import subprocess
+import threading
+import tkinter as tk
+from tkinter import filedialog, messagebox
+
+if __package__:
+    from .converter_logic import build_commands, load_ftp_config, save_ftp_config, scripts_dir
+else:
+    from converter_logic import build_commands, load_ftp_config, save_ftp_config, scripts_dir
+
+
+TEXT = {
+    "en": {
+        "title": "TAS Scripts Converter Tool", "input": "Input Script File (.txt or .tsv):",
+        "output": "Output Directory:", "name": "Output File Name (without extension):",
+        "browse": "Browse...", "format": "Output format:",
+        "binary": "LunaKit binary", "stas": "STAS", "nxtas": "nx-TAS",
+        "skip": "Skip empty frames (nx-TAS only)", "debug": "Debug output (CSV)",
+        "ftp": "Send via FTP (SMO/tas/scripts)", "ip": "FTP IP:",
+        "port": "Port:", "user": "Username:", "password": "Password:",
+        "start": "Start Conversion", "running": "Running: ",
+        "success": "Conversion completed successfully.", "success_title": "Success",
+        "error_title": "Error",
+    },
+    "ja": {
+        "title": "TAS scripts 変換ツール", "input": "入力スクリプトファイル (.txt または .tsv):",
+        "output": "出力ディレクトリ:", "name": "出力ファイル名 (拡張子なし):",
+        "browse": "参照...", "format": "出力形式:",
+        "binary": "LunaKit バイナリ", "stas": "STAS", "nxtas": "nx-TAS",
+        "skip": "空フレームを省略 (nx-TAS のみ)", "debug": "Debug 出力 (CSV)",
+        "ftp": "FTPで送信 (SMO/tas/scripts)", "ip": "FTP IP:",
+        "port": "ポート:", "user": "ユーザー:", "password": "パスワード:",
+        "start": "変換実行", "running": "実行: ",
+        "success": "変換が正常に完了しました。", "success_title": "成功",
+        "error_title": "エラー",
+    },
+}
+
+ERROR_JA = {
+    "Unknown output format": "出力形式が不明です。",
+    "Input file, output directory and output name are required": "入力ファイル、出力先、出力名を指定してください。",
+    "Output name must be a file name without a directory": "出力名にはディレクトリを含めないでください。",
+    "Input file does not exist": "入力ファイルが見つかりません。",
+    "Output directory does not exist": "出力ディレクトリが見つかりません。",
+    "Input must be a .txt or .tsv file": "入力ファイルは .txt または .tsv にしてください。",
+    "Skip empty frames is available only for nx-TAS": "空フレームの省略は nx-TAS のみ利用できます。",
+    "Intermediate TSV would overwrite the input file": "中間 TSV が入力ファイルを上書きします。",
+    "Output file would overwrite the input file": "出力ファイルが入力ファイルを上書きします。",
+    "FTP port must be an integer": "FTP ポートには整数を指定してください。",
+    "FTP port must be between 1 and 65535": "FTP ポートは 1～65535 にしてください。",
+    "Python 3 is required to run the companion converter scripts.":
+        "converter script の実行には Python 3 が必要です。",
+}
+
+
+class TASConverterApp(tk.Tk):
+    def __init__(self, language="en"):
+        super().__init__()
+        self.language = language
+        self.words = TEXT[language]
+        self.title(self.words["title"])
+        self.resizable(False, False)
+        self.base_dir = scripts_dir()
+
+        tk.Label(self, text=self.words["input"]).grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        self.input_entry = tk.Entry(self, width=50)
+        self.input_entry.grid(row=0, column=1, padx=5, pady=5)
+        tk.Button(self, text=self.words["browse"], command=self.browse_input).grid(row=0, column=2, padx=5, pady=5)
+
+        tk.Label(self, text=self.words["output"]).grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        self.output_entry = tk.Entry(self, width=50)
+        self.output_entry.grid(row=1, column=1, padx=5, pady=5)
+        tk.Button(self, text=self.words["browse"], command=self.browse_output).grid(row=1, column=2, padx=5, pady=5)
+
+        tk.Label(self, text=self.words["name"]).grid(row=2, column=0, padx=5, pady=5, sticky="e")
+        self.outname_entry = tk.Entry(self, width=50)
+        self.outname_entry.grid(row=2, column=1, columnspan=2, padx=5, pady=5)
+
+        tk.Label(self, text=self.words["format"]).grid(row=3, column=0, padx=5, pady=5, sticky="e")
+        self.format_var = tk.StringVar(value="binary")
+        format_frame = tk.Frame(self)
+        format_frame.grid(row=3, column=1, columnspan=2, sticky="w")
+        for key in ("binary", "stas", "nxtas"):
+            tk.Radiobutton(format_frame, text=self.words[key], value=key,
+                           variable=self.format_var, command=self.toggle_skip).pack(side="left")
+
+        self.skip_var = tk.BooleanVar()
+        self.skip_check = tk.Checkbutton(self, text=self.words["skip"], variable=self.skip_var)
+        self.skip_check.grid(row=4, column=0, columnspan=3, padx=5, sticky="w")
+        self.toggle_skip()
+
+        self.debug_var = tk.BooleanVar()
+        tk.Checkbutton(self, text=self.words["debug"], variable=self.debug_var).grid(
+            row=5, column=0, columnspan=3, padx=5, sticky="w")
+
+        self.ftp_var = tk.BooleanVar()
+        tk.Checkbutton(self, text=self.words["ftp"], variable=self.ftp_var,
+                       command=self.toggle_ftp).grid(row=6, column=0, columnspan=3, padx=5, sticky="w")
+
+        self.ftp_frame = tk.Frame(self)
+        self.ip_entry = self._ftp_field("ip", 0, 0)
+        self.port_entry = self._ftp_field("port", 0, 2)
+        self.user_entry = self._ftp_field("user", 1, 0)
+        self.pass_entry = self._ftp_field("password", 1, 2, show="*")
+        self.ftp_frame.grid(row=7, column=0, columnspan=3)
+        self.ftp_frame.grid_remove()
+        config = load_ftp_config(self.base_dir)
+        for entry, key in ((self.ip_entry, "ip"), (self.port_entry, "port"),
+                           (self.user_entry, "user"), (self.pass_entry, "passwd")):
+            entry.insert(0, str(config.get(key, "")))
+
+        self.convert_btn = tk.Button(self, text=self.words["start"], command=self.start_conversion)
+        self.convert_btn.grid(row=8, column=1, padx=5, pady=10)
+        self.log_text = tk.Text(self, height=10, width=80, state="disabled")
+        self.log_text.grid(row=9, column=0, columnspan=3, padx=5, pady=5)
+
+    def _ftp_field(self, key, row, column, **kwargs):
+        tk.Label(self.ftp_frame, text=self.words[key]).grid(row=row, column=column, padx=5, pady=2, sticky="e")
+        entry = tk.Entry(self.ftp_frame, **kwargs)
+        entry.grid(row=row, column=column + 1, padx=5, pady=2)
+        return entry
+
+    def browse_input(self):
+        path = filedialog.askopenfilename(filetypes=[("Script files", "*.txt *.tsv")])
+        if path:
+            self.input_entry.delete(0, tk.END)
+            self.input_entry.insert(0, path)
+            self.outname_entry.delete(0, tk.END)
+            self.outname_entry.insert(0, os.path.splitext(os.path.basename(path))[0])
+
+    def browse_output(self):
+        path = filedialog.askdirectory()
+        if path:
+            self.output_entry.delete(0, tk.END)
+            self.output_entry.insert(0, path)
+
+    def toggle_skip(self):
+        enabled = self.format_var.get() == "nxtas"
+        if not enabled:
+            self.skip_var.set(False)
+        self.skip_check.config(state="normal" if enabled else "disabled")
+
+    def toggle_ftp(self):
+        if self.ftp_var.get():
+            self.ftp_frame.grid()
+        else:
+            self.ftp_frame.grid_remove()
+
+    def log(self, message):
+        self.log_text.config(state="normal")
+        self.log_text.insert(tk.END, message + "\n")
+        self.log_text.see(tk.END)
+        self.log_text.config(state="disabled")
+
+    def start_conversion(self):
+        # Read Tk widgets on the main thread; the worker only handles files and subprocesses.
+        values = (self.input_entry.get().strip(), self.output_entry.get().strip(),
+                  self.outname_entry.get().strip(), self.format_var.get(),
+                  self.skip_var.get(), self.debug_var.get(), self.ftp_var.get())
+        ftp_values = (self.ip_entry.get().strip(), self.port_entry.get().strip(),
+                      self.user_entry.get(), self.pass_entry.get())
+        self.convert_btn.config(state="disabled")
+        threading.Thread(target=self.convert, args=(values, ftp_values), daemon=True).start()
+
+    def convert(self, values, ftp_values):
+        try:
+            commands = build_commands(*values, base_dir=self.base_dir)
+            if values[6]:
+                save_ftp_config(self.base_dir, *ftp_values)
+            for command in commands:
+                display = subprocess.list2cmdline(command) if os.name == "nt" else shlex.join(command)
+                self.after(0, self.log, self.words["running"] + display)
+                result = subprocess.run(command, cwd=self.base_dir, capture_output=True,
+                                        text=True, errors="replace",
+                                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                if result.stdout:
+                    self.after(0, self.log, result.stdout.rstrip())
+                if result.stderr:
+                    self.after(0, self.log, result.stderr.rstrip())
+                if result.returncode:
+                    script = next((os.path.basename(part) for part in command if part.endswith(".py")), command[0])
+                    if self.language == "ja":
+                        raise RuntimeError(f"{script} は終了コード {result.returncode} で失敗しました。")
+                    raise RuntimeError(f"{script} exited with status {result.returncode}")
+            self.after(0, self.log, self.words["success"])
+            self.after(0, messagebox.showinfo, self.words["success_title"], self.words["success"])
+        except Exception as error:
+            detail = ERROR_JA.get(str(error), str(error)) if self.language == "ja" else str(error)
+            self.after(0, messagebox.showerror, self.words["error_title"], detail)
+        finally:
+            self.after(0, self.convert_btn.config, state="normal")
