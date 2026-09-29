@@ -72,7 +72,7 @@ Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入
 
 表のセルを編集中に `l` や `/` などを入力すると、ボタン、スティック、加速度／ジャイロ、2P入力、STAS commandなどの候補が表示されます。上下キーで候補を選び、Tab／Enterまたはクリックで挿入すると、セル編集を続けられます。Escapeはまず候補だけを閉じます。括弧や引数を含む候補は値を選択したtemplateとして入り、そのまま値を打ち替えられます。表の右側には **入力パレット** が常時表示され、よく使うボタン、左右スティック、STAS commandを選べます。選んだ項目は現在セルへ挿入され、編集中ならカーソル位置へ挿入されます。左右スティック候補はそれぞれ角度だけの形を先頭に表示します。`.tsv` のテキスト表示ではコメント・command・変数・入力を色で、表では先頭列をdurationの目安として薄い背景で区別し、行番号横の色で通常入力・コメント・command・変数・loop/control風・空行を見分けられます。commandやコメント行の先頭列をdurationとして扱いません。色や行分類は**入力支援**であり、構文の正否判定ではありません。STAS commandの実際の処理はSTAS出力時にconverterが行います。
 
-入力パレットは2列表示です。左右スティックでは `ls(angle)`／`rs(angle)` が各カテゴリ最上段の大きなボタン、半径＋角度／XY形式が次段の左右に並びます。ボタン候補には将来アイコンを付けられる表示用metadataがあり、画像がない現在はテキストを表示します。表示と挿入するTSV文字列は別に管理しています。
+入力パレットは2列表示です。左右スティックでは `ls(angle)`／`rs(angle)` が各カテゴリ最上段の大きなボタン、半径＋角度／XY形式が次段の左右に並びます。16種類のボタン候補にはコントローラーアイコンと文字を併記します。画像が読めない場合は文字だけで表示します。表示と挿入するTSV文字列は別に管理しています。
 
 表はTSV-TAS構文を解釈せず、保存時の独自整形もしません。列操作はcommandやcommentを含むすべての行に適用されます。テキスト表示も含めてUTF-8と元の改行を可能な限り保持します。TSV-TASの解釈は引き続き `tsv-tas.py` が担当します。
 
@@ -150,11 +150,11 @@ WindowsでPython 3とPyInstallerを用意し、repositoryのルートで実行�
 
 ```text
 python -m pip install pyinstaller
-python -m PyInstaller --noconsole --onefile python_to_exe/main_jp.py
-python -m PyInstaller --noconsole --onefile python_to_exe/main_en.py
+python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_jp.py
+python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_en.py
 ```
 
-できた `dist/main_jp.exe` または `dist/main_en.exe` を、`tsv-tas.py`、`nx-tas-to-tsv-tas.py`、`ftp_config.json` と**同じフォルダー**へ置きます。exeはGUIだけを内包し、converterは同じフォルダーの `.py` を起動します。Windowsでは `py -3`、次にPATH上のPythonを探すため、利用時にもPython 3をインストールしてください。pathに空白があってもGUIは引数を分けて渡します。
+できた `dist/main_jp.exe` または `dist/main_en.exe` を、`tsv-tas.py`、`nx-tas-to-tsv-tas.py`、`ftp_config.json` と**同じフォルダー**へ置きます。exeはGUIとPNGアイコンを内包し、converterは同じフォルダーの `.py` を起動します。Windowsでは `py -3`、次にPATH上のPythonを探すため、利用時にもPython 3をインストールしてください。pathに空白があってもGUIは引数を分けて渡します。
 
 ## repository構成とupstreamとの差分
 

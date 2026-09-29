@@ -7,6 +7,7 @@ from queue import Empty, SimpleQueue
 from tkinter import filedialog, font as tkfont, messagebox
 
 from .document import EditorDocument
+from .resources import palette_icon_path
 from .text_ops import (file_kind, find_next as next_match, find_previous as previous_match,
                        line_column, replace_all as replace_every, replace_current as replace_match)
 from .tsv_syntax import CANDIDATES, PALETTE_CATEGORIES, syntax_spans
@@ -135,7 +136,7 @@ class EditorWindow(tk.Toplevel):
         self._gutter_job = None
         self._highlight_job = None
         self._highlight_range = None
-        self._palette_icons = {}  # Future PhotoImage values stay referenced here.
+        self._palette_icons = {}  # Keep PhotoImage references alive for Tk buttons.
         self._view = "raw"
         self.geometry("1200x700")
 
@@ -226,6 +227,7 @@ class EditorWindow(tk.Toplevel):
                                     self._table_text_changed, self._update_status,
                                     self.undo, self.redo, self.words,
                                     on_edit_change=self._table_edit_pending)
+        self._load_palette_icons()
         self._build_input_palette()
         self.table_grid.pack(side="left", fill="both", expand=True)
         self.status = tk.Label(self, anchor="w")
@@ -285,6 +287,19 @@ class EditorWindow(tk.Toplevel):
         else:
             self._position_document_changed()
 
+    def _load_palette_icons(self):
+        for candidate in CANDIDATES:
+            if candidate.category != "buttons" or not candidate.icon_key:
+                continue
+            path = palette_icon_path(candidate.icon_key)
+            try:
+                if not path.is_file():
+                    continue
+                self._palette_icons[candidate.icon_key] = tk.PhotoImage(master=self, file=str(path))
+            except (OSError, tk.TclError):
+                # One missing or unreadable icon must not prevent editor startup.
+                continue
+
     def _build_input_palette(self):
         self.input_palette = tk.Frame(self.table_area, width=330, relief="groove",
                                       borderwidth=1)
@@ -335,7 +350,7 @@ class EditorWindow(tk.Toplevel):
                    "anchor": "w",
                    "command": lambda item=candidate: self.table_grid.insert_candidate(item)}
         if image is not None:
-            options.update(image=image, compound="left")
+            options.update(image=image, compound="left", padx=4)
         return tk.Button(parent, **options)
 
     @staticmethod

@@ -72,7 +72,7 @@ At the last row, Enter or Down moves to an unsaved virtual row. Moving alone add
 
 While editing a Table cell, typing `l` or `/` can show suggestions for buttons, sticks, acceleration/gyro, 2P input, and STAS commands. Use Up/Down to select, then Tab/Enter or a click to insert a suggestion and continue editing. Escape first closes only the popup. The **Input Palette** is always visible to the right of the table and offers common buttons, left/right sticks, and STAS commands. Selecting an item starts editing the selected cell or inserts at the caret while editing. Left and right stick suggestions each show the simple angle form first. Candidates with parentheses or arguments insert a template with its value selected, ready to replace. Raw Text for `.tsv` colors comments, commands, variables, and inputs. In Table, a subtle background hints that the first column is often duration, while a color beside row numbers distinguishes ordinary input, comment, command, variable, loop/control-like, and blank rows. The first cell of a command or comment row is not treated as duration. Colors and row categories are **editing aids**, not syntax validation. The converter processes STAS commands when producing STAS output.
 
-The Input Palette uses two columns. In each stick category, `ls(angle)` or `rs(angle)` occupies a wide first-row button; radius-plus-angle and XY forms sit left and right on the next row. Button candidates carry display metadata for future icons; until images are available, they show text. Display labels and inserted TSV text are managed separately.
+The Input Palette uses two columns. In each stick category, `ls(angle)` or `rs(angle)` occupies a wide first-row button; radius-plus-angle and XY forms sit left and right on the next row. The 16 button candidates show controller icons alongside text. If an image cannot be read, the button shows text alone. Display labels and inserted TSV text are managed separately.
 
 Table does not interpret TSV-TAS syntax or apply its own formatting on save. Column operations affect every row, including command and comment lines. Both views preserve UTF-8 and original line endings where possible. `tsv-tas.py` still interprets scripts.
 
@@ -150,11 +150,11 @@ Install Python 3 and PyInstaller on Windows, then run from the repository root:
 
 ```text
 python -m pip install pyinstaller
-python -m PyInstaller --noconsole --onefile python_to_exe/main_jp.py
-python -m PyInstaller --noconsole --onefile python_to_exe/main_en.py
+python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_jp.py
+python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_en.py
 ```
 
-Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-tas.py`, `nx-tas-to-tsv-tas.py`, and `ftp_config.json`. The exe bundles the GUI only and launches the companion `.py` files. Keep Python 3 installed for use: on Windows the GUI looks for `py -3`, then a Python executable on `PATH`. The GUI passes paths containing spaces as separate arguments.
+Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-tas.py`, `nx-tas-to-tsv-tas.py`, and `ftp_config.json`. The exe bundles the GUI and PNG icons, and launches the companion `.py` files. Keep Python 3 installed for use: on Windows the GUI looks for `py -3`, then a Python executable on `PATH`. The GUI passes paths containing spaces as separate arguments.
 
 ## Repository layout and differences from upstream
 
