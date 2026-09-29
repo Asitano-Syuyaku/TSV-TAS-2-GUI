@@ -56,6 +56,90 @@ class FakeStatus:
 
 
 class EditorWindowHeadlessTests(unittest.TestCase):
+    def test_save_and_convert_saves_first_and_stops_on_cancel_or_failure(self):
+        fake_tk = types.ModuleType("tkinter")
+        fake_tk.Toplevel = FakeToplevel
+        fake_tk.filedialog = types.SimpleNamespace()
+        fake_tk.font = types.SimpleNamespace()
+        errors = []
+        fake_tk.messagebox = types.SimpleNamespace(showerror=lambda *args, **kwargs: errors.append(args))
+        with patch.dict(sys.modules, {"tkinter": fake_tk}):
+            sys.modules.pop("python_to_exe.editor.window", None)
+            module = importlib.import_module("python_to_exe.editor.window")
+            window = module.EditorWindow.__new__(module.EditorWindow)
+            window.words = module.LABELS["en"]
+            window.document = module.EditorDocument()
+            window.text = FakeText()
+            window.status = FakeStatus()
+            window._schedule_line_numbers = lambda: None
+            events = []
+            window.on_saved = lambda path: events.append(("saved", path))
+            window.on_convert = lambda path: events.append(("convert", path, Path(path).read_bytes())) or True
+            window.can_convert = lambda: True
+
+            with tempfile.TemporaryDirectory(prefix="tas editor 日本語 ") as folder:
+                existing = Path(folder) / "script with spaces.tsv"
+                existing.write_bytes(b"1\ta\n")
+                window.document.open(existing)
+                window.text.value = window.document.text
+                self.assertTrue(window.save_and_convert())
+                self.assertEqual(events, [("convert", existing, b"1\ta\n")])
+
+                window.can_convert = lambda: False
+                window.text.value = "1\tbusy\n"
+                self.assertFalse(window.save_and_convert())
+                self.assertEqual(existing.read_bytes(), b"1\ta\n")
+                self.assertEqual(events, [("convert", existing, b"1\ta\n")])
+                window.can_convert = lambda: True
+
+                events.clear()
+                window.text.value = "1\tb\n"
+                self.assertTrue(window.save_and_convert())
+                self.assertEqual(events, [("saved", existing), ("convert", existing, b"1\tb\n")])
+                self.assertFalse(window.document.modified)
+
+                events.clear()
+                window.on_convert = lambda path: events.append(("failed conversion", path)) or False
+                window.text.value = "1\tstill here\n"
+                self.assertFalse(window.save_and_convert())
+                self.assertEqual(existing.read_bytes(), b"1\tstill here\n")
+                self.assertEqual(window.document.text, "1\tstill here\n")
+                self.assertEqual(events[-1], ("failed conversion", existing))
+                window.on_convert = lambda path: events.append(("convert", path, Path(path).read_bytes())) or True
+
+                renamed = Path(folder) / "renamed 日本語.tsv"
+                fake_tk.filedialog.asksaveasfilename = lambda **kwargs: str(renamed)
+                events.clear()
+                self.assertTrue(window.save_as())
+                self.assertEqual(events, [("saved", renamed)])
+                self.assertTrue(window.save_and_convert())
+                self.assertEqual(events[-1], ("convert", renamed, b"1\tstill here\n"))
+                self.assertEqual(window.document.path, renamed)
+
+                created = Path(folder) / "新規 with spaces.tsv"
+                fake_tk.filedialog.asksaveasfilename = lambda **kwargs: str(created)
+                window.document.new()
+                window.text.value = "1\tc\n"
+                events.clear()
+                self.assertTrue(window.save_and_convert())
+                self.assertEqual(events, [("saved", created), ("convert", created, b"1\tc\n")])
+                self.assertEqual(window.document.path, created)
+
+                fake_tk.filedialog.asksaveasfilename = lambda **kwargs: ""
+                window.document.new()
+                window.text.value = "1\td\n"
+                events.clear()
+                self.assertFalse(window.save_and_convert())
+                self.assertEqual(events, [])
+                self.assertIsNone(window.document.path)
+
+                fake_tk.filedialog.asksaveasfilename = lambda **kwargs: str(Path(folder) / "missing" / "bad.tsv")
+                self.assertFalse(window.save_and_convert())
+                self.assertEqual(events, [])
+                self.assertTrue(window.document.modified)
+                self.assertEqual(len(errors), 1)
+        sys.modules.pop("python_to_exe.editor.window", None)
+
     def test_find_and_replace_actions_share_document_state(self):
         fake_tk = types.ModuleType("tkinter")
         fake_tk.Toplevel = FakeToplevel

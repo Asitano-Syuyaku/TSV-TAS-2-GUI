@@ -48,9 +48,11 @@ This example holds the left stick upward for five frames, then inputs A and the 
 
 The Japanese and English launchers use the same conversion behavior; only displayed language differs. `-l` is an interactive CLI option for repeated compilation and is not in the GUI.
 
-### Built-in editor (Phase 2A)
+### Built-in editor (Phase 2B)
 
-Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, and `Ctrl+Shift+S`. New, Open, and Close ask what to do with unsaved changes.
+Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, Save & Convert, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, and `F5`. New, Open, and Close ask what to do with unsaved changes.
+
+**Save & Convert** saves edits, then converts the file open in that Editor as the Converter's Input. For a new file, Save As asks where to save it; canceling stops conversion. After Save As, Input switches to the new path. If Output Directory or Output File Name is empty, it fills from the file's folder or stem; existing values are kept. Conversion uses the Converter's current output format, skip-empty, Debug, and FTP settings. Converter stdout and stderr appear in the existing log; conversion failures also show a dialog.
 
 The Edit menu provides Undo/Redo, Cut/Copy/Paste, and Select All. Shortcuts are `Ctrl+Z`/`Ctrl+Y` and `Ctrl+X`/`Ctrl+C`/`Ctrl+V`/`Ctrl+A`. Open Find with `Ctrl+F` or Replace with `Ctrl+H`; `F3`/`Shift+F3` searches next/previous. The dialog can replace the current match or all matches. Search is case-sensitive. Line numbers and a status bar show the line, column, modified state, and file kind (TSV-TAS/nx-TAS).
 

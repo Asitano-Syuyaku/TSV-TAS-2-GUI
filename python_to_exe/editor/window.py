@@ -12,6 +12,7 @@ LABELS = {
     "en": {
         "title": "TSV-TAS Editor", "untitled": "Untitled", "file": "File",
         "new": "New", "open": "Open...", "save": "Save", "save_as": "Save As...",
+        "save_convert": "Save & Convert",
         "close": "Close", "unsaved": "Save changes before continuing?",
         "error": "Editor error", "edit": "Edit", "undo": "Undo", "redo": "Redo",
         "cut": "Cut", "copy": "Copy", "paste": "Paste", "select_all": "Select All",
@@ -24,6 +25,7 @@ LABELS = {
     "ja": {
         "title": "TSV-TAS エディター", "untitled": "無題", "file": "ファイル",
         "new": "新規", "open": "開く...", "save": "保存", "save_as": "名前を付けて保存...",
+        "save_convert": "保存して変換",
         "close": "閉じる", "unsaved": "変更を保存してから続行しますか？",
         "error": "エディターのエラー", "edit": "編集", "undo": "元に戻す",
         "redo": "やり直す", "cut": "切り取り", "copy": "コピー",
@@ -38,11 +40,14 @@ LABELS = {
 
 
 class EditorWindow(tk.Toplevel):
-    def __init__(self, master, language="en", initial_path=None, on_saved=None):
+    def __init__(self, master, language="en", initial_path=None, on_saved=None,
+                 on_convert=None, can_convert=None):
         super().__init__(master)
         self.words = LABELS[language]
         self.document = EditorDocument()
         self.on_saved = on_saved
+        self.on_convert = on_convert
+        self.can_convert = can_convert
         self.find_query = tk.StringVar(self)
         self.replace_value = tk.StringVar(self)
         self._find_dialog = None
@@ -56,6 +61,7 @@ class EditorWindow(tk.Toplevel):
             ("open", self.open_file, "Ctrl+O"),
             ("save", self.save, "Ctrl+S"),
             ("save_as", self.save_as, "Ctrl+Shift+S"),
+            ("save_convert", self.save_and_convert, "F5"),
             ("close", self.close_editor, ""),
         ):
             file_menu.add_command(label=self.words[key], command=command, accelerator=shortcut)
@@ -106,6 +112,7 @@ class EditorWindow(tk.Toplevel):
             ("<Control-n>", self.new_document), ("<Control-o>", self.open_file),
             ("<Control-s>", self.save), ("<Control-Shift-S>", self.save_as),
             ("<Control-Shift-s>", self.save_as),
+            ("<F5>", self.save_and_convert),
             ("<Control-z>", self.undo), ("<Control-y>", self.redo),
             ("<Control-x>", self.cut), ("<Control-c>", self.copy),
             ("<Control-v>", self.paste), ("<Control-a>", self.select_all),
@@ -119,6 +126,7 @@ class EditorWindow(tk.Toplevel):
             ("<Control-s>", self.save),
             ("<Control-Shift-S>", self.save_as),
             ("<Control-Shift-s>", self.save_as),
+            ("<F5>", self.save_and_convert),
             ("<Control-f>", self.show_find),
             ("<Control-h>", self.show_replace),
             ("<F3>", self.find_next),
@@ -387,6 +395,16 @@ class EditorWindow(tk.Toplevel):
         if self.document.path is None:
             return self.save_as()
         return self._save_to(self.document.path)
+
+    def save_and_convert(self):
+        if self.on_convert is None:
+            return False
+        if self.can_convert is not None and not self.can_convert():
+            return False
+        self._sync_text()
+        if (self.document.path is None or self.document.modified) and not self.save():
+            return False
+        return bool(self.on_convert(self.document.path))
 
     def save_as(self):
         path = filedialog.asksaveasfilename(

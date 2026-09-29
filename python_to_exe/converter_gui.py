@@ -67,6 +67,7 @@ class TASConverterApp(tk.Tk):
         self.resizable(False, False)
         self.base_dir = scripts_dir()
         self._events = SimpleQueue()
+        self._conversion_running = False
 
         tk.Label(self, text=self.words["input"]).grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.input_entry = tk.Entry(self, width=50)
@@ -134,14 +135,25 @@ class TASConverterApp(tk.Tk):
         if path:
             self._set_input_path(path)
 
-    def _set_input_path(self, path):
+    def _set_input_path(self, path, preserve_output_name=False):
         self.input_entry.delete(0, tk.END)
         self.input_entry.insert(0, str(path))
-        self.outname_entry.delete(0, tk.END)
-        self.outname_entry.insert(0, os.path.splitext(os.path.basename(path))[0])
+        if not preserve_output_name or not self.outname_entry.get().strip():
+            self.outname_entry.delete(0, tk.END)
+            self.outname_entry.insert(0, os.path.splitext(os.path.basename(path))[0])
         if not self.output_entry.get().strip():
             self.output_entry.delete(0, tk.END)
             self.output_entry.insert(0, os.path.dirname(os.path.abspath(path)))
+
+    def _editor_saved(self, path):
+        self._set_input_path(path, preserve_output_name=True)
+
+    def _convert_editor_file(self, path):
+        if self._conversion_running:
+            return False
+        # Re-select the requesting editor's file; another editor may have saved since.
+        self._editor_saved(path)
+        return self.start_conversion()
 
     def open_editor(self):
         # Import on demand so conversion-only startup does not load editor widgets.
@@ -151,7 +163,8 @@ class TASConverterApp(tk.Tk):
             from editor.window import EditorWindow
         EditorWindow(self, language=self.language,
                      initial_path=self.input_entry.get().strip() or None,
-                     on_saved=self._set_input_path)
+                     on_saved=self._editor_saved, on_convert=self._convert_editor_file,
+                     can_convert=lambda: not self._conversion_running)
 
     def browse_output(self):
         path = filedialog.askdirectory()
@@ -178,15 +191,24 @@ class TASConverterApp(tk.Tk):
         self.log_text.config(state="disabled")
 
     def start_conversion(self):
+        if self._conversion_running:
+            return False
         # Read Tk widgets on the main thread; the worker only handles files and subprocesses.
         values = (self.input_entry.get().strip(), self.output_entry.get().strip(),
                   self.outname_entry.get().strip(), self.format_var.get(),
                   self.skip_var.get(), self.debug_var.get(), self.ftp_var.get())
         ftp_values = (self.ip_entry.get().strip(), self.port_entry.get().strip(),
                       self.user_entry.get(), self.pass_entry.get())
+        self._conversion_running = True
         self.convert_btn.config(state="disabled")
-        threading.Thread(target=self.convert, args=(values, ftp_values), daemon=True).start()
+        try:
+            threading.Thread(target=self.convert, args=(values, ftp_values), daemon=True).start()
+        except Exception:
+            self._conversion_running = False
+            self.convert_btn.config(state="normal")
+            raise
         self.after(50, self._drain_events)
+        return True
 
     def _drain_events(self):
         logs = []
@@ -206,6 +228,7 @@ class TASConverterApp(tk.Tk):
             elif kind == "error":
                 messagebox.showerror(self.words["error_title"], message)
             elif kind == "done":
+                self._conversion_running = False
                 self.convert_btn.config(state="normal")
                 return
         if logs:

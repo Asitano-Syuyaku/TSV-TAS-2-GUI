@@ -48,9 +48,11 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 
 日本語版と英語版は表示言語以外、同じ変換処理を使います。`-l` は対話的に再生成するCLI専用オプションで、GUIにはありません。
 
-### 内蔵エディター（Phase 2A）
+### 内蔵エディター（Phase 2B）
 
-Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
+Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
+
+**Save & Convert** は編集内容を保存してから、そのEditorで開いているファイルをConverterのInputとして変換します。新規ファイルはSave Asで保存先を指定し、キャンセルすれば変換しません。Save As後はInputが新しいpathへ切り替わります。Output Directory／Output File Nameが空欄ならファイルのフォルダー／拡張子を除いた名前を設定し、指定済みなら保持します。出力形式、空フレーム省略、Debug、FTPはConverterで現在選んでいる設定を使います。converterの標準出力・標準エラーは従来のログに表示され、変換失敗はダイアログでも通知されます。
 
 編集メニューにはUndo／Redo、Cut／Copy／Paste、Select Allがあります。ショートカットは `Ctrl+Z`／`Ctrl+Y`、`Ctrl+X`／`Ctrl+C`／`Ctrl+V`／`Ctrl+A` です。`Ctrl+F` で検索、`Ctrl+H` で置換を開けます。`F3`／`Shift+F3` で次／前を検索でき、ダイアログでは現在の一致箇所または全一致箇所を置換できます。検索は大文字小文字を区別します。行番号と、行・列・編集状態・ファイル種別（TSV-TAS／nx-TAS）を示すステータスバーも表示します。
 
