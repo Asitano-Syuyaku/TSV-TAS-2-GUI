@@ -38,6 +38,12 @@ LABELS = {
         "input_palette": "Input Palette", "buttons": "Buttons",
         "left_stick": "Left Stick", "right_stick": "Right Stick",
         "commands": "STAS Commands",
+        "validate": "Validate", "validating": "Validating...",
+        "no_errors": "No errors", "problems": "Problems",
+        "jump_hint": "Double-click a line message to jump",
+        "stale_validation": "Document changed; validate again",
+        "duration_header": "Duration",
+        "button_header": "Button",
     },
     "ja": {
         "title": "TSV-TAS エディター", "untitled": "無題", "file": "ファイル",
@@ -63,19 +69,28 @@ LABELS = {
         "input_palette": "入力パレット", "buttons": "ボタン",
         "left_stick": "左スティック", "right_stick": "右スティック",
         "commands": "STASコマンド",
+        "validate": "検証", "validating": "検証中...",
+        "no_errors": "エラーなし", "problems": "問題",
+        "jump_hint": "行を含むメッセージをダブルクリックで移動",
+        "stale_validation": "文書が変更されました。再度検証してください",
+        "duration_header": "フレーム数",
+        "button_header": "ボタン",
     },
 }
 
 
 class EditorWindow(tk.Toplevel):
     def __init__(self, master, language="en", initial_path=None, on_saved=None,
-                 on_convert=None, can_convert=None):
+                 on_convert=None, can_convert=None, on_validate=None, can_validate=None):
         super().__init__(master)
         self.words = LABELS[language]
         self.document = EditorDocument()
         self.on_saved = on_saved
         self.on_convert = on_convert
         self.can_convert = can_convert
+        self.on_validate = on_validate
+        self.can_validate = can_validate
+        self._validation_pending = False
         self.find_query = tk.StringVar(self)
         self.replace_value = tk.StringVar(self)
         self._find_dialog = None
@@ -84,7 +99,7 @@ class EditorWindow(tk.Toplevel):
         self._highlight_range = None
         self._palette_icons = {}  # Future PhotoImage values stay referenced here.
         self._view = "raw"
-        self.geometry("1100x700")
+        self.geometry("1200x700")
 
         menu = tk.Menu(self)
         file_menu = tk.Menu(menu, tearoff=False)
@@ -94,6 +109,7 @@ class EditorWindow(tk.Toplevel):
             ("save", self.save, "Ctrl+S"),
             ("save_as", self.save_as, "Ctrl+Shift+S"),
             ("save_convert", self.save_and_convert, "F5"),
+            ("validate", self.validate, "F6"),
             ("close", self.close_editor, ""),
         ):
             file_menu.add_command(label=self.words[key], command=command, accelerator=shortcut)
@@ -133,6 +149,7 @@ class EditorWindow(tk.Toplevel):
         self._table_button = tk.Button(view_bar, text=self.words["table_view"],
                                        command=self.show_table)
         self._table_button.pack(side="left")
+        tk.Button(view_bar, text=self.words["validate"], command=self.validate).pack(side="left")
         self.table_tools = tk.Frame(view_bar)
         tk.Button(self.table_tools, text=self.words["add_row"],
                   command=lambda: self._table_action("insert_row_below")).pack(side="left")
@@ -171,6 +188,15 @@ class EditorWindow(tk.Toplevel):
         self.table_grid.pack(side="left", fill="both", expand=True)
         self.status = tk.Label(self, anchor="w")
         self.status.pack(fill="x")
+        self._problems_panel = tk.Frame(self, relief="groove", borderwidth=1)
+        self._problems_title = tk.Label(self._problems_panel, anchor="w")
+        self._problems_title.pack(fill="x")
+        self._problems_text = tk.Text(self._problems_panel, height=4, wrap="word",
+                                      state="disabled", takefocus=False)
+        self._problems_text.tag_configure("jump", foreground="#075ca8", underline=True)
+        self._problems_text.bind("<Double-Button-1>", self._problem_double_click)
+        self._problem_rows = {}
+        self._problem_snapshot = None
         self._update_view_button()
 
         self.text.bind("<<Modified>>", self._on_modified)
@@ -182,6 +208,7 @@ class EditorWindow(tk.Toplevel):
             ("<Control-s>", self.save), ("<Control-Shift-S>", self.save_as),
             ("<Control-Shift-s>", self.save_as),
             ("<F5>", self.save_and_convert),
+            ("<F6>", self.validate),
             ("<Control-z>", self.undo), ("<Control-y>", self.redo),
             ("<Control-x>", self.cut), ("<Control-c>", self.copy),
             ("<Control-v>", self.paste), ("<Control-a>", self.select_all),
@@ -196,6 +223,7 @@ class EditorWindow(tk.Toplevel):
             ("<Control-Shift-S>", self.save_as),
             ("<Control-Shift-s>", self.save_as),
             ("<F5>", self.save_and_convert),
+            ("<F6>", self.validate),
             ("<Control-f>", self.show_find),
             ("<Control-h>", self.show_replace),
             ("<F3>", self.find_next),
@@ -236,8 +264,7 @@ class EditorWindow(tk.Toplevel):
             for column in (0, 1):
                 group.grid_columnconfigure(column, weight=1, uniform="palette")
             slot = 0
-            candidates = sorted((item for item in CANDIDATES if item.category == category),
-                                key=lambda item: -self._palette_span(item))
+            candidates = (item for item in CANDIDATES if item.category == category)
             for candidate in candidates:
                 span = self._palette_span(candidate)
                 if span == 2 and slot % 2:
@@ -252,8 +279,7 @@ class EditorWindow(tk.Toplevel):
 
     @staticmethod
     def _palette_span(candidate):
-        return (2 if candidate.category in ("left_stick", "right_stick") and
-                len(candidate.display_label) > 16 else 1)
+        return 2 if candidate.label in ("ls(angle)", "rs(angle)") else 1
 
     def _palette_button(self, parent, candidate):
         image = getattr(self, "_palette_icons", {}).get(candidate.icon_key)
@@ -443,12 +469,21 @@ class EditorWindow(tk.Toplevel):
     def _on_modified(self, _event=None):
         if self.text.edit_modified():
             self._sync_text()
+            if (getattr(self, "_problem_snapshot", None) is not None and
+                    self.document.text != self._problem_snapshot):
+                self._problems_panel.pack_forget()
+                self._problem_rows = {}
+                self._problem_snapshot = None
             self.text.edit_modified(False)
             self._update_status()
             self._schedule_line_numbers()
             self._schedule_highlight()
 
     def _show_document(self):
+        if hasattr(self, "_problems_panel"):
+            self._problems_panel.pack_forget()
+            self._problem_rows = {}
+            self._problem_snapshot = None
         if getattr(self, "_view", "raw") == "table":
             self.table_area.pack_forget()
             if hasattr(self, "table_tools"):
@@ -702,6 +737,88 @@ class EditorWindow(tk.Toplevel):
         if (self.document.path is None or self.document.modified) and not self.save():
             return False
         return bool(self.on_convert(self.document.path))
+
+    def validate(self):
+        if (self.on_validate is None or self._validation_pending or
+                self.can_validate is not None and not self.can_validate()):
+            return False
+        if not self._commit_table_edit():
+            return False
+        self._sync_text()
+        if (self.document.path is None or self.document.modified) and not self.save():
+            return False
+        path, snapshot = self.document.path, self.document.text
+        self._validation_pending = True
+        self._show_problem_title(self.words["validating"])
+
+        def receive(result):
+            if not self.winfo_exists():
+                return
+            self._validation_pending = False
+            self._sync_text()
+            if self.document.path == path and self.document.text == snapshot:
+                self._show_validation_result(result)
+            else:
+                self._show_problem_title(self.words["stale_validation"])
+
+        try:
+            started = self.on_validate(path, receive)
+        except Exception:
+            self._validation_pending = False
+            self._problems_panel.pack_forget()
+            raise
+        if not started:
+            self._validation_pending = False
+            self._problems_panel.pack_forget()
+        return bool(started)
+
+    def _show_problem_title(self, title):
+        self._problems_title.config(text=title)
+        self._problems_panel.pack(fill="x", before=self.status)
+
+    def _show_validation_result(self, result):
+        self._problem_snapshot = self.document.text
+        self._show_problem_title(self.words["no_errors"] if result.success else
+                                 self.words["problems"] + " — " + self.words["jump_hint"])
+        self._problems_text.config(state="normal")
+        self._problems_text.delete("1.0", "end")
+        self._problem_rows = {}
+        if result.success:
+            self._problems_text.pack_forget()
+        else:
+            message = result.text or self.words["problems"]
+            self._problems_text.insert("1.0", message)
+            for display_row, problem in enumerate(
+                    result.problems(self.document.text.count("\n") + 1), start=1):
+                if problem.line is not None:
+                    self._problem_rows[display_row] = problem.line
+                    self._problems_text.tag_add("jump", f"{display_row}.0",
+                                                f"{display_row}.0 lineend")
+            self._problems_text.pack(fill="x")
+        self._problems_text.config(state="disabled")
+
+    def _problem_double_click(self, event):
+        if self._problem_snapshot != self.document.text:
+            return "break"
+        display_row = int(self._problems_text.index(f"@{event.x},{event.y}").split(".")[0])
+        line = self._problem_rows.get(display_row)
+        if line is not None:
+            self.jump_to_line(line)
+        return "break"
+
+    def jump_to_line(self, line):
+        if not 1 <= line <= self.document.text.count("\n") + 1:
+            return False
+        if self._view == "table":
+            if not self._commit_table_edit():
+                return False
+            self.table_grid.jump_to_row(line - 1)
+        else:
+            self.text.mark_set("insert", f"{line}.0")
+            self.text.see(f"{line}.0")
+            self.text.focus_set()
+        self._update_status()
+        return True
 
     def save_as(self):
         path = filedialog.asksaveasfilename(

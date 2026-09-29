@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import threading
 import tkinter as tk
+import traceback
 from queue import Empty, SimpleQueue
 from tkinter import filedialog, messagebox
 
@@ -68,6 +69,7 @@ class TASConverterApp(tk.Tk):
         self.base_dir = scripts_dir()
         self._events = SimpleQueue()
         self._conversion_running = False
+        self._validation_running = False
 
         tk.Label(self, text=self.words["input"]).grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.input_entry = tk.Entry(self, width=50)
@@ -149,7 +151,7 @@ class TASConverterApp(tk.Tk):
         self._set_input_path(path, preserve_output_name=True)
 
     def _convert_editor_file(self, path):
-        if self._conversion_running:
+        if self._conversion_running or self._validation_running:
             return False
         # Re-select the requesting editor's file; another editor may have saved since.
         self._editor_saved(path)
@@ -164,7 +166,40 @@ class TASConverterApp(tk.Tk):
         EditorWindow(self, language=self.language,
                      initial_path=self.input_entry.get().strip() or None,
                      on_saved=self._editor_saved, on_convert=self._convert_editor_file,
-                     can_convert=lambda: not self._conversion_running)
+                     can_convert=lambda: not (self._conversion_running or self._validation_running),
+                     on_validate=self._validate_editor_file,
+                     can_validate=lambda: not (self._conversion_running or self._validation_running))
+
+    def _validate_editor_file(self, path, callback):
+        if self._conversion_running or self._validation_running:
+            return False
+        if __package__:
+            from .editor.validation import ValidationResult, validate_script
+        else:
+            from editor.validation import ValidationResult, validate_script
+        output_format = self.format_var.get()
+        skip_empty = self.skip_var.get() if output_format == "nxtas" else False
+        self._validation_running = True
+        self.convert_btn.config(state="disabled")
+
+        def worker():
+            try:
+                result = validate_script(path, output_format, skip_empty, self.base_dir)
+            except Exception:
+                # Unexpected worker failures remain visible in stderr and Problems.
+                traceback.print_exc()
+                result = ValidationResult(False, stderr=traceback.format_exc(),
+                                          source_is_tsv=os.path.splitext(str(path))[1].lower() == ".tsv")
+            self._events.put(("validation", (callback, result)))
+
+        try:
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception:
+            self._validation_running = False
+            self.convert_btn.config(state="normal")
+            raise
+        self.after(50, self._drain_events)
+        return True
 
     def browse_output(self):
         path = filedialog.askdirectory()
@@ -191,7 +226,7 @@ class TASConverterApp(tk.Tk):
         self.log_text.config(state="disabled")
 
     def start_conversion(self):
-        if self._conversion_running:
+        if self._conversion_running or self._validation_running:
             return False
         # Read Tk widgets on the main thread; the worker only handles files and subprocesses.
         values = (self.input_entry.get().strip(), self.output_entry.get().strip(),
@@ -227,6 +262,12 @@ class TASConverterApp(tk.Tk):
                 messagebox.showinfo(self.words["success_title"], message)
             elif kind == "error":
                 messagebox.showerror(self.words["error_title"], message)
+            elif kind == "validation":
+                callback, result = message
+                self._validation_running = False
+                self.convert_btn.config(state="normal")
+                callback(result)
+                return
             elif kind == "done":
                 self._conversion_running = False
                 self.convert_btn.config(state="normal")

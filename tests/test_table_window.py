@@ -238,9 +238,7 @@ class TableWindowTests(unittest.TestCase):
         buttons = [item for item in widgets if item.kind == "button"]
         palette_buttons = buttons[:-2]
         expected = [item for category in PALETTE_CATEGORIES
-                    for item in sorted((entry for entry in CANDIDATES
-                                        if entry.category == category),
-                                       key=lambda entry: -window._palette_span(entry))]
+                    for item in CANDIDATES if item.category == category]
         self.assertEqual([item.options["text"] for item in palette_buttons],
                          [item.display_label for item in expected])
         button_group = palette_buttons[0].master
@@ -265,7 +263,18 @@ class TableWindowTests(unittest.TestCase):
         self.assertEqual(icon_button.options["text"], "A")
         self.assertEqual(motion_button.options["text"], motion.display_label)
         self.assertNotIn("image", motion_button.options)
-        self.assertTrue(any(item.placement["columnspan"] == 2 for item in palette_buttons))
+        self.assertEqual([item.options["text"] for item in palette_buttons[16:19]],
+                         ["ls(angle)", "ls(radius; angle)", "lsx(x; y)"])
+        self.assertEqual([item.options["text"] for item in palette_buttons[19:22]],
+                         ["rs(angle)", "rs(radius; angle)", "rsx(x; y)"])
+        for first in (16, 19):
+            self.assertEqual((palette_buttons[first].placement["row"],
+                              palette_buttons[first].placement["column"],
+                              palette_buttons[first].placement["columnspan"]), (0, 0, 2))
+            self.assertEqual((palette_buttons[first + 1].placement["row"],
+                              palette_buttons[first + 1].placement["column"]), (1, 0))
+            self.assertEqual((palette_buttons[first + 2].placement["row"],
+                              palette_buttons[first + 2].placement["column"]), (1, 1))
         palette_buttons[-1].options["command"]()
         self.assertIs(inserted[0], expected[-1])
         self.assertEqual(window.palette_canvas.kind, "canvas")

@@ -90,6 +90,7 @@ _INPUT = re.compile(
     r"(?:^|[/|&\s>])(?:(?:" + "|".join(map(re.escape, _FUNCTION_NAMES)) +
     r")\([^)]*\)|(?:" + "|".join(map(re.escape, _BUTTON_NAMES)) +
     r"))(?=$|[/|&\s\[(-])", re.IGNORECASE)
+_CONTROL_HINT = re.compile(r"(?:->|[/|]|\[\d+\]|^\s*[?*])")
 
 
 class CompletionState:
@@ -168,6 +169,23 @@ def classify_cell(value, column):
             return "variable"
         return "duration" if _DURATION.fullmatch(value) else None
     return "input" if _INPUT.search(token) else None
+
+
+def classify_row(line):
+    """Visual hint for one literal TSV row; this does not validate syntax."""
+    cells = line.split("\t")
+    if not any(cell.strip() for cell in cells):
+        return "blank"
+    first = cells[0].strip()
+    if first.startswith("//"):
+        return "comment"
+    if first.startswith("/"):
+        return "command"
+    if first.startswith("$") and "=" in first:
+        return "variable"
+    if any(_CONTROL_HINT.search(cell) for cell in cells):
+        return "control"
+    return "input"
 
 
 def syntax_spans(line):

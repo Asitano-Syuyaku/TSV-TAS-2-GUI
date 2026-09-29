@@ -9,6 +9,17 @@ from python_to_exe.editor.table_model import CellSelection, TableModel, visible_
 
 
 class TableModelTests(unittest.TestCase):
+    def test_h_and_later_columns_remain_editable(self):
+        model = TableModel("A")
+        self.assertEqual(model.to_text(), "A")
+        line = model.changed_line(0, 7, "H")
+        model.update_line(0, line)
+        self.assertEqual(model.cell(0, 7), "H")
+        model.paste(0, 8, "I\tJ")
+        self.assertEqual(model.cell(0, 9), "J")
+        model.insert_column(9)
+        self.assertEqual(model.cell(0, 10), "J")
+
     def test_round_trip_keeps_tabs_blank_rows_and_special_lines(self):
         for text in ("", "\n", "a\t\t\n\n/pause\n$angle = 90\n// comment\n日本語\t",
                      "a\tb\t\t\n\n最後\t"):

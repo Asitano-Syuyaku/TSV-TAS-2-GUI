@@ -199,6 +199,35 @@ class TableGridTests(unittest.TestCase):
     def tearDownClass(cls):
         sys.modules.pop("python_to_exe.editor.grid", None)
 
+    def test_a_to_g_guides_are_visual_only_and_h_remains_virtual(self):
+        grid = self.module.TableGrid.__new__(self.module.TableGrid)
+        grid.canvas = CanvasStub(origin_y=0, width=800, height=240)
+        grid.model = TableModel("")
+        grid.font = types.SimpleNamespace(measure=lambda value: len(value) * 8)
+        grid.selected = (0, 0)
+        grid.header_height = grid.row_height = 24
+        grid.gutter_width = 48
+        grid.column_width = 160
+        grid._draw_job = None
+        grid._editor = None
+        grid._scroll_region = None
+        grid.on_select = lambda: None
+        grid.after_idle = lambda callback: 1
+        grid.labels = {"duration_header": "フレーム数", "button_header": "ボタン"}
+        before = grid.model.to_text()
+        grid._update_region()
+        self.assertGreaterEqual(grid.display_column_count, 7)
+        self.assertEqual(grid.model.to_text(), before)
+        self.assertEqual([self.module.column_heading(index, grid.labels)
+                          for index in range(8)],
+                         ["A · フレーム数", "B · LS", "C · RS",
+                          "D · ボタン", "E · ボタン", "F · ボタン", "G · ボタン", "H"])
+        for _ in range(7):
+            grid._move(0, 1)
+        self.assertEqual(grid.selected, (0, 7))
+        self.assertGreaterEqual(grid.display_column_count, 8)
+        self.assertEqual(grid.model.to_text(), before)
+
     def test_draws_only_visible_cells_and_headers(self):
         grid = self.module.TableGrid.__new__(self.module.TableGrid)
         grid.canvas = CanvasStub()
@@ -1065,12 +1094,12 @@ class TableGridTests(unittest.TestCase):
         grid._click(types.SimpleNamespace(x=20, y=40, state=0))
         self.assertEqual(grid._selection_bounds()[:2], (9000, 9000))
         grid._draw_visible()
-        self.assertLess(grid.canvas.rectangles, 150)
+        self.assertLess(grid.canvas.rectangles, 200)  # Seven guide columns stay visible.
         grid.canvas.rectangles = 0
         grid._click(types.SimpleNamespace(x=55, y=10, state=0))
         self.assertEqual(grid._selection_bounds(), (0, 9999, 0, 0))
         grid._draw_visible()
-        self.assertLess(grid.canvas.rectangles, 150)
+        self.assertLess(grid.canvas.rectangles, 200)
 
     def test_autocomplete_popup_keyboard_mouse_and_escape(self):
         grid, _, _ = self._navigation_grid("old")
