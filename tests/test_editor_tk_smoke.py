@@ -8,10 +8,100 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from python_to_exe.converter_gui import TASConverterApp
+from python_to_exe.editor.debug_csv import DebugFrames
+from python_to_exe.editor.frame_inspector import HEADER_HEIGHT, ROW_HEIGHT
 from python_to_exe.editor.window import EditorWindow
 
 
 class RealTkSmokeTests(unittest.TestCase):
+    def test_analyze_frames_inspector_and_problems(self):
+        try:
+            app = TASConverterApp("en")
+        except tk.TclError as error:
+            self.skipTest(f"graphical Tk display unavailable: {error}")
+        self.addCleanup(app.destroy)
+        with tempfile.TemporaryDirectory(prefix="tas frames 日本語 ") as folder:
+            source = Path(folder) / "frames with spaces.tsv"
+            source.write_text("$is_two_player = true\n2\ta\tca\n", encoding="utf-8")
+            app._set_input_path(source)
+            app.debug_var.set(False)
+            app.ftp_var.set(True)
+            settings = (app.debug_var.get(), app.ftp_var.get(), app.format_var.get(),
+                        app.output_entry.get(), app.outname_entry.get())
+            app.open_editor()
+            editor = next(child for child in app.winfo_children()
+                          if isinstance(child, EditorWindow))
+            self.assertTrue(editor.show_table())
+            app.update()
+            editor.table_grid.selected = (1, 1)
+            editor.table_grid.begin_edit()
+            editor.table_grid._editor.delete(0, "end")
+            editor.table_grid._editor.insert(0, "b")
+            self.assertTrue(editor.analyze_frames())
+            deadline = time.monotonic() + 10
+            while editor._analysis_pending and time.monotonic() < deadline:
+                app.update()
+                time.sleep(0.02)
+            self.assertFalse(editor._analysis_pending)
+            inspector = editor._frame_inspector
+            self.assertTrue(inspector.winfo_exists())
+            self.assertEqual(inspector.frames.total_frames, 2)
+            self.assertEqual(len(inspector.frames.rows), 4)
+            self.assertIn("2\tb\tca", source.read_text(encoding="utf-8"))
+            self.assertIn("Total Frames: 2", inspector.total_label.cget("text"))
+            self.assertEqual((app.debug_var.get(), app.ftp_var.get(), app.format_var.get(),
+                              app.output_entry.get(), app.outname_entry.get()), settings)
+            inspector._click(SimpleNamespace(x=10, y=HEADER_HEIGHT + ROW_HEIGHT + 3))
+            self.assertEqual(inspector.selected_row, 1)
+            self.assertIn("2ndPlayer: True", inspector.detail_text.get("1.0", "end"))
+            self.assertIn("lg.r.xx:", inspector.detail_text.get("1.0", "end"))
+            inspector.frame_entry.insert(0, "1")
+            self.assertTrue(inspector.go_to_frame())
+            self.assertEqual(inspector.selected_row, 2)
+            self.assertTrue(editor.show_raw())
+            self.assertTrue(editor.show_table())
+            self.assertTrue(inspector.winfo_exists())
+
+            self.assertTrue(editor.show_raw())
+            editor.text.delete("1.0", "end")
+            editor.text.insert("1.0", "1\tls(\n")
+            self.assertTrue(editor.analyze_frames())
+            deadline = time.monotonic() + 10
+            while editor._analysis_pending and time.monotonic() < deadline:
+                app.update()
+                time.sleep(0.02)
+            self.assertFalse(editor._analysis_pending)
+            self.assertIs(editor._frame_inspector, inspector)
+            self.assertEqual(inspector.frames.total_frames, 2)
+            self.assertTrue(editor._problems_panel.winfo_ismapped())
+            self.assertIn("Syntax error(s) on line 1", editor._problems_text.get("1.0", "end"))
+            self.assertIn("Previous analysis", inspector.feedback.cget("text"))
+
+            editor.text.delete("1.0", "end")
+            editor.text.insert("1.0", "1\ta\n")
+            self.assertTrue(editor.analyze_frames())
+            deadline = time.monotonic() + 10
+            while editor._analysis_pending and time.monotonic() < deadline:
+                app.update()
+                time.sleep(0.02)
+            self.assertFalse(editor._analysis_pending)
+            self.assertEqual(inspector.frames.total_frames, 1)
+            self.assertFalse(editor._problems_panel.winfo_ismapped())
+
+            original = inspector.frames
+            rows = tuple((str(index),) + original.rows[0][1:] for index in range(10000))
+            many = DebugFrames(original.headers, rows,
+                               {index: index for index in range(10000)}, 10000)
+            inspector.set_data(many, source)
+            app.update()
+            self.assertLess(len(inspector.canvas.find_all()), 1000)
+            inspector.frame_entry.delete(0, "end")
+            inspector.frame_entry.insert(0, "9999")
+            self.assertTrue(inspector.go_to_frame())
+            app.update()
+            self.assertEqual(inspector.selected_row, 9999)
+            self.assertLess(len(inspector.canvas.find_all()), 1000)
+
     def test_japanese_converter_opens_same_editor_controls(self):
         try:
             app = TASConverterApp("ja")

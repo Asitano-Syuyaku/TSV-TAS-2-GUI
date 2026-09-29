@@ -50,11 +50,13 @@ The Japanese and English launchers use the same conversion behavior; only displa
 
 ### Built-in editor
 
-Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, Save & Convert, Validate, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, `F5`, and `F6`. New, Open, and Close ask what to do with unsaved changes.
+Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, Save & Convert, Validate, Analyze Frames, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, `F5`, `F6`, and `F7`. New, Open, and Close ask what to do with unsaved changes.
 
 **Save & Convert** saves edits, then converts the file open in that Editor as the Converter's Input. For a new file, Save As asks where to save it; canceling stops conversion. After Save As, Input switches to the new path. If Output Directory or Output File Name is empty, it fills from the file's folder or stem; existing values are kept. Conversion uses the Converter's current output format, skip-empty, Debug, and FTP settings. Converter stdout and stderr appear in the existing log; conversion failures also show a dialog.
 
 **Validate** (`F6`) commits the current cell edit, saves changes, and runs the bundled converter in a temporary folder using the selected output format. A new document needs Save As; canceling stops validation. Success shows “No errors”; failure shows the converter's unchanged message in Problems below the editor. Double-click a message with an explicit source line number to jump there. Errors without a reliable line number, including errors in the intermediate TSV made from `.txt`, have no guessed jump target. Validate leaves Converter output settings unchanged and does not upload by FTP or generate a Debug CSV. Use **Save & Convert** to create the normal output.
+
+**Analyze Frames** (`F7`) saves edits, generates a temporary Debug CSV with the bundled converter, and opens a separate Frame Inspector window. It leaves the Converter's Debug checkbox and output settings unchanged and never uploads by FTP. **Total Frames** is the largest CSV `Frame` number plus one, so 1P/2P rows for the same frame are not counted twice. The list shows buttons, LS/RS, commands, and other key fields; selecting a row shows every CSV field, including acceleration and gyro, in the detail area. Enter a frame number and choose **Go** to select it. If analysis fails, Problems shows the error and any earlier Inspector result is marked as previous. The current Debug CSV has no reliable source TSV line information, so frames do not jump back to source rows.
 
 The Edit menu provides Undo/Redo, Cut/Copy/Paste, and Select All. Shortcuts are `Ctrl+Z`/`Ctrl+Y` and `Ctrl+X`/`Ctrl+C`/`Ctrl+V`/`Ctrl+A`. Open Find with `Ctrl+F` or Replace with `Ctrl+H`; `F3`/`Shift+F3` searches next/previous. The dialog can replace the current match or all matches. Search is case-sensitive. Line numbers and a status bar show the line, column, modified state, and file kind (TSV-TAS/nx-TAS).
 
@@ -159,7 +161,7 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 | `nx-tas-to-tsv-tas.py` | nx-TAS→TSV-TAS converter matching upstream |
 | `python_to_exe/main_jp.py`, `main_en.py` | Japanese/English launchers |
 | `python_to_exe/converter_gui.py`, `converter_logic.py` | Shared GUI, argument construction, Python discovery, and FTP settings |
-| `python_to_exe/editor/` | Raw Text/Table editor window, file state, find/replace, and input hints |
+| `python_to_exe/editor/` | Raw Text/Table editor, file state, find/replace, input hints, validation, Debug CSV parsing, and Frame Inspector |
 | `ftp_config.json` | FTP connection settings; do not commit real credentials |
 | `tests/test_conversion.py` | Local conversion and GUI argument tests |
 

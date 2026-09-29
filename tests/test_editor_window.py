@@ -56,6 +56,49 @@ class FakeStatus:
 
 
 class EditorWindowHeadlessTests(unittest.TestCase):
+    def test_analyze_saves_current_text_and_cancel_stops_before_converter(self):
+        fake_tk = types.ModuleType("tkinter")
+        fake_tk.Toplevel = FakeToplevel
+        fake_tk.filedialog = types.SimpleNamespace(asksaveasfilename=lambda **kwargs: "")
+        fake_tk.font = types.SimpleNamespace()
+        fake_tk.messagebox = types.SimpleNamespace(showerror=lambda *args, **kwargs: None)
+        with patch.dict(sys.modules, {"tkinter": fake_tk}):
+            sys.modules.pop("python_to_exe.editor.window", None)
+            module = importlib.import_module("python_to_exe.editor.window")
+            window = module.EditorWindow.__new__(module.EditorWindow)
+            window.words = module.LABELS["en"]
+            window.document = module.EditorDocument()
+            window.text = FakeText()
+            window.status = FakeStatus()
+            window._schedule_line_numbers = lambda: None
+            window._analysis_pending = False
+            window._frame_inspector = None
+            window._show_problem_title = lambda title: None
+            window.can_analyze = lambda: True
+            window.on_saved = None
+            requests = []
+            window.on_analyze = lambda path, callback: requests.append(
+                (path, Path(path).read_bytes(), callback)) or True
+            with tempfile.TemporaryDirectory() as folder:
+                source = Path(folder) / "analysis 日本語.tsv"
+                source.write_bytes(b"1\ta\n")
+                window.document.open(source)
+                window.text.value = "1\tb\n"
+                self.assertTrue(window.analyze_frames())
+                self.assertEqual(requests[0][:2], (source, b"1\tb\n"))
+                self.assertFalse(window.document.modified)
+                self.assertFalse(window.analyze_frames())
+                self.assertFalse(hasattr(window.text, "reset_count"))
+
+                window._analysis_pending = False
+                window.document.new()
+                window.text.value = "1\tc\n"
+                self.assertFalse(window.analyze_frames())
+                self.assertEqual(len(requests), 1)
+                self.assertIsNone(window.document.path)
+                self.assertTrue(window.document.modified)
+        sys.modules.pop("python_to_exe.editor.window", None)
+
     def test_validate_saves_modified_text_and_cancel_preserves_history(self):
         fake_tk = types.ModuleType("tkinter")
         fake_tk.Toplevel = FakeToplevel

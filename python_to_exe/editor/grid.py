@@ -96,6 +96,7 @@ class TableGrid(tk.Frame):
         self.grid_columnconfigure(0, weight=1)
 
         self.canvas.bind("<Configure>", self._canvas_resized)
+        self.bind("<Destroy>", self._on_destroy)
         self.canvas.bind("<Button-1>", self._click)
         self.canvas.bind("<Double-Button-1>", self._double_click)
         self.canvas.bind("<B1-Motion>", self._drag)
@@ -114,6 +115,11 @@ class TableGrid(tk.Frame):
         if labels is not None:
             self._build_context_menus(labels)
         self._update_region()
+
+    def _on_destroy(self, event):
+        if event.widget is self and self._draw_job is not None:
+            self.after_cancel(self._draw_job)
+            self._draw_job = None
 
     def _build_context_menus(self, labels):
         actions = {

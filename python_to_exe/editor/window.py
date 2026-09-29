@@ -44,6 +44,12 @@ LABELS = {
         "stale_validation": "Document changed; validate again",
         "duration_header": "Duration",
         "button_header": "Button",
+        "analyze": "Analyze Frames", "analyzing": "Analyzing frames...",
+        "frame_inspector": "Frame Inspector", "total_frames": "Total Frames",
+        "frame_number": "Frame:", "go": "Go", "frame_details": "All Debug CSV fields",
+        "invalid_frame": "Enter a frame number", "frame_not_found": "Frame not found",
+        "previous_frames": "Previous analysis; run Analyze Frames again",
+        "stale_analysis": "Document changed; analyze again",
     },
     "ja": {
         "title": "TSV-TAS エディター", "untitled": "無題", "file": "ファイル",
@@ -75,13 +81,20 @@ LABELS = {
         "stale_validation": "文書が変更されました。再度検証してください",
         "duration_header": "フレーム数",
         "button_header": "ボタン",
+        "analyze": "フレーム解析", "analyzing": "フレーム解析中...",
+        "frame_inspector": "フレームインスペクター", "total_frames": "総フレーム数",
+        "frame_number": "フレーム:", "go": "移動", "frame_details": "Debug CSVの全項目",
+        "invalid_frame": "フレーム番号を入力してください", "frame_not_found": "フレームが見つかりません",
+        "previous_frames": "以前の解析結果です。再度フレーム解析してください",
+        "stale_analysis": "文書が変更されました。再度解析してください",
     },
 }
 
 
 class EditorWindow(tk.Toplevel):
     def __init__(self, master, language="en", initial_path=None, on_saved=None,
-                 on_convert=None, can_convert=None, on_validate=None, can_validate=None):
+                 on_convert=None, can_convert=None, on_validate=None, can_validate=None,
+                 on_analyze=None, can_analyze=None):
         super().__init__(master)
         self.words = LABELS[language]
         self.document = EditorDocument()
@@ -90,7 +103,12 @@ class EditorWindow(tk.Toplevel):
         self.can_convert = can_convert
         self.on_validate = on_validate
         self.can_validate = can_validate
+        self.on_analyze = on_analyze
+        self.can_analyze = can_analyze
         self._validation_pending = False
+        self._analysis_pending = False
+        self._frame_inspector = None
+        self._inspector_snapshot = None
         self.find_query = tk.StringVar(self)
         self.replace_value = tk.StringVar(self)
         self._find_dialog = None
@@ -110,6 +128,7 @@ class EditorWindow(tk.Toplevel):
             ("save_as", self.save_as, "Ctrl+Shift+S"),
             ("save_convert", self.save_and_convert, "F5"),
             ("validate", self.validate, "F6"),
+            ("analyze", self.analyze_frames, "F7"),
             ("close", self.close_editor, ""),
         ):
             file_menu.add_command(label=self.words[key], command=command, accelerator=shortcut)
@@ -150,6 +169,7 @@ class EditorWindow(tk.Toplevel):
                                        command=self.show_table)
         self._table_button.pack(side="left")
         tk.Button(view_bar, text=self.words["validate"], command=self.validate).pack(side="left")
+        tk.Button(view_bar, text=self.words["analyze"], command=self.analyze_frames).pack(side="left")
         self.table_tools = tk.Frame(view_bar)
         tk.Button(self.table_tools, text=self.words["add_row"],
                   command=lambda: self._table_action("insert_row_below")).pack(side="left")
@@ -209,6 +229,7 @@ class EditorWindow(tk.Toplevel):
             ("<Control-Shift-s>", self.save_as),
             ("<F5>", self.save_and_convert),
             ("<F6>", self.validate),
+            ("<F7>", self.analyze_frames),
             ("<Control-z>", self.undo), ("<Control-y>", self.redo),
             ("<Control-x>", self.cut), ("<Control-c>", self.copy),
             ("<Control-v>", self.paste), ("<Control-a>", self.select_all),
@@ -224,6 +245,7 @@ class EditorWindow(tk.Toplevel):
             ("<Control-Shift-s>", self.save_as),
             ("<F5>", self.save_and_convert),
             ("<F6>", self.validate),
+            ("<F7>", self.analyze_frames),
             ("<Control-f>", self.show_find),
             ("<Control-h>", self.show_replace),
             ("<F3>", self.find_next),
@@ -231,6 +253,7 @@ class EditorWindow(tk.Toplevel):
         ):
             self.bind(sequence, lambda event, action=command: self._shortcut(action))
         self.protocol("WM_DELETE_WINDOW", self.close_editor)
+        self.bind("<Destroy>", self._on_destroy)
         self._update_title()
         self._update_status()
         self._schedule_line_numbers()
@@ -336,6 +359,14 @@ class EditorWindow(tk.Toplevel):
     def _schedule_line_numbers(self, _event=None):
         if self._gutter_job is None:
             self._gutter_job = self.after_idle(self._draw_line_numbers)
+
+    def _on_destroy(self, event):
+        if event.widget is self:
+            for name in ("_gutter_job", "_highlight_job"):
+                job = getattr(self, name, None)
+                if job is not None:
+                    self.after_cancel(job)
+                    setattr(self, name, None)
 
     def _draw_line_numbers(self):
         self._gutter_job = None
@@ -474,6 +505,10 @@ class EditorWindow(tk.Toplevel):
                 self._problems_panel.pack_forget()
                 self._problem_rows = {}
                 self._problem_snapshot = None
+            if (getattr(self, "_inspector_snapshot", None) is not None and
+                    self.document.text != self._inspector_snapshot and
+                    self._frame_inspector is not None and self._frame_inspector.winfo_exists()):
+                self._frame_inspector.mark_stale()
             self.text.edit_modified(False)
             self._update_status()
             self._schedule_line_numbers()
@@ -484,6 +519,9 @@ class EditorWindow(tk.Toplevel):
             self._problems_panel.pack_forget()
             self._problem_rows = {}
             self._problem_snapshot = None
+        if (getattr(self, "_frame_inspector", None) is not None and
+                self._frame_inspector.winfo_exists()):
+            self._frame_inspector.mark_stale()
         if getattr(self, "_view", "raw") == "table":
             self.table_area.pack_forget()
             if hasattr(self, "table_tools"):
@@ -772,6 +810,60 @@ class EditorWindow(tk.Toplevel):
             self._problems_panel.pack_forget()
         return bool(started)
 
+    def analyze_frames(self):
+        if (self.on_analyze is None or self._analysis_pending or
+                self.can_analyze is not None and not self.can_analyze()):
+            return False
+        if not self._commit_table_edit():
+            return False
+        self._sync_text()
+        if (self.document.path is None or self.document.modified) and not self.save():
+            return False
+        path, snapshot = self.document.path, self.document.text
+        self._analysis_pending = True
+        self._show_problem_title(self.words["analyzing"])
+        if self._frame_inspector is not None and self._frame_inspector.winfo_exists():
+            self._frame_inspector.mark_stale()
+
+        def receive(result):
+            if not self.winfo_exists():
+                return
+            self._analysis_pending = False
+            self._sync_text()
+            if self.document.path != path or self.document.text != snapshot:
+                self._show_problem_title(self.words["stale_analysis"])
+            elif result.success:
+                self._problems_panel.pack_forget()
+                self._problem_rows = {}
+                self._problem_snapshot = None
+                from .frame_inspector import FrameInspector
+                if self._frame_inspector is None or not self._frame_inspector.winfo_exists():
+                    self._frame_inspector = FrameInspector(self, self.words, result.frames, path)
+                else:
+                    self._frame_inspector.set_data(result.frames, path)
+                    self._frame_inspector.lift()
+                self._inspector_snapshot = snapshot
+            else:
+                report = result.report
+                if report.stderr:
+                    # Debug mode can print every parsed input line to stdout.
+                    # Keep Problems focused on the exact converter error text.
+                    from .validation import ValidationResult
+                    report = ValidationResult(False, stderr=report.stderr,
+                                              source_is_tsv=report.source_is_tsv)
+                self._show_validation_result(report)
+
+        try:
+            started = self.on_analyze(path, receive)
+        except Exception:
+            self._analysis_pending = False
+            self._problems_panel.pack_forget()
+            raise
+        if not started:
+            self._analysis_pending = False
+            self._problems_panel.pack_forget()
+        return bool(started)
+
     def _show_problem_title(self, title):
         self._problems_title.config(text=title)
         self._problems_panel.pack(fill="x", before=self.status)
@@ -850,6 +942,7 @@ class EditorWindow(tk.Toplevel):
         if self._confirm_discard():
             if self._gutter_job is not None:
                 self.after_cancel(self._gutter_job)
+                self._gutter_job = None
             self.destroy()
             return True
         return False

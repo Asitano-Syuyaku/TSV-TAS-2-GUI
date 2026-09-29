@@ -50,11 +50,13 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 
 ### 内蔵エディター
 
-Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、Validate、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5`、`F6` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
+Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、Validate、フレーム解析、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5`、`F6`、`F7` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
 
 **Save & Convert** は編集内容を保存してから、そのEditorで開いているファイルをConverterのInputとして変換します。新規ファイルはSave Asで保存先を指定し、キャンセルすれば変換しません。Save As後はInputが新しいpathへ切り替わります。Output Directory／Output File Nameが空欄ならファイルのフォルダー／拡張子を除いた名前を設定し、指定済みなら保持します。出力形式、空フレーム省略、Debug、FTPはConverterで現在選んでいる設定を使います。converterの標準出力・標準エラーは従来のログに表示され、変換失敗はダイアログでも通知されます。
 
 **Validate**（`F6`）は現在のセル編集を確定し、変更を保存してから、現在選択中の出力形式で既存converterを一時フォルダーへ実行します。新規文書ではSave Asが必要で、キャンセルすると実行しません。成功時は「エラーなし」、失敗時は下部のProblemsにconverterのメッセージをそのまま表示します。明示的な行番号があるメッセージをダブルクリックすると、その行へ移動します。行番号を特定できないエラーや、`.txt` から変換した中間TSVのエラーには推測でジャンプ先を付けません。ValidateはConverterの出力設定を変更せず、FTP送信とDebug CSV生成も行いません。通常の出力を作る場合は引き続き **Save & Convert** を使ってください。
+
+**フレーム解析**（`F7`）は編集内容を保存し、既存converterでDebug CSVを一時生成して別ウィンドウのFrame Inspectorに表示します。ConverterのDebugチェック状態や出力設定は変えず、FTP送信もしません。上部の**総フレーム数**はCSVの最大`Frame`番号＋1です。同じframeの1P／2P行を二重に数えません。一覧にはボタン、LS／RS、commandなどを表示し、行を選ぶと加速度・ジャイロを含むCSVの全項目を詳細欄で確認できます。frame番号を入力して**移動**できます。解析失敗時はProblemsにエラーを表示し、以前のInspector結果には旧結果である旨を表示します。現行Debug CSVには確実な元TSV行情報がないため、frameから元の行へのジャンプは行いません。
 
 編集メニューにはUndo／Redo、Cut／Copy／Paste、Select Allがあります。ショートカットは `Ctrl+Z`／`Ctrl+Y`、`Ctrl+X`／`Ctrl+C`／`Ctrl+V`／`Ctrl+A` です。`Ctrl+F` で検索、`Ctrl+H` で置換を開けます。`F3`／`Shift+F3` で次／前を検索でき、ダイアログでは現在の一致箇所または全一致箇所を置換できます。検索は大文字小文字を区別します。行番号と、行・列・編集状態・ファイル種別（TSV-TAS／nx-TAS）を示すステータスバーも表示します。
 
@@ -159,7 +161,7 @@ python -m PyInstaller --noconsole --onefile python_to_exe/main_en.py
 | `nx-tas-to-tsv-tas.py` | upstreamと同じnx-TAS→TSV-TAS converter |
 | `python_to_exe/main_jp.py`、`main_en.py` | 日本語／Englishの起動スクリプト |
 | `python_to_exe/converter_gui.py`、`converter_logic.py` | 共通GUI、引数生成、Python探索、FTP設定 |
-| `python_to_exe/editor/` | テキスト／表の編集画面、ファイル状態、検索・置換、入力支援の処理 |
+| `python_to_exe/editor/` | テキスト／表の編集画面、ファイル状態、検索・置換、入力支援、Validation、Debug CSV解析とFrame Inspector |
 | `ftp_config.json` | FTP接続設定。実credentialをcommitしないこと |
 | `tests/test_conversion.py` | ローカル変換とGUI引数のテスト |
 

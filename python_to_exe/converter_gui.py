@@ -70,6 +70,7 @@ class TASConverterApp(tk.Tk):
         self._events = SimpleQueue()
         self._conversion_running = False
         self._validation_running = False
+        self._analysis_running = False
 
         tk.Label(self, text=self.words["input"]).grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.input_entry = tk.Entry(self, width=50)
@@ -151,7 +152,7 @@ class TASConverterApp(tk.Tk):
         self._set_input_path(path, preserve_output_name=True)
 
     def _convert_editor_file(self, path):
-        if self._conversion_running or self._validation_running:
+        if self._busy():
             return False
         # Re-select the requesting editor's file; another editor may have saved since.
         self._editor_saved(path)
@@ -166,12 +167,17 @@ class TASConverterApp(tk.Tk):
         EditorWindow(self, language=self.language,
                      initial_path=self.input_entry.get().strip() or None,
                      on_saved=self._editor_saved, on_convert=self._convert_editor_file,
-                     can_convert=lambda: not (self._conversion_running or self._validation_running),
+                     can_convert=lambda: not self._busy(),
                      on_validate=self._validate_editor_file,
-                     can_validate=lambda: not (self._conversion_running or self._validation_running))
+                     can_validate=lambda: not self._busy(),
+                     on_analyze=self._analyze_editor_file,
+                     can_analyze=lambda: not self._busy())
+
+    def _busy(self):
+        return self._conversion_running or self._validation_running or self._analysis_running
 
     def _validate_editor_file(self, path, callback):
-        if self._conversion_running or self._validation_running:
+        if self._busy():
             return False
         if __package__:
             from .editor.validation import ValidationResult, validate_script
@@ -196,6 +202,37 @@ class TASConverterApp(tk.Tk):
             threading.Thread(target=worker, daemon=True).start()
         except Exception:
             self._validation_running = False
+            self.convert_btn.config(state="normal")
+            raise
+        self.after(50, self._drain_events)
+        return True
+
+    def _analyze_editor_file(self, path, callback):
+        if self._busy():
+            return False
+        if __package__:
+            from .editor.validation import AnalyzeResult, ValidationResult, analyze_script
+        else:
+            from editor.validation import AnalyzeResult, ValidationResult, analyze_script
+        output_format = self.format_var.get()
+        skip_empty = self.skip_var.get() if output_format == "nxtas" else False
+        self._analysis_running = True
+        self.convert_btn.config(state="disabled")
+
+        def worker():
+            try:
+                result = analyze_script(path, output_format, skip_empty, self.base_dir)
+            except Exception:
+                traceback.print_exc()
+                report = ValidationResult(False, stderr=traceback.format_exc(),
+                                          source_is_tsv=os.path.splitext(str(path))[1].lower() == ".tsv")
+                result = AnalyzeResult(report)
+            self._events.put(("analysis", (callback, result)))
+
+        try:
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception:
+            self._analysis_running = False
             self.convert_btn.config(state="normal")
             raise
         self.after(50, self._drain_events)
@@ -226,7 +263,7 @@ class TASConverterApp(tk.Tk):
         self.log_text.config(state="disabled")
 
     def start_conversion(self):
-        if self._conversion_running or self._validation_running:
+        if self._busy():
             return False
         # Read Tk widgets on the main thread; the worker only handles files and subprocesses.
         values = (self.input_entry.get().strip(), self.output_entry.get().strip(),
@@ -265,6 +302,12 @@ class TASConverterApp(tk.Tk):
             elif kind == "validation":
                 callback, result = message
                 self._validation_running = False
+                self.convert_btn.config(state="normal")
+                callback(result)
+                return
+            elif kind == "analysis":
+                callback, result = message
+                self._analysis_running = False
                 self.convert_btn.config(state="normal")
                 callback(result)
                 return

@@ -1,11 +1,14 @@
-"""Run the bundled converter for validation without changing the user's output."""
+"""Run the bundled converter in disposable output paths for Editor tools."""
 
+import csv
 import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+from .debug_csv import DebugFrames, load_debug_csv
 
 if __package__ == "editor":
     from converter_logic import build_commands
@@ -41,6 +44,16 @@ class ValidationResult:
         return parse_problems(self.text, line_count if self.source_is_tsv else None)
 
 
+@dataclass(frozen=True)
+class AnalyzeResult:
+    report: ValidationResult
+    frames: Optional[DebugFrames] = None
+
+    @property
+    def success(self):
+        return self.report.success and self.frames is not None
+
+
 def parse_problems(message, line_count=None):
     """Keep converter text intact; attach a row only to an explicit in-range hint."""
     problems = []
@@ -57,27 +70,59 @@ def parse_problems(message, line_count=None):
     return tuple(problems)
 
 
-def validate_script(path, output_format, skip_empty=False, base_dir=None, runner=None):
-    """Compile into a disposable directory using the normal command builder."""
-    source = Path(path)
-    source_is_tsv = source.suffix.lower() == ".tsv"
+def _run_commands(commands, base_dir, runner, source_is_tsv):
+    """Shared subprocess execution for Validate and Analyze."""
     runner = runner or subprocess.run
     stdout, stderr = [], []
+    for command in commands:
+        try:
+            result = runner(command, cwd=base_dir, capture_output=True, text=True,
+                            errors="replace",
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except (OSError, ValueError, RuntimeError) as error:
+            stderr.append(str(error))
+            return ValidationResult(False, "".join(stdout), "".join(stderr),
+                                    source_is_tsv)
+        stdout.append(result.stdout or "")
+        stderr.append(result.stderr or "")
+        if result.returncode:
+            return ValidationResult(False, "".join(stdout), "".join(stderr),
+                                    source_is_tsv)
+    return ValidationResult(True, "".join(stdout), "".join(stderr), source_is_tsv)
+
+
+def validate_script(path, output_format, skip_empty=False, base_dir=None, runner=None):
+    """Compile into a disposable directory using the normal command builder."""
+    source_is_tsv = Path(path).suffix.lower() == ".tsv"
     try:
         with tempfile.TemporaryDirectory(prefix="tas-validation-") as destination:
-            commands = build_commands(source, destination, "validation", output_format,
+            commands = build_commands(path, destination, "validation", output_format,
                                       skip_empty=skip_empty, debug=False, ftp=False,
                                       base_dir=base_dir)
-            for command in commands:
-                result = runner(command, cwd=base_dir, capture_output=True, text=True,
-                                errors="replace",
-                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-                stdout.append(result.stdout or "")
-                stderr.append(result.stderr or "")
-                if result.returncode:
-                    return ValidationResult(False, "".join(stdout), "".join(stderr),
-                                            source_is_tsv)
+            return _run_commands(commands, base_dir, runner, source_is_tsv)
     except (OSError, ValueError, RuntimeError) as error:
-        return ValidationResult(False, "".join(stdout), "".join(stderr) + str(error),
-                                source_is_tsv)
-    return ValidationResult(True, "".join(stdout), "".join(stderr), source_is_tsv)
+        return ValidationResult(False, stderr=str(error), source_is_tsv=source_is_tsv)
+
+
+def analyze_script(path, output_format, skip_empty=False, base_dir=None, runner=None):
+    """Compile with -d, read its CSV before the temporary output is removed."""
+    source_is_tsv = Path(path).suffix.lower() == ".tsv"
+    report = ValidationResult(False, source_is_tsv=source_is_tsv)
+    try:
+        with tempfile.TemporaryDirectory(prefix="tas-analysis-") as destination:
+            commands = build_commands(path, destination, "analysis", output_format,
+                                      skip_empty=skip_empty, debug=True, ftp=False,
+                                      base_dir=base_dir)
+            report = _run_commands(commands, base_dir, runner, source_is_tsv)
+            if not report.success:
+                return AnalyzeResult(report)
+            csv_path = Path(commands[-1][-1] + "-debug.csv")
+            if not csv_path.is_file():
+                raise FileNotFoundError(f"Debug CSV was not generated: {csv_path.name}")
+            frames = load_debug_csv(csv_path)
+            return AnalyzeResult(report, frames)
+    except (OSError, ValueError, RuntimeError, csv.Error) as error:
+        detail = str(error)
+        stderr = report.stderr + ("" if not report.stderr or report.stderr.endswith("\n")
+                                  else "\n") + detail
+        return AnalyzeResult(ValidationResult(False, report.stdout, stderr, source_is_tsv))
