@@ -1,4 +1,4 @@
-"""Small raw-text editor window shared by both GUI languages."""
+"""Text editor with a literal TSV table view, shared by both GUI languages."""
 
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox
@@ -21,6 +21,7 @@ LABELS = {
         "replace_text": "Replace with:", "replace_current": "Replace",
         "replace_all": "Replace All", "not_found": "Not found", "saved": "Unmodified",
         "modified": "Modified", "line": "Line", "column": "Column",
+        "raw_view": "Raw Text", "table_view": "Table",
     },
     "ja": {
         "title": "TSV-TAS エディター", "untitled": "無題", "file": "ファイル",
@@ -35,6 +36,7 @@ LABELS = {
         "replace_current": "置換", "replace_all": "すべて置換",
         "not_found": "見つかりません", "saved": "未編集", "modified": "編集済み",
         "line": "行", "column": "列",
+        "raw_view": "テキスト", "table_view": "表",
     },
 }
 
@@ -52,6 +54,7 @@ class EditorWindow(tk.Toplevel):
         self.replace_value = tk.StringVar(self)
         self._find_dialog = None
         self._gutter_job = None
+        self._view = "raw"
         self.geometry("800x520")
 
         menu = tk.Menu(self)
@@ -83,8 +86,16 @@ class EditorWindow(tk.Toplevel):
         menu.add_cascade(label=self.words["search"], menu=search_menu)
         self.config(menu=menu)
 
+        view_bar = tk.Frame(self)
+        view_bar.pack(fill="x")
+        tk.Button(view_bar, text=self.words["raw_view"], command=self.show_raw).pack(side="left")
+        self._table_button = tk.Button(view_bar, text=self.words["table_view"],
+                                       command=self.show_table)
+        self._table_button.pack(side="left")
+
         frame = tk.Frame(self)
         frame.pack(fill="both", expand=True)
+        self.raw_frame = frame
         fixed_font = tkfont.nametofont("TkFixedFont")
         self._fixed_font = fixed_font
         self.line_numbers = tk.Canvas(frame, width=40, highlightthickness=0)
@@ -99,10 +110,16 @@ class EditorWindow(tk.Toplevel):
         self.text.grid(row=0, column=1, sticky="nsew")
         vertical.grid(row=0, column=2, sticky="ns")
         horizontal.grid(row=1, column=1, sticky="ew")
-        self.status = tk.Label(frame, anchor="w")
-        self.status.grid(row=2, column=0, columnspan=3, sticky="ew")
         frame.grid_rowconfigure(0, weight=1)
         frame.grid_columnconfigure(1, weight=1)
+
+        # Import lazily so file/document logic remains usable without Tk widgets.
+        from .grid import TableGrid
+        self.table_grid = TableGrid(self, fixed_font, self._table_cell_changed,
+                                    self._update_status, self.undo, self.redo)
+        self.status = tk.Label(self, anchor="w")
+        self.status.pack(fill="x")
+        self._update_view_button()
 
         self.text.bind("<<Modified>>", self._on_modified)
         self.text.bind("<KeyRelease>", self._update_status)
@@ -178,7 +195,11 @@ class EditorWindow(tk.Toplevel):
             index = following
 
     def _update_status(self, _event=None):
-        line, column = line_column(self.text.index("insert"))
+        if getattr(self, "_view", "raw") == "table":
+            row, cell = self.table_grid.selected
+            line, column = row + 1, cell + 1
+        else:
+            line, column = line_column(self.text.index("insert"))
         state = self.words["modified"] if self.document.modified else self.words["saved"]
         self.status.config(text=f"{self.words['line']} {line}, {self.words['column']} {column}"
                                 f"  |  {state}  |  {file_kind(self.document.path)}")
@@ -192,6 +213,55 @@ class EditorWindow(tk.Toplevel):
         self.document.set_text(self.text.get("1.0", "end-1c"))
         self._update_title()
 
+    def _commit_table_edit(self):
+        return (getattr(self, "_view", "raw") != "table" or
+                self.table_grid.commit_edit())
+
+    def _update_view_button(self):
+        if hasattr(self, "_table_button"):
+            available = (self.document.path is not None and
+                         self.document.path.suffix.lower() == ".tsv")
+            self._table_button.configure(state="normal" if available else "disabled")
+
+    def show_raw(self):
+        if getattr(self, "_view", "raw") == "table":
+            if not self._commit_table_edit():
+                return False
+            self.table_grid.pack_forget()
+            self.raw_frame.pack(fill="both", expand=True, before=self.status)
+            self._view = "raw"
+            self._update_status()
+            self.text.focus_set()
+        return True
+
+    def show_table(self):
+        if self.document.path is None or self.document.path.suffix.lower() != ".tsv":
+            return False
+        if getattr(self, "_view", "raw") == "table":
+            return True
+        self._sync_text()
+        self.table_grid.set_text(self.document.text)
+        self.raw_frame.pack_forget()
+        self.table_grid.pack(fill="both", expand=True, before=self.status)
+        self._view = "table"
+        self._update_status()
+        self.table_grid.canvas.focus_set()
+        return True
+
+    def _table_cell_changed(self, row, old_line, new_line):
+        first = f"{row + 1}.0"
+        last = f"{row + 1}.0 lineend"
+        if self.text.get(first, last) != old_line:
+            return False
+        self.text.edit_separator()
+        self.text.delete(first, last)
+        self.text.insert(first, new_line)
+        self.text.edit_separator()
+        self._sync_text()
+        self._update_status()
+        self._schedule_line_numbers()
+        return True
+
     def _on_modified(self, _event=None):
         if self.text.edit_modified():
             self._sync_text()
@@ -200,50 +270,73 @@ class EditorWindow(tk.Toplevel):
             self._schedule_line_numbers()
 
     def _show_document(self):
+        if getattr(self, "_view", "raw") == "table":
+            self.table_grid.pack_forget()
+            self.raw_frame.pack(fill="both", expand=True, before=self.status)
+            self._view = "raw"
         self.text.delete("1.0", "end")
         self.text.insert("1.0", self.document.text)
         self.text.edit_reset()
         self.text.edit_modified(False)
         self._update_title()
         self._update_status()
+        self._update_view_button()
         self._schedule_line_numbers()
 
     def undo(self):
+        if not self._commit_table_edit():
+            return False
         try:
             self.text.edit_undo()
         except tk.TclError:
             return False
         self._sync_text()
+        if getattr(self, "_view", "raw") == "table":
+            self.table_grid.set_text(self.document.text)
         self._update_status()
         self._schedule_line_numbers()
         return True
 
     def redo(self):
+        if not self._commit_table_edit():
+            return False
         try:
             self.text.edit_redo()
         except tk.TclError:
             return False
         self._sync_text()
+        if getattr(self, "_view", "raw") == "table":
+            self.table_grid.set_text(self.document.text)
         self._update_status()
         self._schedule_line_numbers()
         return True
 
     def cut(self):
+        if not self.show_raw():
+            return
         self.text.event_generate("<<Cut>>")
 
     def copy(self):
+        if not self.show_raw():
+            return
         self.text.event_generate("<<Copy>>")
 
     def paste(self):
+        if not self.show_raw():
+            return
         self.text.event_generate("<<Paste>>")
 
     def select_all(self):
+        if not self.show_raw():
+            return
         self.text.tag_add("sel", "1.0", "end-1c")
         self.text.mark_set("insert", "end-1c")
         self.text.see("insert")
         self._update_status()
 
     def show_find(self, replace=False):
+        if not self.show_raw():
+            return
         if self._find_dialog is None or not self._find_dialog.winfo_exists():
             dialog = tk.Toplevel(self)
             dialog.title(self.words["search"])
@@ -303,6 +396,8 @@ class EditorWindow(tk.Toplevel):
         return True
 
     def find_next(self):
+        if not self.show_raw():
+            return False
         query = self.find_query.get()
         if not query:
             self.show_find()
@@ -312,6 +407,8 @@ class EditorWindow(tk.Toplevel):
         return self._select_match(next_match(self.text.get("1.0", "end-1c"), query, start))
 
     def find_previous(self):
+        if not self.show_raw():
+            return False
         query = self.find_query.get()
         if not query:
             self.show_find()
@@ -321,6 +418,8 @@ class EditorWindow(tk.Toplevel):
         return self._select_match(previous_match(self.text.get("1.0", "end-1c"), query, start))
 
     def replace_current(self):
+        if not self.show_raw():
+            return False
         query = self.find_query.get()
         selection = self._selection_offsets()
         original = self.text.get("1.0", "end-1c")
@@ -340,6 +439,8 @@ class EditorWindow(tk.Toplevel):
         return True
 
     def replace_all(self):
+        if not self.show_raw():
+            return 0
         query = self.find_query.get()
         original = self.text.get("1.0", "end-1c")
         updated, count = replace_every(original, query, self.replace_value.get())
@@ -361,6 +462,8 @@ class EditorWindow(tk.Toplevel):
         return count
 
     def _confirm_discard(self):
+        if not self._commit_table_edit():
+            return False
         self._sync_text()
         if not self.document.modified:
             return True
@@ -401,6 +504,8 @@ class EditorWindow(tk.Toplevel):
             return False
         if self.can_convert is not None and not self.can_convert():
             return False
+        if not self._commit_table_edit():
+            return False
         self._sync_text()
         if (self.document.path is None or self.document.modified) and not self.save():
             return False
@@ -415,6 +520,8 @@ class EditorWindow(tk.Toplevel):
         return self._save_to(path) if path else False
 
     def _save_to(self, path):
+        if not self._commit_table_edit():
+            return False
         self._sync_text()
         try:
             saved_path = self.document.save(path)
@@ -423,6 +530,9 @@ class EditorWindow(tk.Toplevel):
             return False
         self._update_title()
         self._update_status()
+        if getattr(self, "_view", "raw") == "table" and saved_path.suffix.lower() != ".tsv":
+            self.show_raw()
+        self._update_view_button()
         if self.on_saved:
             self.on_saved(saved_path)
         return True

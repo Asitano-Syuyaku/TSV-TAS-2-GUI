@@ -48,7 +48,7 @@ This example holds the left stick upward for five frames, then inputs A and the 
 
 The Japanese and English launchers use the same conversion behavior; only displayed language differs. `-l` is an interactive CLI option for repeated compilation and is not in the GUI.
 
-### Built-in editor (Phase 2B)
+### Built-in editor (Phase 3A)
 
 Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, Save & Convert, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, and `F5`. New, Open, and Close ask what to do with unsaved changes.
 
@@ -56,7 +56,9 @@ Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With n
 
 The Edit menu provides Undo/Redo, Cut/Copy/Paste, and Select All. Shortcuts are `Ctrl+Z`/`Ctrl+Y` and `Ctrl+X`/`Ctrl+C`/`Ctrl+V`/`Ctrl+A`. Open Find with `Ctrl+F` or Replace with `Ctrl+H`; `F3`/`Shift+F3` searches next/previous. The dialog can replace the current match or all matches. Search is case-sensitive. Line numbers and a status bar show the line, column, modified state, and file kind (TSV-TAS/nx-TAS).
 
-For now, this is a **raw text editor** that preserves tabs, UTF-8, and original line endings. It does not offer a spreadsheet view, interpret TSV-TAS syntax, or reformat files on save. `tsv-tas.py` remains responsible for interpreting scripts.
+For `.tsv` files, switch between **Raw Text** and **Table**. Table splits each line only at TAB characters and preserves empty cells, blank lines, and trailing TABs. Click a cell to edit it, commit with Enter/Tab, and move with arrow keys. Switching views without editing does not change the file content or modified state. `.txt` (nx-TAS) remains Raw Text only. Undo/Redo, Save, and Save & Convert also work after table edits.
+
+Table does not interpret TSV-TAS syntax or apply its own formatting on save. Both views preserve UTF-8 and original line endings where possible. `tsv-tas.py` still interprets scripts. Multi-cell selection and bulk row/column operations are not available yet.
 
 ### FTP setup
 
@@ -145,7 +147,7 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 | `nx-tas-to-tsv-tas.py` | nx-TAS→TSV-TAS converter matching upstream |
 | `python_to_exe/main_jp.py`, `main_en.py` | Japanese/English launchers |
 | `python_to_exe/converter_gui.py`, `converter_logic.py` | Shared GUI, argument construction, Python discovery, and FTP settings |
-| `python_to_exe/editor/` | Independent raw text editor window, file state, and find/replace operations |
+| `python_to_exe/editor/` | Raw Text/Table editor window, file state, and find/replace operations |
 | `ftp_config.json` | FTP connection settings; do not commit real credentials |
 | `tests/test_conversion.py` | Local conversion and GUI argument tests |
 

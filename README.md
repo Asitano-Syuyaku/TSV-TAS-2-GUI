@@ -48,7 +48,7 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 
 日本語版と英語版は表示言語以外、同じ変換処理を使います。`-l` は対話的に再生成するCLI専用オプションで、GUIにはありません。
 
-### 内蔵エディター（Phase 2B）
+### 内蔵エディター（Phase 3A）
 
 Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
 
@@ -56,7 +56,9 @@ Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入
 
 編集メニューにはUndo／Redo、Cut／Copy／Paste、Select Allがあります。ショートカットは `Ctrl+Z`／`Ctrl+Y`、`Ctrl+X`／`Ctrl+C`／`Ctrl+V`／`Ctrl+A` です。`Ctrl+F` で検索、`Ctrl+H` で置換を開けます。`F3`／`Shift+F3` で次／前を検索でき、ダイアログでは現在の一致箇所または全一致箇所を置換できます。検索は大文字小文字を区別します。行番号と、行・列・編集状態・ファイル種別（TSV-TAS／nx-TAS）を示すステータスバーも表示します。
 
-現時点ではタブ・UTF-8・元の改行を保持する**raw text editor**です。Spreadsheet表示やTSV-TAS構文の意味解析、保存時の整形はしません。TSV-TASの解釈は引き続き `tsv-tas.py` が担当します。
+`.tsv` では **テキスト／表** を切り替えられます。表は各行を単純にTABで区切って表示し、空セル・空行・行末のTABも保持します。セルをクリックして編集し、Enter／Tabで確定、矢印キーで移動できます。変更を加えず表示を切り替えるだけならファイル内容や編集状態は変わりません。`.txt`（nx-TAS）はテキスト表示のみです。Undo／Redo、保存、保存して変換は表での編集にも使えます。
+
+表はTSV-TAS構文を解釈せず、保存時の独自整形もしません。テキスト表示も含めてUTF-8と元の改行を可能な限り保持します。TSV-TASの解釈は引き続き `tsv-tas.py` が担当します。複数セル選択や行・列の一括操作はまだありません。
 
 ### FTP設定
 
@@ -145,7 +147,7 @@ python -m PyInstaller --noconsole --onefile python_to_exe/main_en.py
 | `nx-tas-to-tsv-tas.py` | upstreamと同じnx-TAS→TSV-TAS converter |
 | `python_to_exe/main_jp.py`、`main_en.py` | 日本語／Englishの起動スクリプト |
 | `python_to_exe/converter_gui.py`、`converter_logic.py` | 共通GUI、引数生成、Python探索、FTP設定 |
-| `python_to_exe/editor/` | 独立したraw text editorの画面、ファイル状態、検索・置換の処理 |
+| `python_to_exe/editor/` | テキスト／表の編集画面、ファイル状態、検索・置換の処理 |
 | `ftp_config.json` | FTP接続設定。実credentialをcommitしないこと |
 | `tests/test_conversion.py` | ローカル変換とGUI引数のテスト |
 
