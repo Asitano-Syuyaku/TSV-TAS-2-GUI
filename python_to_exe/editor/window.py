@@ -76,6 +76,10 @@ LABELS = {
         "frame_unavailable": "Frame: TSV-TAS only",
         "frame_start": "Start", "frame_duration": "Duration",
         "frame_end": "End", "frame_total": "Total",
+        "go_to_frame": "Go to Frame", "go_to": "Go to:",
+        "frame_range": "Enter 0–{last}", "no_frames": "No valid frames",
+        "frame_no_source": "No source row for this frame",
+        "frame_commit_failed": "Finish the cell edit first",
     },
     "ja": {
         "title": "TSV-TAS エディター", "untitled": "無題", "file": "ファイル",
@@ -126,6 +130,10 @@ LABELS = {
         "frame_unavailable": "Frame: TSV-TASのみ",
         "frame_start": "開始", "frame_duration": "長さ",
         "frame_end": "終了", "frame_total": "全体",
+        "go_to_frame": "フレームへ移動", "go_to": "移動:",
+        "frame_range": "0～{last}を入力", "no_frames": "有効なフレームなし",
+        "frame_no_source": "対応する元の行がありません",
+        "frame_commit_failed": "セルの編集を完了してください",
     },
 }
 
@@ -214,6 +222,7 @@ class EditorWindow(tk.Toplevel):
         for key, command, shortcut in (
             ("find", self.show_find, "Ctrl+F"), ("replace", self.show_replace, "Ctrl+H"),
             ("next", self.find_next, "F3"), ("previous", self.find_previous, "Shift+F3"),
+            ("go_to_frame", self.focus_frame_entry, "Ctrl+G"),
         ):
             search_menu.add_command(label=self.words[key], command=command, accelerator=shortcut)
         menu.add_cascade(label=self.words["search"], menu=search_menu)
@@ -238,6 +247,17 @@ class EditorWindow(tk.Toplevel):
                                        command=self.show_table)
         self._table_button.pack(side="left")
         tk.Button(view_bar, text=self.words["validate"], command=self.validate).pack(side="left")
+        frame_navigation = tk.Frame(view_bar)
+        frame_navigation.pack(side="right", padx=(0, 6))
+        tk.Label(frame_navigation, text=self.words["go_to"]).pack(side="left")
+        self.frame_entry = tk.Entry(frame_navigation, width=7, exportselection=False)
+        self.frame_entry.pack(side="left", padx=3)
+        self.frame_go_button = tk.Button(frame_navigation, text=self.words["go"],
+                                         command=self.go_to_frame)
+        self.frame_go_button.pack(side="left")
+        self._frame_jump_feedback = tk.Label(frame_navigation, anchor="w")
+        self.frame_entry.bind("<Return>", lambda event: self._shortcut(self.go_to_frame))
+        self.frame_entry.bind("<Escape>", lambda event: self._shortcut(self._focus_editor))
         self.frame_status = tk.Label(view_bar, anchor="e")
         self.frame_status.pack(side="right", padx=8)
         self.table_tools = tk.Frame(view_bar)
@@ -307,6 +327,7 @@ class EditorWindow(tk.Toplevel):
             ("<Control-x>", self.cut), ("<Control-c>", self.copy),
             ("<Control-v>", self.paste), ("<Control-a>", self.select_all),
             ("<Control-f>", self.show_find), ("<Control-h>", self.show_replace),
+            ("<Control-g>", self.focus_frame_entry),
             ("<F3>", self.find_next), ("<Shift-F3>", self.find_previous),
         ):
             self.text.bind(sequence, lambda event, action=command: self._shortcut(action))
@@ -322,6 +343,7 @@ class EditorWindow(tk.Toplevel):
             ("<F7>", self.analyze_frames),
             ("<Control-f>", self.show_find),
             ("<Control-h>", self.show_replace),
+            ("<Control-g>", self.focus_frame_entry),
             ("<F3>", self.find_next),
             ("<Shift-F3>", self.find_previous),
         ):
@@ -557,15 +579,21 @@ class EditorWindow(tk.Toplevel):
         if hasattr(self, "frame_status"):
             self._update_frame_info(line)
 
-    def _update_frame_info(self, line):
+    def _position_unavailable_message(self):
+        """Use the same cached-mapping readiness for display and navigation."""
         if not self._table_available():
-            message = self.words["frame_unavailable"]
-        elif self._frame_edit_pending:
-            message = self.words["frame_updating"]
-        elif self._positions is None:
-            message = (self.words["frame_updating"] if self._position_job is not None or
-                       self._position_worker_active else self.words["frame_error"])
-        else:
+            return self.words["frame_unavailable"]
+        if (self._frame_edit_pending or self._position_job is not None or
+                self._position_worker_active or
+                self._position_key != (True, self.document.text)):
+            return self.words["frame_updating"]
+        if self._positions is None:
+            return self.words["frame_error"]
+        return ""
+
+    def _update_frame_info(self, line):
+        message = self._position_unavailable_message()
+        if not message:
             if self._view == "table":
                 top, bottom = self.table_grid.selection.bounds[:2]
                 position = (self._positions.for_line(top + 1) if top == bottom else
@@ -580,6 +608,59 @@ class EditorWindow(tk.Toplevel):
                        f"{self.words['frame_end']}: {end} | "
                        f"{self.words['frame_total']}: {self._positions.total_frames}f")
         self.frame_status.configure(text=message)
+
+    def focus_frame_entry(self):
+        # Focusing this field does not commit or cancel a pending Table edit.
+        self.frame_entry.focus_set()
+        self.frame_entry.selection_range(0, "end")
+
+    def _focus_editor(self):
+        if self._view == "table":
+            (self.table_grid._editor or self.table_grid.canvas).focus_set()
+        else:
+            self.text.focus_set()
+
+    def _frame_jump_message(self, message):
+        self._frame_jump_feedback.configure(text=message)
+        if message:
+            self._frame_jump_feedback.pack(side="left", padx=4)
+        else:
+            self._frame_jump_feedback.pack_forget()
+        return False
+
+    def go_to_frame(self):
+        if not self._table_available():
+            return self._frame_jump_message(self.words["frame_unavailable"])
+        # Only Go commits. A changed cell invalidates the mapping through the usual
+        # document-change path; never jump using the mapping from before that edit.
+        if not self._commit_table_edit():
+            return self._frame_jump_message(self.words["frame_commit_failed"])
+        self._sync_text()
+        message = self._position_unavailable_message()
+        if message:
+            return self._frame_jump_message(message)
+        positions = self._positions
+        if positions.total_frames == 0:
+            return self._frame_jump_message(self.words["no_frames"])
+        value = self.frame_entry.get().strip()
+        try:
+            if not value.isdecimal():
+                raise ValueError
+            frame = int(value)
+        except ValueError:
+            frame = -1
+        if not 0 <= frame < positions.total_frames:
+            return self._frame_jump_message(
+                self.words["frame_range"].format(last=positions.total_frames - 1))
+        line = positions.line_for_frame(frame)
+        if line is None:
+            return self._frame_jump_message(self.words["frame_no_source"])
+        column = self.table_grid.selected[1] if self._view == "table" else 0
+        if not self.jump_to_line(line, column=column):
+            return self._frame_jump_message(self.words["frame_no_source"])
+        self._frame_jump_message("")
+        self.frame_entry.selection_range(0, "end")
+        return True
 
     def _table_edit_pending(self, changed):
         self._frame_edit_pending = changed
@@ -1248,13 +1329,13 @@ class EditorWindow(tk.Toplevel):
             self.jump_to_line(line)
         return "break"
 
-    def jump_to_line(self, line):
+    def jump_to_line(self, line, column=0):
         if not 1 <= line <= self.document.text.count("\n") + 1:
             return False
         if self._view == "table":
             if not self._commit_table_edit():
                 return False
-            self.table_grid.jump_to_row(line - 1)
+            self.table_grid.jump_to_row(line - 1, column=column)
         else:
             self.text.mark_set("insert", f"{line}.0")
             self.text.see(f"{line}.0")

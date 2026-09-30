@@ -168,9 +168,10 @@ class TableGrid(tk.Frame):
         else:
             self.selection.move_to(*cell)
 
-    def jump_to_row(self, row):
+    def jump_to_row(self, row, column=0):
         """Select a known source row without editing cells or the document."""
-        self.selection.move_to(row, 0)
+        column = max(0, min(column, self.display_column_count - 1))
+        self.selection.move_to(row, column)
         self._selection_axis = None
         self._update_region()
         self._ensure_visible()

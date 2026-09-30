@@ -32,6 +32,23 @@ class LinePositions:
     def for_line(self, line):
         return self.rows.get(line)
 
+    def line_for_frame(self, frame):
+        """Reverse lookup using only resolved, positive converter intervals."""
+        if not 0 <= frame < self.total_frames:
+            return None
+        owner = None
+        for line, position in self.rows.items():
+            if (position.duration <= 0 or position.end is None or position.start < 0 or
+                    position.end >= self.total_frames or
+                    position.end - position.start + 1 != position.duration):
+                continue
+            if position.start <= frame <= position.end:
+                if owner is not None:
+                    # Overlapping intervals cannot identify one source row safely.
+                    return None
+                owner = line
+        return owner
+
     def for_range(self, first, last):
         """Summarize contiguous positive converter intervals in selected source rows."""
         first, last = sorted((first, last))
