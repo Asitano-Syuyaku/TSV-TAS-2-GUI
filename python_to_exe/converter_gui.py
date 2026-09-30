@@ -168,15 +168,15 @@ class TASConverterApp(tk.Tk):
                      initial_path=self.input_entry.get().strip() or None,
                      on_saved=self._editor_saved, on_convert=self._convert_editor_file,
                      can_convert=lambda: not self._busy(),
-                     on_validate=self._validate_editor_file,
+                     on_validate=self._validate_editor_snapshot,
                      can_validate=lambda: not self._busy(),
-                     on_analyze=self._analyze_editor_file,
+                     on_analyze=self._analyze_editor_snapshot,
                      can_analyze=lambda: not self._busy())
 
     def _busy(self):
         return self._conversion_running or self._validation_running or self._analysis_running
 
-    def _validate_editor_file(self, path, callback):
+    def _validate_editor_snapshot(self, snapshot, callback):
         if self._busy():
             return False
         if __package__:
@@ -190,12 +190,12 @@ class TASConverterApp(tk.Tk):
 
         def worker():
             try:
-                result = validate_script(path, output_format, skip_empty, self.base_dir)
+                result = validate_script(snapshot, output_format, skip_empty, self.base_dir)
             except Exception:
                 # Unexpected worker failures remain visible in stderr and Problems.
                 traceback.print_exc()
                 result = ValidationResult(False, stderr=traceback.format_exc(),
-                                          source_is_tsv=os.path.splitext(str(path))[1].lower() == ".tsv")
+                                          source_is_tsv=snapshot.suffix == ".tsv")
             self._events.put(("validation", (callback, result)))
 
         try:
@@ -207,7 +207,7 @@ class TASConverterApp(tk.Tk):
         self.after(50, self._drain_events)
         return True
 
-    def _analyze_editor_file(self, path, callback):
+    def _analyze_editor_snapshot(self, snapshot, callback):
         if self._busy():
             return False
         if __package__:
@@ -221,11 +221,11 @@ class TASConverterApp(tk.Tk):
 
         def worker():
             try:
-                result = analyze_script(path, output_format, skip_empty, self.base_dir)
+                result = analyze_script(snapshot, output_format, skip_empty, self.base_dir)
             except Exception:
                 traceback.print_exc()
                 report = ValidationResult(False, stderr=traceback.format_exc(),
-                                          source_is_tsv=os.path.splitext(str(path))[1].lower() == ".tsv")
+                                          source_is_tsv=snapshot.suffix == ".tsv")
                 result = AnalyzeResult(report)
             self._events.put(("analysis", (callback, result)))
 

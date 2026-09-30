@@ -8,6 +8,7 @@ from tkinter import filedialog, font as tkfont, messagebox
 
 from .document import EditorDocument
 from .resources import palette_icon_path
+from .snapshot import ScriptSnapshot
 from .text_ops import (file_kind, find_next as next_match, find_previous as previous_match,
                        line_column, replace_all as replace_every, replace_current as replace_match)
 from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
@@ -126,6 +127,8 @@ class EditorWindow(tk.Toplevel):
         self._positions = None
         self._position_key = None
         self._position_revision = 0
+        self._document_revision = 0
+        self._closed = False
         self._position_job = None
         self._position_poll_job = None
         self._position_worker_active = False
@@ -458,6 +461,7 @@ class EditorWindow(tk.Toplevel):
 
     def _on_destroy(self, event):
         if event.widget is self:
+            self._closed = True
             for name in ("_gutter_job", "_highlight_job", "_position_job",
                          "_position_poll_job"):
                 job = getattr(self, name, None)
@@ -600,8 +604,10 @@ class EditorWindow(tk.Toplevel):
     def _sync_text(self):
         before = self.document.text
         self.document.set_text(self.text.get("1.0", "end-1c"))
-        if self.document.text != before and hasattr(self, "frame_status"):
-            self._position_document_changed()
+        if self.document.text != before:
+            self._document_revision = getattr(self, "_document_revision", 0) + 1
+            if hasattr(self, "frame_status"):
+                self._position_document_changed()
         self._update_title()
 
     def _commit_table_edit(self):
@@ -708,6 +714,7 @@ class EditorWindow(tk.Toplevel):
             self._schedule_highlight()
 
     def _show_document(self):
+        self._document_revision = getattr(self, "_document_revision", 0) + 1
         if hasattr(self, "_problems_panel"):
             self._problems_panel.pack_forget()
             self._problem_rows = {}
@@ -978,24 +985,22 @@ class EditorWindow(tk.Toplevel):
         if not self._commit_table_edit():
             return False
         self._sync_text()
-        if (self.document.path is None or self.document.modified) and not self.save():
-            return False
-        path, snapshot = self.document.path, self.document.text
+        snapshot, identity = self._inspection_snapshot()
         self._validation_pending = True
         self._show_problem_title(self.words["validating"])
 
         def receive(result):
-            if not self.winfo_exists():
+            if getattr(self, "_closed", False) or not self.winfo_exists():
                 return
             self._validation_pending = False
             self._sync_text()
-            if self.document.path == path and self.document.text == snapshot:
+            if self._inspection_is_current(identity):
                 self._show_validation_result(result)
             else:
-                self._show_problem_title(self.words["stale_validation"])
+                self._show_stale_result(self.words["stale_validation"])
 
         try:
-            started = self.on_validate(path, receive)
+            started = self.on_validate(snapshot, receive)
         except Exception:
             self._validation_pending = False
             self._problems_panel.pack_forget()
@@ -1012,32 +1017,31 @@ class EditorWindow(tk.Toplevel):
         if not self._commit_table_edit():
             return False
         self._sync_text()
-        if (self.document.path is None or self.document.modified) and not self.save():
-            return False
-        path, snapshot = self.document.path, self.document.text
+        snapshot, identity = self._inspection_snapshot()
+        source_name = self.document.path.name if self.document.path else self.words["untitled"]
         self._analysis_pending = True
         self._show_problem_title(self.words["analyzing"])
         if self._frame_inspector is not None and self._frame_inspector.winfo_exists():
             self._frame_inspector.mark_stale()
 
         def receive(result):
-            if not self.winfo_exists():
+            if getattr(self, "_closed", False) or not self.winfo_exists():
                 return
             self._analysis_pending = False
             self._sync_text()
-            if self.document.path != path or self.document.text != snapshot:
-                self._show_problem_title(self.words["stale_analysis"])
+            if not self._inspection_is_current(identity):
+                self._show_stale_result(self.words["stale_analysis"])
             elif result.success:
                 self._problems_panel.pack_forget()
                 self._problem_rows = {}
                 self._problem_snapshot = None
                 from .frame_inspector import FrameInspector
                 if self._frame_inspector is None or not self._frame_inspector.winfo_exists():
-                    self._frame_inspector = FrameInspector(self, self.words, result.frames, path)
+                    self._frame_inspector = FrameInspector(self, self.words, result.frames, source_name)
                 else:
-                    self._frame_inspector.set_data(result.frames, path)
+                    self._frame_inspector.set_data(result.frames, source_name)
                     self._frame_inspector.lift()
-                self._inspector_snapshot = snapshot
+                self._inspector_snapshot = snapshot.text
             else:
                 report = result.report
                 if report.stderr:
@@ -1049,7 +1053,7 @@ class EditorWindow(tk.Toplevel):
                 self._show_validation_result(report)
 
         try:
-            started = self.on_analyze(path, receive)
+            started = self.on_analyze(snapshot, receive)
         except Exception:
             self._analysis_pending = False
             self._problems_panel.pack_forget()
@@ -1059,9 +1063,26 @@ class EditorWindow(tk.Toplevel):
             self._problems_panel.pack_forget()
         return bool(started)
 
+    def _inspection_snapshot(self):
+        suffix = self.document.path.suffix.lower() if self.document.path else ".tsv"
+        snapshot = ScriptSnapshot(self.document.text, suffix)
+        identity = (getattr(self, "_document_revision", 0), self.document.path)
+        return snapshot, identity
+
+    def _inspection_is_current(self, identity):
+        # An in-progress Entry has not reached the document revision yet.
+        return (identity == (getattr(self, "_document_revision", 0), self.document.path)
+                and not getattr(self, "_frame_edit_pending", False))
+
     def _show_problem_title(self, title):
         self._problems_title.config(text=title)
         self._problems_panel.pack(fill="x", before=self.status)
+
+    def _show_stale_result(self, title):
+        self._problem_rows = {}
+        self._problem_snapshot = None
+        self._problems_text.pack_forget()
+        self._show_problem_title(title)
 
     def _show_validation_result(self, result):
         self._problem_snapshot = self.document.text

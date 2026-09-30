@@ -56,7 +56,7 @@ class FakeStatus:
 
 
 class EditorWindowHeadlessTests(unittest.TestCase):
-    def test_analyze_saves_current_text_and_cancel_stops_before_converter(self):
+    def test_analyze_uses_unsaved_snapshot_including_untitled(self):
         fake_tk = types.ModuleType("tkinter")
         fake_tk.Toplevel = FakeToplevel
         fake_tk.filedialog = types.SimpleNamespace(asksaveasfilename=lambda **kwargs: "")
@@ -77,29 +77,32 @@ class EditorWindowHeadlessTests(unittest.TestCase):
             window.can_analyze = lambda: True
             window.on_saved = None
             requests = []
-            window.on_analyze = lambda path, callback: requests.append(
-                (path, Path(path).read_bytes(), callback)) or True
+            window.on_analyze = lambda snapshot, callback: requests.append(
+                (snapshot, callback)) or True
             with tempfile.TemporaryDirectory() as folder:
                 source = Path(folder) / "analysis 日本語.tsv"
                 source.write_bytes(b"1\ta\n")
                 window.document.open(source)
                 window.text.value = "1\tb\n"
                 self.assertTrue(window.analyze_frames())
-                self.assertEqual(requests[0][:2], (source, b"1\tb\n"))
-                self.assertFalse(window.document.modified)
+                self.assertEqual(requests[0][0], module.ScriptSnapshot("1\tb\n"))
+                self.assertEqual(source.read_bytes(), b"1\ta\n")
+                self.assertEqual(window.document.path, source)
+                self.assertTrue(window.document.modified)
                 self.assertFalse(window.analyze_frames())
                 self.assertFalse(hasattr(window.text, "reset_count"))
 
                 window._analysis_pending = False
                 window.document.new()
                 window.text.value = "1\tc\n"
-                self.assertFalse(window.analyze_frames())
-                self.assertEqual(len(requests), 1)
+                self.assertTrue(window.analyze_frames())
+                self.assertEqual(requests[1][0], module.ScriptSnapshot("1\tc\n"))
+                self.assertEqual(len(requests), 2)
                 self.assertIsNone(window.document.path)
                 self.assertTrue(window.document.modified)
         sys.modules.pop("python_to_exe.editor.window", None)
 
-    def test_validate_saves_modified_text_and_cancel_preserves_history(self):
+    def test_validate_uses_unsaved_snapshot_including_untitled(self):
         fake_tk = types.ModuleType("tkinter")
         fake_tk.Toplevel = FakeToplevel
         fake_tk.filedialog = types.SimpleNamespace(asksaveasfilename=lambda **kwargs: "")
@@ -120,25 +123,28 @@ class EditorWindowHeadlessTests(unittest.TestCase):
             window.can_validate = lambda: True
             window.on_saved = None
             requests = []
-            window.on_validate = lambda path, callback: requests.append(
-                (path, Path(path).read_bytes(), callback)) or True
+            window.on_validate = lambda snapshot, callback: requests.append(
+                (snapshot, callback)) or True
             with tempfile.TemporaryDirectory() as folder:
                 source = Path(folder) / "edited.tsv"
                 source.write_bytes(b"1\ta\n")
                 window.document.open(source)
                 window.text.value = "1\tb\n"
                 self.assertTrue(window.validate())
-                self.assertEqual(requests[0][:2], (source, b"1\tb\n"))
-                self.assertFalse(window.document.modified)
+                self.assertEqual(requests[0][0], module.ScriptSnapshot("1\tb\n"))
+                self.assertEqual(source.read_bytes(), b"1\ta\n")
+                self.assertEqual(window.document.path, source)
+                self.assertTrue(window.document.modified)
                 self.assertFalse(window.validate())  # One validation at a time.
-                requests[0][2](types.SimpleNamespace(success=True))
+                requests[0][1](types.SimpleNamespace(success=True))
                 self.assertFalse(window._validation_pending)
                 self.assertFalse(hasattr(window.text, "reset_count"))
 
                 window.document.new()
                 window.text.value = "1\tc\n"
-                self.assertFalse(window.validate())
-                self.assertEqual(len(requests), 1)
+                self.assertTrue(window.validate())
+                self.assertEqual(requests[1][0], module.ScriptSnapshot("1\tc\n"))
+                self.assertEqual(len(requests), 2)
                 self.assertIsNone(window.document.path)
                 self.assertTrue(window.document.modified)
         sys.modules.pop("python_to_exe.editor.window", None)

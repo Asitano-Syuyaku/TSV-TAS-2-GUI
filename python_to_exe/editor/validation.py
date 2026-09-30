@@ -1,14 +1,15 @@
 """Run the bundled converter in disposable output paths for Editor tools."""
 
 import csv
+import os
 import re
 import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from .debug_csv import DebugFrames, load_debug_csv
+from .snapshot import ScriptSnapshot, script_workspace
 
 if __package__ == "editor":
     from converter_logic import build_commands
@@ -71,13 +72,16 @@ def parse_problems(message, line_count=None):
 
 
 def _run_commands(commands, base_dir, runner, source_is_tsv):
-    """Shared subprocess execution for Validate and Analyze."""
+    """Shared UTF-8 subprocess execution for the Editor's confirmation tools."""
     runner = runner or subprocess.run
     stdout, stderr = [], []
     for command in commands:
         try:
             result = runner(command, cwd=base_dir, capture_output=True, text=True,
-                            errors="replace",
+                            encoding="utf-8", errors="replace",
+                            # Companion scripts use locale-default file encoding in
+                            # some modes. Editor buffers are always UTF-8, on Windows too.
+                            env={**os.environ, "PYTHONUTF8": "1"},
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except (OSError, ValueError, RuntimeError) as error:
             stderr.append(str(error))
@@ -91,12 +95,17 @@ def _run_commands(commands, base_dir, runner, source_is_tsv):
     return ValidationResult(True, "".join(stdout), "".join(stderr), source_is_tsv)
 
 
+def _source_is_tsv(source):
+    suffix = source.suffix if isinstance(source, ScriptSnapshot) else Path(source).suffix
+    return suffix.lower() == ".tsv"
+
+
 def validate_script(path, output_format, skip_empty=False, base_dir=None, runner=None):
-    """Compile into a disposable directory using the normal command builder."""
-    source_is_tsv = Path(path).suffix.lower() == ".tsv"
+    """Compile a saved path or unsaved snapshot using the normal command builder."""
+    source_is_tsv = _source_is_tsv(path)
     try:
-        with tempfile.TemporaryDirectory(prefix="tas-validation-") as destination:
-            commands = build_commands(path, destination, "validation", output_format,
+        with script_workspace(path) as (source, destination):
+            commands = build_commands(source, destination, "validation", output_format,
                                       skip_empty=skip_empty, debug=False, ftp=False,
                                       base_dir=base_dir)
             return _run_commands(commands, base_dir, runner, source_is_tsv)
@@ -105,12 +114,12 @@ def validate_script(path, output_format, skip_empty=False, base_dir=None, runner
 
 
 def analyze_script(path, output_format, skip_empty=False, base_dir=None, runner=None):
-    """Compile with -d, read its CSV before the temporary output is removed."""
-    source_is_tsv = Path(path).suffix.lower() == ".tsv"
+    """Compile a path or snapshot with -d; read the CSV before cleanup."""
+    source_is_tsv = _source_is_tsv(path)
     report = ValidationResult(False, source_is_tsv=source_is_tsv)
     try:
-        with tempfile.TemporaryDirectory(prefix="tas-analysis-") as destination:
-            commands = build_commands(path, destination, "analysis", output_format,
+        with script_workspace(path) as (source, destination):
+            commands = build_commands(source, destination, "analysis", output_format,
                                       skip_empty=skip_empty, debug=True, ftp=False,
                                       base_dir=base_dir)
             report = _run_commands(commands, base_dir, runner, source_is_tsv)

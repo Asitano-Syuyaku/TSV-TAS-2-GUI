@@ -1,12 +1,12 @@
 """Source-line positions emitted by the converter; no TSV duration parsing here."""
 
 import csv
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from .validation import _run_commands
+from .snapshot import ScriptSnapshot, script_workspace
 
 if __package__ == "editor":
     from converter_logic import build_commands
@@ -92,10 +92,7 @@ def parse_line_positions(source):
 def analyze_positions(snapshot, base_dir=None, runner=None):
     """Compile an unsaved UTF-8 TSV snapshot in isolation with the converter's -m mode."""
     try:
-        with tempfile.TemporaryDirectory(prefix="tas-positions-") as folder:
-            source = Path(folder) / "snapshot.tsv"
-            with source.open("w", encoding="utf-8", newline="") as file:
-                file.write(snapshot)
+        with script_workspace(ScriptSnapshot(snapshot)) as (source, folder):
             commands = build_commands(source, folder, "positions", "binary", line_map=True,
                                       debug=False, ftp=False, base_dir=base_dir)
             report = _run_commands(commands, base_dir, runner, True)
