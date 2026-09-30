@@ -239,7 +239,7 @@ class GuiStartupTests(unittest.TestCase):
             second_editor["on_saved"](another)
             with patch.object(en_app, "start_conversion", return_value=True) as start:
                 self.assertTrue(opened[0][1]["on_convert"](sample))
-                start.assert_called_once_with()
+                start.assert_called_once_with(ftp_override=False)
             self.assertEqual(en_app.input_entry.get(), str(sample))
             self.assertEqual(en_app.output_entry.get(), "chosen output")
             self.assertEqual(en_app.outname_entry.get(), "chosen name")
@@ -303,6 +303,178 @@ class EditorConverterFlowTests(unittest.TestCase):
         app.after = lambda delay, callback: None
         app.log = lambda message: None
         return app
+
+    def test_editor_ftp_override_preserves_options_fields_and_checkbox(self):
+        class ImmediateThread:
+            def __init__(self, target, args, daemon):
+                self.target, self.args = target, args
+
+            def start(self):
+                self.target(*self.args)
+
+        with tempfile.TemporaryDirectory(prefix="tas actions 日本語 ") as directory:
+            work = Path(directory)
+            source = work / "input with spaces.tsv"
+            source.write_text("1\ta", encoding="utf-8")
+            by_language = {}
+            for language in ("en", "ja"):
+                app = self.app(language)
+                app.base_dir = work
+                app.output_entry.insert(0, str(work))
+                app.outname_entry.insert(0, "chosen output")
+                ftp_fields = ("example.invalid", "5000", "tester", "test password")
+                for entry, value in zip((app.ip_entry, app.port_entry, app.user_entry,
+                                         app.pass_entry), ftp_fields):
+                    entry.delete(0, "end")
+                    entry.insert(0, value)
+                captured = by_language[language] = []
+                for checked in (False, True):
+                    for send in (False, True):
+                        for output_format in ("binary", "stas", "nxtas"):
+                            for debug in (False, True):
+                                app.ftp_var.set(checked)
+                                app.format_var.set(output_format)
+                                app.skip_var.set(True)
+                                app.debug_var.set(debug)
+                                config = work / "ftp_config.json"
+                                config.write_text("{}", encoding="utf-8")
+                                logs = []
+                                app.log = logs.append
+                                with patch.object(self.gui.threading, "Thread", ImmediateThread), \
+                                     patch.object(self.gui.subprocess, "run") as run, \
+                                     patch.object(self.gui, "save_ftp_config", wraps=self.gui.save_ftp_config) as save:
+                                    run.return_value = types.SimpleNamespace(returncode=0, stdout="", stderr="")
+                                    self.assertTrue(app._convert_editor_file(source, send_ftp=send))
+                                    command = run.call_args.args[0]
+                                    captured.append(command)
+                                    flags = command[2][1:] if command[2].startswith("-") else ""
+                                    self.assertEqual("f" in flags, send)
+                                    self.assertEqual("d" in flags, debug)
+                                    self.assertEqual("e" in flags, output_format == "nxtas")
+                                    self.assertEqual("n" in flags, output_format == "nxtas")
+                                    self.assertEqual("s" in flags, output_format == "stas")
+                                    self.assertEqual(Path(command[-2]), source)
+                                    suffix = {"binary": "", "stas": ".stas", "nxtas": ".txt"}[output_format]
+                                    self.assertEqual(Path(command[-1]), work / ("chosen output" + suffix))
+                                    if send:
+                                        save.assert_called_once_with(work, *ftp_fields)
+                                        self.assertEqual(json.loads(config.read_text(encoding="utf-8")),
+                                                         dict(ip=ftp_fields[0], port=5000,
+                                                              user=ftp_fields[2], passwd=ftp_fields[3]))
+                                    else:
+                                        save.assert_not_called()
+                                        self.assertEqual(config.read_text(encoding="utf-8"), "{}")
+                                self.assertEqual(app.ftp_var.get(), checked)
+                                self.assertEqual(app.debug_var.get(), debug)
+                                self.assertTrue(app.skip_var.get())
+                                self.assertEqual(app.format_var.get(), output_format)
+                                self.assertEqual(app.output_entry.get(), str(work))
+                                self.assertEqual(app.outname_entry.get(), "chosen output")
+                                app._drain_events()
+                                self.assertEqual(logs[0].splitlines()[0],
+                                                 app.words["editor_send" if send else "editor_local"])
+            self.assertEqual(by_language["en"], by_language["ja"])
+
+    def test_start_conversion_retains_checkbox_semantics(self):
+        class ImmediateThread:
+            def __init__(self, target, args, daemon):
+                self.target, self.args = target, args
+
+            def start(self):
+                self.target(*self.args)
+
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            source = work / "script.tsv"
+            source.write_text("1\ta", encoding="utf-8")
+            app = self.app("en")
+            app.base_dir = work
+            app._editor_saved(source)
+            app.port_entry.delete(0, "end")
+            app.port_entry.insert(0, "5000")
+            for checked in (False, True):
+                app.ftp_var.set(checked)
+                with patch.object(self.gui.threading, "Thread", ImmediateThread), \
+                     patch.object(self.gui.subprocess, "run") as run:
+                    run.return_value = types.SimpleNamespace(returncode=0, stdout="", stderr="")
+                    self.assertTrue(app.start_conversion())
+                    command = run.call_args.args[0]
+                    self.assertEqual("-f" in command, checked)
+                app._drain_events()
+                self.assertEqual(app.ftp_var.get(), checked)
+
+    def test_invalid_ftp_port_stops_before_subprocess_and_preserves_existing_output(self):
+        class ImmediateThread:
+            def __init__(self, target, args, daemon):
+                self.target, self.args = target, args
+
+            def start(self):
+                self.target(*self.args)
+
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            source = work / "script.tsv"
+            source.write_text("1\ta", encoding="utf-8")
+            output = work / "chosen.stas"
+            output.write_bytes(b"existing output")
+            config = work / "ftp_config.json"
+            config.write_bytes(b"{}")
+            app = self.app("en")
+            app.base_dir = work
+            app.format_var.set("stas")
+            app.outname_entry.insert(0, "chosen")
+            app.port_entry.delete(0, "end")
+            app.port_entry.insert(0, "invalid")
+            logs = []
+            app.log = logs.append
+            with patch.object(self.gui.threading, "Thread", ImmediateThread), \
+                 patch.object(self.gui.subprocess, "run") as run, \
+                 patch.object(self.gui.messagebox, "showerror") as error:
+                self.assertTrue(app._convert_editor_file(source, send_ftp=True))
+                app._drain_events()
+                run.assert_not_called()
+                error.assert_called_once_with(app.words["error_title"], "FTP port must be an integer")
+            self.assertIn(app.words["preflight_failed"], "\n".join(logs))
+            self.assertEqual(output.read_bytes(), b"existing output")
+            self.assertEqual(config.read_bytes(), b"{}")
+            self.assertFalse(app._busy())
+
+    def test_editor_local_send_and_checks_share_busy_guard(self):
+        starts = []
+
+        class PendingThread:
+            def __init__(self, target, args, daemon):
+                starts.append((target, args))
+
+            def start(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "script.tsv"
+            other = Path(directory) / "other.tsv"
+            source.write_text("1\ta", encoding="utf-8")
+            for send in (False, True):
+                app = self.app("en")
+                before = len(starts)
+                with patch.object(self.gui.threading, "Thread", PendingThread):
+                    self.assertTrue(app._convert_editor_file(source, send_ftp=send))
+                    for next_send in (False, True):
+                        self.assertFalse(app._convert_editor_file(other, send_ftp=next_send))
+                    self.assertFalse(app.start_conversion())
+                    self.assertFalse(app._validate_editor_snapshot(None, None))
+                    self.assertFalse(app._analyze_editor_snapshot(None, None))
+                self.assertEqual(len(starts), before + 1)
+                self.assertEqual(starts[-1][1][0][6], send)
+                self.assertEqual(app.input_entry.get(), str(source))
+                app._events.put(("done", None))
+                app._drain_events()
+                for flag in ("_validation_running", "_analysis_running"):
+                    setattr(app, flag, True)
+                    with patch.object(self.gui.threading, "Thread", PendingThread):
+                        self.assertFalse(app._convert_editor_file(other, send_ftp=False))
+                        self.assertFalse(app._convert_editor_file(other, send_ftp=True))
+                    setattr(app, flag, False)
+                self.assertEqual(len(starts), before + 1)
 
     def test_txt_editor_conversion_uses_existing_pipeline_in_both_languages(self):
         class ImmediateThread:
@@ -387,7 +559,7 @@ class EditorConverterFlowTests(unittest.TestCase):
                 with patch.object(self.gui.threading, "Thread", ImmediateThread), \
                      patch.object(self.gui.subprocess, "run") as run:
                     run.return_value = types.SimpleNamespace(returncode=0, stdout="done", stderr="diagnostic")
-                    self.assertTrue(app._convert_editor_file(source))
+                    self.assertTrue(app._convert_editor_file(source, send_ftp=True))
                     commands.append(run.call_args.args[0])
                 self.assertIn("-fned", commands[-1])
                 self.assertEqual(json.loads((work / "ftp_config.json").read_text())["port"], 5000)

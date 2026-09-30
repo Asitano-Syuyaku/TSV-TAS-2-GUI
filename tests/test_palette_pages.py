@@ -182,7 +182,7 @@ class PalettePageTkTests(unittest.TestCase):
     def test_page_state_survives_document_and_converter_actions(self):
         root = self.make_root()
         calls = []
-        editor = self.make_editor(root, on_convert=lambda path: calls.append(path) or True,
+        editor = self.make_editor(root, on_convert=lambda path, send_ftp=False: calls.append(path) or True,
                                   on_validate=lambda _path, _receive: True)
         editor._show_palette_page(2)
         with tempfile.TemporaryDirectory() as folder:

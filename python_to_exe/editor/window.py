@@ -24,6 +24,7 @@ LABELS = {
         "title": "TSV-TAS Editor", "untitled": "Untitled", "file": "File",
         "new": "New", "open": "Open...", "save": "Save", "save_as": "Save As...",
         "save_convert": "Save & Convert",
+        "save_convert_send": "Save, Convert & Send",
         "close": "Close", "unsaved": "Save changes before continuing?",
         "error": "Editor error", "edit": "Edit", "undo": "Undo", "redo": "Redo",
         "cut": "Cut", "copy": "Copy", "paste": "Paste", "select_all": "Select All",
@@ -65,6 +66,7 @@ LABELS = {
         "title": "TSV-TAS エディター", "untitled": "無題", "file": "ファイル",
         "new": "新規", "open": "開く...", "save": "保存", "save_as": "名前を付けて保存...",
         "save_convert": "保存して変換",
+        "save_convert_send": "保存・変換してFTP送信",
         "close": "閉じる", "unsaved": "変更を保存してから続行しますか？",
         "error": "エディターのエラー", "edit": "編集", "undo": "元に戻す",
         "redo": "やり直す", "cut": "切り取り", "copy": "コピー",
@@ -153,6 +155,7 @@ class EditorWindow(tk.Toplevel):
             ("save", self.save, "Ctrl+S"),
             ("save_as", self.save_as, "Ctrl+Shift+S"),
             ("save_convert", self.save_and_convert, "F5"),
+            ("save_convert_send", self.save_convert_and_send, "F8"),
             ("validate", self.validate, "F6"),
             ("analyze", self.analyze_frames, "F7"),
             ("close", self.close_editor, ""),
@@ -257,6 +260,7 @@ class EditorWindow(tk.Toplevel):
             ("<Control-s>", self.save), ("<Control-Shift-S>", self.save_as),
             ("<Control-Shift-s>", self.save_as),
             ("<F5>", self.save_and_convert),
+            ("<F8>", self.save_convert_and_send),
             ("<F6>", self.validate),
             ("<F7>", self.analyze_frames),
             ("<Control-z>", self.undo), ("<Control-y>", self.redo),
@@ -273,6 +277,7 @@ class EditorWindow(tk.Toplevel):
             ("<Control-Shift-S>", self.save_as),
             ("<Control-Shift-s>", self.save_as),
             ("<F5>", self.save_and_convert),
+            ("<F8>", self.save_convert_and_send),
             ("<F6>", self.validate),
             ("<F7>", self.analyze_frames),
             ("<Control-f>", self.show_find),
@@ -966,7 +971,8 @@ class EditorWindow(tk.Toplevel):
             return self.save_as()
         return self._save_to(self.document.path)
 
-    def save_and_convert(self):
+    def save_and_convert(self, send_ftp=False):
+        """Save the requesting Editor's file, then request local output or FTP."""
         if self.on_convert is None:
             return False
         if self.can_convert is not None and not self.can_convert():
@@ -976,7 +982,10 @@ class EditorWindow(tk.Toplevel):
         self._sync_text()
         if (self.document.path is None or self.document.modified) and not self.save():
             return False
-        return bool(self.on_convert(self.document.path))
+        return bool(self.on_convert(self.document.path, send_ftp=send_ftp))
+
+    def save_convert_and_send(self):
+        return self.save_and_convert(send_ftp=True)
 
     def validate(self):
         if (self.on_validate is None or self._validation_pending or

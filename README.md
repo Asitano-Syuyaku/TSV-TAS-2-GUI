@@ -50,9 +50,11 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 
 ### 内蔵エディター
 
-Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、Validate、フレーム解析、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5`、`F6`、`F7` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
+Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、保存・変換してFTP送信、Validate、フレーム解析、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5`、`F6`、`F7`、`F8` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
 
-**Save & Convert** は編集内容を保存してから、そのEditorで開いているファイルをConverterのInputとして変換します。新規ファイルはSave Asで保存先を指定し、キャンセルすれば変換しません。Save As後はInputが新しいpathへ切り替わります。Output Directory／Output File Nameが空欄ならファイルのフォルダー／拡張子を除いた名前を設定し、指定済みなら保持します。出力形式、空フレーム省略、Debug、FTPはConverterで現在選んでいる設定を使います。converterの標準出力・標準エラーは従来のログに表示され、変換失敗はダイアログでも通知されます。
+**Save & Convert**（`F5`）はセル編集を確定して保存し、そのEditorで開いているファイルをConverterのInputとしてローカル変換します。親GUIのFTPチェックがONでも、FTP送信しません。新規ファイルはSave Asで保存先を指定し、キャンセルすれば変換しません。Save As後はInputが新しいpathへ切り替わります。Output Directory／Output File Nameが空欄ならファイルのフォルダー／拡張子を除いた名前を設定し、指定済みなら保持します。出力形式、空フレーム省略（nx-TASのみ）、DebugはConverterで現在選んでいる設定を使います。converterの標準出力・標準エラーは従来のログに表示され、変換失敗はダイアログでも通知されます。
+
+**保存・変換してFTP送信／Save, Convert & Send**（`F8`）は同じ保存・Input同期・ローカル変換に加えて、FTP送信を行います。親GUIのFTPチェックがOFFでも送信し、現在入力されているIP／Port／Username／Passwordを使います。新規文書はSave Asが必要で、キャンセルすれば送信しません。FTP設定の保存に失敗した場合は変換開始前に停止し、新しい出力を生成しません。転送時の失敗ではローカル出力が既に生成されている場合があります。親GUIの **Start Conversion／変換実行** は従来どおりFTPチェックに従います。F5／F8はチェック状態を書き換えず、実行種別をログに表示します。
 
 **Validate**（`F6`）は現在のセル編集を確定し、未保存のEditor内容を一時snapshotとして、現在選択中の出力形式で既存converterへ渡します。実ファイルは保存せず、無題の新規文書でもSave Asなしで検証できます。modified状態とUndo履歴も保持します。成功時は「エラーなし」、失敗時は下部のProblemsにconverterのメッセージをそのまま表示します。明示的な行番号があるメッセージをダブルクリックすると、その行へ移動します。行番号を特定できないエラーや、`.txt` から変換した中間TSVのエラーには推測でジャンプ先を付けません。検証中に内容を変更した場合は再検証を案内します。ValidateはConverterの出力設定を変更せず、FTP送信とDebug CSV生成も行いません。保存して通常の出力を作る場合は引き続き **Save & Convert** を使ってください。
 

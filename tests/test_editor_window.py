@@ -167,7 +167,7 @@ class EditorWindowHeadlessTests(unittest.TestCase):
             window._schedule_line_numbers = lambda: None
             events = []
             window.on_saved = lambda path: events.append(("saved", path))
-            window.on_convert = lambda path: events.append(("convert", path, Path(path).read_bytes())) or True
+            window.on_convert = lambda path, send_ftp=False: events.append(("convert", path, Path(path).read_bytes())) or True
             window.can_convert = lambda: True
 
             with tempfile.TemporaryDirectory(prefix="tas editor 日本語 ") as folder:
@@ -192,13 +192,13 @@ class EditorWindowHeadlessTests(unittest.TestCase):
                 self.assertFalse(window.document.modified)
 
                 events.clear()
-                window.on_convert = lambda path: events.append(("failed conversion", path)) or False
+                window.on_convert = lambda path, send_ftp=False: events.append(("failed conversion", path)) or False
                 window.text.value = "1\tstill here\n"
                 self.assertFalse(window.save_and_convert())
                 self.assertEqual(existing.read_bytes(), b"1\tstill here\n")
                 self.assertEqual(window.document.text, "1\tstill here\n")
                 self.assertEqual(events[-1], ("failed conversion", existing))
-                window.on_convert = lambda path: events.append(("convert", path, Path(path).read_bytes())) or True
+                window.on_convert = lambda path, send_ftp=False: events.append(("convert", path, Path(path).read_bytes())) or True
 
                 renamed = Path(folder) / "renamed 日本語.tsv"
                 fake_tk.filedialog.asksaveasfilename = lambda **kwargs: str(renamed)

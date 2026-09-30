@@ -27,6 +27,9 @@ TEXT = {
         "start": "Start Conversion", "running": "Running: ",
         "success": "Conversion completed successfully.", "success_title": "Success",
         "error_title": "Error",
+        "editor_local": "Editor: local conversion",
+        "editor_send": "Editor: convert + FTP",
+        "preflight_failed": "Conversion did not start; no new output was generated.",
     },
     "ja": {
         "title": "TAS scripts 変換ツール", "input": "入力スクリプトファイル (.txt または .tsv):",
@@ -39,6 +42,9 @@ TEXT = {
         "start": "変換実行", "running": "実行: ",
         "success": "変換が正常に完了しました。", "success_title": "成功",
         "error_title": "エラー",
+        "editor_local": "Editor: ローカル変換",
+        "editor_send": "Editor: 変換 + FTP送信",
+        "preflight_failed": "変換は開始されていません。新しい出力は生成されていません。",
     },
 }
 
@@ -151,12 +157,12 @@ class TASConverterApp(tk.Tk):
     def _editor_saved(self, path):
         self._set_input_path(path, preserve_output_name=True)
 
-    def _convert_editor_file(self, path):
+    def _convert_editor_file(self, path, send_ftp=False):
         if self._busy():
             return False
         # Re-select the requesting editor's file; another editor may have saved since.
         self._editor_saved(path)
-        return self.start_conversion()
+        return self.start_conversion(ftp_override=send_ftp)
 
     def open_editor(self):
         # Import on demand so conversion-only startup does not load editor widgets.
@@ -262,17 +268,22 @@ class TASConverterApp(tk.Tk):
         self.log_text.see(tk.END)
         self.log_text.config(state="disabled")
 
-    def start_conversion(self):
+    def start_conversion(self, ftp_override=None):
         if self._busy():
             return False
         # Read Tk widgets on the main thread; the worker only handles files and subprocesses.
+        output_format = self.format_var.get()
+        ftp = self.ftp_var.get() if ftp_override is None else bool(ftp_override)
         values = (self.input_entry.get().strip(), self.output_entry.get().strip(),
-                  self.outname_entry.get().strip(), self.format_var.get(),
-                  self.skip_var.get(), self.debug_var.get(), self.ftp_var.get())
+                  self.outname_entry.get().strip(), output_format,
+                  self.skip_var.get() if output_format == "nxtas" else False,
+                  self.debug_var.get(), ftp)
         ftp_values = (self.ip_entry.get().strip(), self.port_entry.get().strip(),
                       self.user_entry.get(), self.pass_entry.get())
         self._conversion_running = True
         self.convert_btn.config(state="disabled")
+        if ftp_override is not None:
+            self._events.put(("log", self.words["editor_send" if ftp else "editor_local"]))
         try:
             threading.Thread(target=self.convert, args=(values, ftp_values), daemon=True).start()
         except Exception:
@@ -320,6 +331,7 @@ class TASConverterApp(tk.Tk):
         self.after(50, self._drain_events)
 
     def convert(self, values, ftp_values):
+        started = False
         try:
             commands = build_commands(*values, base_dir=self.base_dir)
             if values[6]:
@@ -327,6 +339,7 @@ class TASConverterApp(tk.Tk):
             for command in commands:
                 display = subprocess.list2cmdline(command) if os.name == "nt" else shlex.join(command)
                 self._events.put(("log", self.words["running"] + display))
+                started = True
                 result = subprocess.run(command, cwd=self.base_dir, capture_output=True,
                                         text=True, errors="replace",
                                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -342,6 +355,8 @@ class TASConverterApp(tk.Tk):
             self._events.put(("log", self.words["success"]))
             self._events.put(("success", self.words["success"]))
         except Exception as error:
+            if not started:
+                self._events.put(("log", self.words["preflight_failed"]))
             detail = ERROR_JA.get(str(error), str(error)) if self.language == "ja" else str(error)
             self._events.put(("error", detail))
         finally:

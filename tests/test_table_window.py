@@ -289,7 +289,7 @@ class TableWindowTests(unittest.TestCase):
             self.assertEqual((palette_buttons[first + 2].placement["row"],
                               palette_buttons[first + 2].placement["column"]), (1, 1))
         palette_buttons[-1].options["command"]()
-        self.assertIs(inserted[0], expected[-1])
+        self.assertIs(inserted[0], self.editor_window.CANDIDATES[-1])
         self.assertEqual(window.palette_canvas.kind, "canvas")
         self.assertTrue(any(item.kind == "scrollbar" for item in widgets))
         self.assertEqual(window._palette_page, 1)
@@ -476,7 +476,7 @@ class TableWindowTests(unittest.TestCase):
             self.assertEqual(window.table_grid.model.cell(0, 1), "犬")
             window.table_grid.pending = (0, 1, "鳥")
             converted = []
-            window.on_convert = lambda path: converted.append((path, path.read_bytes())) or True
+            window.on_convert = lambda path, send_ftp=False: converted.append((path, path.read_bytes())) or True
             self.assertTrue(window.save_and_convert())
             self.assertEqual(converted, [(source, "1\t鳥\t\r\n\r\n/pause\r\n".encode())])
             self.assertFalse(window.document.modified)
@@ -581,7 +581,7 @@ class TableWindowTests(unittest.TestCase):
             self.assertTrue(window._table_text_changed(inserted, updated))
             window.table_grid.set_text(updated)
             converted = []
-            window.on_convert = lambda path: converted.append(path.read_bytes()) or True
+            window.on_convert = lambda path, send_ftp=False: converted.append(path.read_bytes()) or True
             self.assertTrue(window.save_and_convert())
             self.assertEqual(converted, ["猫\t犬\r\n\r\n鳥\t魚\r\n".encode()])
             self.assertFalse(window.document.modified)

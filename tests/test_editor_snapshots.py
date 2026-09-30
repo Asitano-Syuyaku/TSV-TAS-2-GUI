@@ -210,7 +210,7 @@ class SnapshotTkTests(unittest.TestCase):
                 self.assertEqual(editor.document.text, "3\ta\n1\tb\n")
             # F5 remains an explicit save, unlike the two inspection operations.
             converted = []
-            editor.on_convert = lambda path: converted.append(path.read_bytes()) or True
+            editor.on_convert = lambda path, send_ftp=False: converted.append(path.read_bytes()) or True
             self.assertTrue(editor.save_and_convert())
             self.assertEqual(converted, [b"3\ta\r\n1\tb\n"])
             self.assertFalse(editor.document.modified)
