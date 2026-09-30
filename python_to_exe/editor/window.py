@@ -8,6 +8,7 @@ from queue import Empty, SimpleQueue
 from tkinter import filedialog, font as tkfont, messagebox
 
 from .document import EditorDocument
+from .recovery import DEBOUNCE_MS, RecoverySnapshot, RecoveryStore
 from .resources import palette_icon_path
 from .snapshot import ScriptSnapshot
 from .text_ops import (file_kind, find_next as next_match, find_previous as previous_match,
@@ -121,7 +122,7 @@ LABELS = {
 class EditorWindow(tk.Toplevel):
     def __init__(self, master, language="en", initial_path=None, on_saved=None,
                  on_convert=None, can_convert=None, on_validate=None, can_validate=None,
-                 on_analyze=None, can_analyze=None, settings=None):
+                 on_analyze=None, can_analyze=None, settings=None, recovery=None):
         super().__init__(master)
         self.words = LABELS[language]
         self.settings = settings if settings is not None else getattr(master, "settings", None)
@@ -130,6 +131,14 @@ class EditorWindow(tk.Toplevel):
             if self.settings is None:
                 self.settings = master._tas_app_settings = AppSettings()
         self.document = EditorDocument()
+        self._recovery_store = getattr(master, "recovery_store", None)
+        if self._recovery_store is None:
+            self._recovery_store = getattr(master, "_tas_recovery_store", None)
+            if self._recovery_store is None:
+                self._recovery_store = master._tas_recovery_store = RecoveryStore.from_settings(self.settings)
+        self._recovery_id = recovery.document_id if recovery is not None else self._recovery_store.new_id()
+        self._recovery_store.active_ids.add(self._recovery_id)
+        self._recovery_job = None
         self.on_saved = on_saved
         self.on_convert = on_convert
         self.can_convert = can_convert
@@ -312,7 +321,11 @@ class EditorWindow(tk.Toplevel):
         self._update_status()
         self._schedule_line_numbers()
         self._schedule_highlight()
-        if initial_path:
+        if recovery is not None:
+            recovery.restore(self.document)
+            self._show_document()
+            self._schedule_recovery()
+        elif initial_path:
             self.open_file(initial_path)
         else:
             self._position_document_changed()
@@ -488,11 +501,14 @@ class EditorWindow(tk.Toplevel):
         if event.widget is self:
             self._closed = True
             for name in ("_gutter_job", "_highlight_job", "_position_job",
-                         "_position_poll_job"):
+                         "_position_poll_job", "_recovery_job"):
                 job = getattr(self, name, None)
                 if job is not None:
                     self.after_cancel(job)
                     setattr(self, name, None)
+            if getattr(self, "_recovery_store", None) is not None:
+                # Direct destruction/forced shutdown cancels timers but retains recovery.
+                self._recovery_store.release(self._recovery_id)
 
     def _draw_line_numbers(self):
         self._gutter_job = None
@@ -557,6 +573,42 @@ class EditorWindow(tk.Toplevel):
     def _table_edit_pending(self, changed):
         self._frame_edit_pending = changed
         self._update_frame_info(self._current_line())
+        self._schedule_recovery()
+
+    def _schedule_recovery(self):
+        if getattr(self, "_recovery_store", None) is None or getattr(self, "_closed", False):
+            return
+        if self._recovery_job is not None:
+            self.after_cancel(self._recovery_job)
+            self._recovery_job = None
+        if self.document.modified or self._frame_edit_pending:
+            self._recovery_job = self.after(DEBOUNCE_MS, self._write_recovery)
+        else:
+            self._recovery_store.delete(self._recovery_id)
+
+    def _write_recovery(self):
+        self._recovery_job = None
+        if self._closed:
+            return
+        text = (self.table_grid.snapshot_text() if self._view == "table"
+                else self.text.get("1.0", "end-1c"))
+        name = self.document.path.name if self.document.path else self.words["untitled"]
+        snapshot = RecoverySnapshot.capture(self._recovery_id, self.document, name, text)
+        if snapshot is None:
+            self._recovery_store.delete(self._recovery_id)
+        else:
+            self._recovery_store.write(snapshot)
+
+    def _discard_recovery(self, replace_document=False):
+        if getattr(self, "_recovery_store", None) is None:
+            return
+        if self._recovery_job is not None:
+            self.after_cancel(self._recovery_job)
+            self._recovery_job = None
+        self._recovery_store.delete(self._recovery_id)
+        if replace_document:
+            self._recovery_store.release(self._recovery_id)
+            self._recovery_id = self._recovery_store.new_id()
 
     def _position_document_changed(self):
         key = (self._table_available(), self.document.text)
@@ -633,6 +685,7 @@ class EditorWindow(tk.Toplevel):
             self._document_revision = getattr(self, "_document_revision", 0) + 1
             if hasattr(self, "frame_status"):
                 self._position_document_changed()
+            self._schedule_recovery()
         self._update_title()
 
     def _commit_table_edit(self):
@@ -968,6 +1021,7 @@ class EditorWindow(tk.Toplevel):
         if not self._confirm_discard():
             return False
         self.document.new()
+        self._discard_recovery(replace_document=True)
         self._show_document()
         return True
 
@@ -1019,6 +1073,7 @@ class EditorWindow(tk.Toplevel):
         except (OSError, UnicodeError, ValueError) as error:
             messagebox.showerror(self.words["error"], str(error), parent=self)
             return False
+        self._discard_recovery(replace_document=True)
         self._show_document()
         self._record_recent(self.document.path)
         return True
@@ -1212,6 +1267,7 @@ class EditorWindow(tk.Toplevel):
         except (OSError, UnicodeError, ValueError) as error:
             messagebox.showerror(self.words["error"], str(error), parent=self)
             return False
+        self._discard_recovery()
         self._update_title()
         if hasattr(self, "frame_status"):
             self._position_document_changed()
@@ -1226,6 +1282,7 @@ class EditorWindow(tk.Toplevel):
 
     def close_editor(self):
         if self._confirm_discard():
+            self._discard_recovery()
             if self._gutter_job is not None:
                 self.after_cancel(self._gutter_job)
                 self._gutter_job = None

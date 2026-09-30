@@ -179,6 +179,9 @@ class FakeWidget:
     def protocol(self, *args):
         pass
 
+    def after_idle(self, *args):
+        pass
+
 
 class FakeVar:
     def __init__(self, value=False):

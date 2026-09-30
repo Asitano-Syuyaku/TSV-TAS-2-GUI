@@ -6,6 +6,7 @@ import subprocess
 import threading
 import tkinter as tk
 import traceback
+from datetime import datetime
 from queue import Empty, SimpleQueue
 from tkinter import filedialog, messagebox
 
@@ -25,6 +26,13 @@ TEXT = {
         "output": "Output Directory:", "name": "Output File Name (without extension):",
         "browse": "Browse...", "edit": "Edit...", "format": "Output format:",
         "open_output": "Open Output Folder",
+        "recovery_title": "Unsaved recovery",
+        "recovery_found": "Unsaved editing content was found.",
+        "recovery_choices": "Yes: Restore\nNo: Discard\nCancel: Keep for a later startup",
+        "recovery_changed": "The original file has changed since the saved recovery baseline.",
+        "recovery_missing": "The original file no longer exists.",
+        "recovery_unreadable": "The original file cannot be read to check for changes.",
+        "recovery_warning": "Recovery will open in a separate Editor buffer. The original file is not overwritten.",
         "binary": "LunaKit binary", "stas": "STAS", "nxtas": "nx-TAS",
         "skip": "Skip empty frames (nx-TAS only)", "debug": "Debug output (CSV)",
         "ftp": "Send via FTP (SMO/tas/scripts)", "ip": "FTP IP:",
@@ -44,6 +52,13 @@ TEXT = {
         "output": "出力ディレクトリ:", "name": "出力ファイル名 (拡張子なし):",
         "browse": "参照...", "edit": "編集...", "format": "出力形式:",
         "open_output": "出力フォルダーを開く",
+        "recovery_title": "未保存内容の復旧",
+        "recovery_found": "保存されていない編集内容が見つかりました。",
+        "recovery_choices": "はい: 復元\nいいえ: 破棄\nキャンセル: 次回起動まで保留",
+        "recovery_changed": "元ファイルはRecoveryの保存基準から変更されています。",
+        "recovery_missing": "元ファイルが見つかりません。",
+        "recovery_unreadable": "元ファイルを読み取れず、変更を確認できません。",
+        "recovery_warning": "復旧内容を別のEditor bufferで開きます。元ファイルは上書きしません。",
         "binary": "LunaKit バイナリ", "stas": "STAS", "nxtas": "nx-TAS",
         "skip": "空フレームを省略 (nx-TAS のみ)", "debug": "Debug 出力 (CSV)",
         "ftp": "FTPで送信 (SMO/tas/scripts)", "ip": "FTP IP:",
@@ -151,7 +166,41 @@ class TASConverterApp(tk.Tk):
         self.convert_btn.grid(row=8, column=1, padx=5, pady=10)
         self.log_text = tk.Text(self, height=10, width=80, state="disabled")
         self.log_text.grid(row=9, column=0, columnspan=3, padx=5, pady=5)
+        if __package__:
+            from .editor.recovery import RecoveryStore
+        else:
+            from editor.recovery import RecoveryStore
+        self.recovery_store = RecoveryStore.from_settings(self.settings, report=self.log)
         self.protocol("WM_DELETE_WINDOW", self._close_app)
+        self._recovery_check_job = self.after_idle(self._check_recovery)
+
+    def destroy(self):
+        job = getattr(self, "_recovery_check_job", None)
+        if job is not None:
+            self.after_cancel(job)
+            self._recovery_check_job = None
+        super().destroy()
+
+    def _check_recovery(self):
+        self._recovery_check_job = None
+        snapshots = self.recovery_store.load()
+        for index, snapshot in enumerate(snapshots, start=1):
+            date = datetime.fromtimestamp(snapshot.timestamp).isoformat(sep=" ", timespec="seconds")
+            description = (f"{self.words['recovery_found']}\n\n"
+                           f"{index} / {len(snapshots)}: {snapshot.display_name}\n{date}\n\n"
+                           f"{self.words['recovery_choices']}")
+            choice = messagebox.askyesnocancel(self.words["recovery_title"], description, parent=self)
+            if choice is None:
+                break
+            if choice:
+                status = snapshot.external_status()
+                if status:
+                    messagebox.showwarning(self.words["recovery_title"],
+                                           self.words["recovery_" + status] + "\n\n" +
+                                           self.words["recovery_warning"], parent=self)
+                self._create_editor(recovery=snapshot)
+            else:
+                self.recovery_store.delete(snapshot.document_id)
 
     def _save_preferences(self):
         self.settings.update(output_format=self.format_var.get(), debug_enabled=self.debug_var.get())
@@ -161,6 +210,10 @@ class TASConverterApp(tk.Tk):
         self._save_preferences()
 
     def _close_app(self):
+        for child in tuple(self.winfo_children()):
+            close = getattr(child, "close_editor", None)
+            if close is not None and not close():
+                return False
         self._save_preferences()
         directory = self.output_entry.get().strip()
         if directory and os.path.isdir(directory):
@@ -202,13 +255,16 @@ class TASConverterApp(tk.Tk):
         return self.start_conversion(ftp_override=send_ftp)
 
     def open_editor(self):
+        return self._create_editor(initial_path=self.input_entry.get().strip() or None)
+
+    def _create_editor(self, initial_path=None, recovery=None):
         # Import on demand so conversion-only startup does not load editor widgets.
         if __package__:
             from .editor.window import EditorWindow
         else:
             from editor.window import EditorWindow
-        EditorWindow(self, language=self.language,
-                     initial_path=self.input_entry.get().strip() or None,
+        return EditorWindow(self, language=self.language,
+                     initial_path=initial_path, recovery=recovery,
                      on_saved=self._editor_saved, on_convert=self._convert_editor_file,
                      can_convert=lambda: not self._busy(),
                      on_validate=self._validate_editor_snapshot,

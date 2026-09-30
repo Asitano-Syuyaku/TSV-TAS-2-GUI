@@ -859,6 +859,22 @@ class TableGrid(tk.Frame):
         self._schedule_draw()
         return True
 
+    def snapshot_text(self):
+        """Preview a valid pending cell using a model copy, with no commit or history change."""
+        if self._editor is None:
+            return self.model.to_text()
+        value = self._editor.get()
+        if any(separator in value for separator in ("\t", "\n", "\r")):
+            return self.model.to_text()
+        row, column = self.selected
+        preview = self.model.copy()
+        if row >= preview.row_count:
+            if value:
+                preview.paste(row, column, value)
+        else:
+            preview.update_line(row, preview.changed_line(row, column, value))
+        return preview.to_text()
+
     def _apply_model(self, updated, anchor=None, active=None):
         previous = self.model.to_text()
         current = updated.to_text()

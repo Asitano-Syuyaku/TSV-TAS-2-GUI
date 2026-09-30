@@ -21,12 +21,14 @@ class EditorDocument:
         self.path = None
         self.text = ""
         self._saved_text = ""
+        self._saved_raw = ""
+        self._recovered_unsaved = False
         self._raw_text = ""
         self._endings = []
 
     @property
     def modified(self):
-        return self.text != self._saved_text
+        return self._recovered_unsaved or self.text != self._saved_text
 
     @staticmethod
     def _path(path):
@@ -44,19 +46,33 @@ class EditorDocument:
         # Commit state only after a complete read and successful decode.
         self.path = target
         self.text = self._saved_text = text
+        self._saved_raw = raw
+        self._recovered_unsaved = False
         self._raw_text = raw
         self._endings = endings
 
     def set_text(self, text):
         self.text = text
 
+    def restore(self, original_path, raw, saved_raw):
+        """Restore into memory, retaining the old disk baseline and exact snapshot endings."""
+        self.path = Path(original_path) if original_path is not None else None
+        self.text = _NEWLINES.sub("\n", raw)
+        self._saved_text = _NEWLINES.sub("\n", saved_raw)
+        self._saved_raw = saved_raw
+        self._raw_text = raw
+        self._endings = _NEWLINES.findall(raw)
+        self._recovered_unsaved = True
+
     def _serialize(self):
-        if not self.modified:
+        # Normally _raw_text is the saved text; after recovery it anchors snapshot endings.
+        serialized_text = _NEWLINES.sub("\n", self._raw_text)
+        if self.text == serialized_text:
             return self._raw_text
         lines = self.text.split("\n")
         preferred = Counter(self._endings).most_common(1)[0][0] if self._endings else "\n"
         endings = self._endings
-        saved_lines = self._saved_text.split("\n")
+        saved_lines = serialized_text.split("\n")
         if len(lines) != len(saved_lines) and len(set(endings)) > 1:
             # When rows move, keep mixed line endings with matching source rows.
             aligned = [None] * (len(lines) - 1)
@@ -94,6 +110,8 @@ class EditorDocument:
                 os.unlink(temporary)
         self.path = target
         self._saved_text = self.text
+        self._saved_raw = raw
+        self._recovered_unsaved = False
         self._raw_text = raw
         self._endings = _NEWLINES.findall(raw)
         return target

@@ -61,6 +61,17 @@ Recent files, output format, Debug, and the last Input/Output browse directories
 
 Corrupt JSON, unsupported schemas, and invalid values fall back to defaults; a settings save failure does not stop editing or conversion. Document contents, Undo history, analysis results, and FTP connection details are not stored in these settings. FTP credentials keep the existing `ftp_config.json` behavior. The FTP checkbox is not persisted and starts OFF each time. Explicit FTP sending with F8 remains available.
 
+### Unsaved recovery
+
+Modified `.tsv`/`.txt` and untitled documents receive a separate Recovery snapshot for each Editor after about one second without changes, in the user config directory. This is **not autosave to the actual TSV/TXT** and does not overwrite the original file. A pending Table cell value without TABs or newlines is also included without committing the edit, changing selection, or adding an Undo step.
+
+- Windows: `%APPDATA%/TSV-TAS-2-GUI/recovery/`; if APPDATA is unavailable, `~/AppData/Roaming/TSV-TAS-2-GUI/recovery/`.
+- Linux/WSL: `$XDG_CONFIG_HOME/TSV-TAS-2-GUI/recovery/`; if unset, `~/.config/TSV-TAS-2-GUI/recovery/`.
+
+On startup after an abnormal exit, the app shows each document's name and timestamp and asks to **restore / discard / cancel (keep for later)**. Restore only opens an unsaved Editor buffer retaining the original path. Untitled buffers request Save As when saved. If the original file differs from its saved baseline or is missing, the app warns without automatically merging or overwriting it.
+
+Recovery remains after restoration. It is deleted after a successful Save / Save As / F5 / F8 save, or after an explicit discard and successful Close / New / Open replacement. Cancel keeps it. Multiple Editors have independent snapshots even for the same original path. Unreadable Recovery records and read/write failures are reported in the log without stopping editing. Document contents and local paths are stored **only in local user config**, never in the Git repository. Recovery does not include FTP connection settings or Undo history.
+
 ### Built-in editor
 
 Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, Save & Convert, Save, Convert & Send, Validate, Analyze Frames, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, `F5`, `F6`, `F7`, and `F8`. New, Open, and Close ask what to do with unsaved changes.
@@ -181,6 +192,7 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 | `python_to_exe/converter_gui.py`, `converter_logic.py` | Shared GUI, argument construction, Python discovery, and FTP settings |
 | `python_to_exe/app_settings.py` | Non-sensitive preferences and shared Recent Files in user config |
 | `python_to_exe/editor/` | Raw Text/Table editor, file state, find/replace, input hints, validation, Debug CSV parsing, and Frame Inspector |
+| `python_to_exe/editor/recovery.py` | Per-document Recovery snapshots in user config, restoration, and original-file change detection |
 | `ftp_config.json` | FTP connection settings; do not commit real credentials |
 | `tests/test_conversion.py` | Local conversion and GUI argument tests |
 

@@ -61,6 +61,17 @@ EditorのFile → **最近使ったファイル／Recent Files** は、開く・
 
 壊れたJSON・非対応schema・不正な値は既定値へ戻し、設定の保存に失敗しても操作を続けられます。文書内容、Undo履歴、解析結果、FTP接続情報はこの設定に保存しません。FTP credentialは従来の `ftp_config.json` のままで、FTPチェックは保存せず起動ごとにOFFになります。F8による明示的なFTP送信は従来どおり利用できます。
 
+### 未保存内容の復旧
+
+変更中の `.tsv`／`.txt` と無題の文書は、約1秒操作が止まるとEditorごとのRecovery snapshotをuser config内へ保存します。これは**実TSV／TXTへのautosaveではなく**、元ファイルを上書きしません。表で入力中のセルも、TABや改行を含まない通常のセル値なら、編集確定・選択変更・Undo追加なしでsnapshotへ含めます。
+
+- Windows: `%APPDATA%/TSV-TAS-2-GUI/recovery/`。APPDATAが使えなければ `~/AppData/Roaming/TSV-TAS-2-GUI/recovery/`。
+- Linux／WSL: `$XDG_CONFIG_HOME/TSV-TAS-2-GUI/recovery/`。未設定なら `~/.config/TSV-TAS-2-GUI/recovery/`。
+
+異常終了後の起動時は、文書名と時刻を示して、各snapshotの**復元／破棄／キャンセル（次回まで保留）**を確認します。復元は元pathを保持した未保存のEditor bufferとして開くだけです。無題なら保存時にSave Asを求めます。元ファイルが保存基準から外部変更されていたり、見つからなかったりする場合は警告し、自動mergeや上書きを行いません。
+
+Recoveryは復元直後も残し、Save／Save As／F5／F8の保存成功、またはClose／New／Openでの明示的な破棄・置換が完了した時に削除します。キャンセル時は保持します。複数Editorは同じ元pathでも独立したsnapshotを持ちます。壊れたRecoveryや読み書きの失敗はログで通知し、編集を続けられます。文書内容とlocal pathは**local user configだけ**に保存され、Git repositoryには保存されません。FTP接続情報やUndo履歴はRecoveryへ含めません。
+
 ### 内蔵エディター
 
 Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、保存・変換してFTP送信、Validate、フレーム解析、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5`、`F6`、`F7`、`F8` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
@@ -181,6 +192,7 @@ python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/
 | `python_to_exe/converter_gui.py`、`converter_logic.py` | 共通GUI、引数生成、Python探索、FTP設定 |
 | `python_to_exe/app_settings.py` | user config内の非機密設定と共有Recent Files履歴 |
 | `python_to_exe/editor/` | テキスト／表の編集画面、ファイル状態、検索・置換、入力支援、Validation、Debug CSV解析とFrame Inspector |
+| `python_to_exe/editor/recovery.py` | user config内の文書別Recovery snapshot、復元、元ファイルの変更検出 |
 | `ftp_config.json` | FTP接続設定。実credentialをcommitしないこと |
 | `tests/test_conversion.py` | ローカル変換とGUI引数のテスト |
 
