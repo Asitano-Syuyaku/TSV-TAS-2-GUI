@@ -3,3 +3,6 @@ __pycache__/
 build/
 dist/
 *.spec
+
+# Local Editor TSV save backups (including uppercase extensions).
+*.[tT][sS][vV].before[0-9]*

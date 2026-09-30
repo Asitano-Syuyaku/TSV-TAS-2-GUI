@@ -9,6 +9,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 from .file_state import ExternalFileConflict, disk_status, same_path, text_hash
+from .save_backups import create_save_backup
 
 
 _NEWLINES = re.compile(r"\r\n|\r|\n")
@@ -125,6 +126,10 @@ class EditorDocument:
                 os.fsync(file.fileno())
             if target.exists():
                 os.chmod(temporary, stat.S_IMODE(target.stat().st_mode))
+            if target.suffix.lower() == ".tsv":
+                # New content is complete and durable before touching history.
+                # A failed backup must leave the disk target and baseline intact.
+                create_save_backup(target)
             os.replace(temporary, target)
         finally:
             if os.path.exists(temporary):

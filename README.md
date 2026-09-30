@@ -80,6 +80,8 @@ Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入
 
 同じpathへの保存前には、disk内容をOpen／最後の保存時の内容とhashで比較します。Editor外で変更されていた場合は上書き、削除されていた場合は再作成を確認します。「いいえ」ならbuffer・Undo・Recoveryを保持し、F5／F8の変換やFTP送信も開始しません。内容を確認できない場合は保存せず、エラーを表示します。Recovery復元後も旧baselineを使って同じ保護を行います。別pathへのSave Asは元ファイルの外部変更に妨げられず、既存の保存先の上書き確認はファイルダイアログに従います。同じpathのSave Asには通常の保存と同じ保護を適用します。
 
+Editorで既存の `.tsv` を保存するたび、同じフォルダーに**最大10世代の保存前backup**を残します。`route.tsv.before1` が直前のdisk版、`route.tsv.before10` が最古で、古い世代から順にrotationします。改行やencodingを変えずbyte単位で保持し、外部変更の上書きを許可した場合も、上書き直前の外部disk版をbackupします。新規ファイルの初回保存と `.txt` は対象外です。Save Asは上書きする保存先、F5／F8は実際に保存するTSVへ同じ処理を行います。backup失敗時は元TSVを置換せず、変換・FTP送信も開始しません。これはuser config内のRecoveryとは別機能で、backupをRecent Filesへ自動登録しません。repository内の `.tsv.beforeN` はGitのignore対象です。
+
 **Save & Convert**（`F5`）はセル編集を確定して保存し、そのEditorで開いているファイルをConverterのInputとしてローカル変換します。親GUIのFTPチェックがONでも、FTP送信しません。新規ファイルはSave Asで保存先を指定し、キャンセルすれば変換しません。Save As後はInputが新しいpathへ切り替わります。Output Directory／Output File Nameが空欄ならファイルのフォルダー／拡張子を除いた名前を設定し、指定済みなら保持します。出力形式、空フレーム省略（nx-TASのみ）、DebugはConverterで現在選んでいる設定を使います。converterの標準出力・標準エラーは従来のログに表示され、変換失敗はダイアログでも通知されます。
 
 **保存・変換してFTP送信／Save, Convert & Send**（`F8`）は同じ保存・Input同期・ローカル変換に加えて、FTP送信を行います。親GUIのFTPチェックがOFFでも送信し、現在入力されているIP／Port／Username／Passwordを使います。新規文書はSave Asが必要で、キャンセルすれば送信しません。FTP設定の保存に失敗した場合は変換開始前に停止し、新しい出力を生成しません。転送時の失敗ではローカル出力が既に生成されている場合があります。親GUIの **Start Conversion／変換実行** は従来どおりFTPチェックに従います。F5／F8はチェック状態を書き換えず、実行種別をログに表示します。
