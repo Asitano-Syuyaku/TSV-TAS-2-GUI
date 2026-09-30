@@ -78,10 +78,12 @@ CANDIDATES = (
 )
 
 PALETTE_PAGES = (
-    ("buttons", "left_stick", "right_stick", "commands"),
-    ("cappy", "accel", "gyro", "notation"),
+    ("buttons", "left_stick", "right_stick", "stick_preview"),
+    ("commands", "cappy", "accel", "gyro", "notation"),
 )
-PALETTE_CATEGORIES = tuple(category for page in PALETTE_PAGES for category in page)
+# Only insertable categories; the preview never supplies a Candidate.
+PALETTE_CATEGORIES = tuple(category for page in PALETTE_PAGES for category in page
+                           if category != "stick_preview")
 _FRAGMENT = re.compile(r"(?:/[A-Za-z]*|\$[A-Za-z_]*|[A-Za-z][A-Za-z0-9_-]*)$")
 _DURATION = re.compile(r"\s*(?:\d+(?:\.\d+)?|\$[A-Za-z_][A-Za-z0-9_]*)\s*$")
 _FUNCTION_NAMES = sorted({item.text.split("(", 1)[0] for item in CANDIDATES

@@ -154,12 +154,12 @@ class RealTkSmokeTests(unittest.TestCase):
             release = threading.Event()
             calls = []
 
-            def delayed(snapshot, base_dir=None):
+            def delayed(snapshot, base_dir=None, include_sticks=False):
                 calls.append(snapshot)
                 if len(calls) == 1:
                     started.set()
                     release.wait(5)
-                return analyze_positions(snapshot, base_dir=base_dir)
+                return analyze_positions(snapshot, base_dir=base_dir, include_sticks=include_sticks)
 
             with patch("python_to_exe.editor.line_positions.analyze_positions", delayed):
                 app.open_editor()
@@ -370,8 +370,13 @@ class RealTkSmokeTests(unittest.TestCase):
             self.assertGreaterEqual(grid.display_column_count, 7)
             self.assertEqual(editor.document.text, "")
             self.assertFalse(editor.document.modified)
+            # The wider Preview sidebar leaves fewer visible columns at 1200px;
+            # all seven guide columns must still be reachable by scrolling.
+            grid.jump_to_row(0, column=6)
+            app.update()
             self.assertLessEqual(grid._cell_box(0, 6)[2] - grid.canvas.canvasx(0),
                                  grid.canvas.winfo_width())
+            grid.jump_to_row(0, column=0)
             for _ in range(7):
                 grid._move(0, 1)
             self.assertEqual(grid.selected, (0, 7))

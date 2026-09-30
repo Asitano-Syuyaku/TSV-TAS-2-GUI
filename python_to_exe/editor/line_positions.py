@@ -7,6 +7,7 @@ from typing import Optional
 
 from .validation import _run_commands
 from .snapshot import ScriptSnapshot, script_workspace
+from .debug_csv import StickFrames, load_debug_csv, resolved_sticks
 
 if __package__ == "editor":
     from converter_logic import build_commands
@@ -74,6 +75,7 @@ class LinePositions:
 class PositionResult:
     positions: Optional[LinePositions] = None
     error: str = ""
+    sticks: Optional[StickFrames] = None
 
     @property
     def success(self):
@@ -106,12 +108,12 @@ def parse_line_positions(source):
     return LinePositions(rows, total_frames)
 
 
-def analyze_positions(snapshot, base_dir=None, runner=None):
+def analyze_positions(snapshot, base_dir=None, runner=None, include_sticks=False):
     """Compile an unsaved UTF-8 TSV snapshot in isolation with the converter's -m mode."""
     try:
         with script_workspace(ScriptSnapshot(snapshot)) as (source, folder):
             commands = build_commands(source, folder, "positions", "binary", line_map=True,
-                                      debug=False, ftp=False, base_dir=base_dir)
+                                      debug=include_sticks, ftp=False, base_dir=base_dir)
             report = _run_commands(commands, base_dir, runner, True)
             if not report.success:
                 return PositionResult(error=report.stderr or report.stdout)
@@ -119,6 +121,14 @@ def analyze_positions(snapshot, base_dir=None, runner=None):
             if not mapping.is_file():
                 return PositionResult(error="Converter source-line map was not generated")
             with mapping.open("r", encoding="utf-8", newline="") as file:
-                return PositionResult(parse_line_positions(file))
+                positions = parse_line_positions(file)
+            sticks = None
+            if include_sticks:
+                # A bad/missing preview CSV must not hide a valid line map.
+                try:
+                    sticks = resolved_sticks(load_debug_csv(commands[-1][-1] + "-debug.csv"))
+                except (OSError, ValueError, csv.Error) as error:
+                    return PositionResult(positions, error=str(error))
+            return PositionResult(positions, sticks=sticks)
     except (OSError, ValueError, RuntimeError, csv.Error) as error:
         return PositionResult(error=str(error))

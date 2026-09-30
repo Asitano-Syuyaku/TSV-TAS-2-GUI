@@ -1,8 +1,10 @@
 """Literal reader for the bundled converter's Debug CSV; no TAS evaluation."""
 
 import csv
+import math
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 
 # Exact field names in the current stas-dev Debug CSV. Additional fields survive.
@@ -74,3 +76,59 @@ def parse_debug_csv(source):
 def load_debug_csv(path):
     with Path(path).open("r", encoding="utf-8", newline="") as source:
         return parse_debug_csv(source)
+
+
+@dataclass(frozen=True)
+class StickState:
+    x: Optional[float]
+    y: Optional[float]
+    radius: Optional[float]
+    angle: Optional[float]
+
+
+@dataclass(frozen=True)
+class StickFrame:
+    frame: int
+    left: StickState
+    right: StickState
+
+
+@dataclass(frozen=True)
+class StickFrames:
+    rows: dict[int, StickFrame]
+
+    def history(self, frame):
+        """Current and up to three preceding exact CSV frames; never fill gaps."""
+        return tuple(self.rows[index] for index in range(frame, frame - 4, -1)
+                     if index in self.rows)
+
+
+def resolved_sticks(frames):
+    """Index only 1P controller values already resolved by the converter.
+
+    The current CSV calls the LS radius field 'lx.r' (not 'ls.r'). Coordinates
+    are the converter's signed 32767-scale values; angles are degrees. Missing
+    or non-finite numeric fields remain unavailable instead of being evaluated.
+    """
+    columns = {name: index for index, name in enumerate(frames.headers)}
+
+    def number(row, field):
+        if field not in columns:
+            return None
+        try:
+            value = float(row[columns[field]])
+        except ValueError:
+            return None
+        return value if math.isfinite(value) else None
+
+    rows = {}
+    for row in frames.rows:
+        if row[columns["2ndPlayer"]] != "False":
+            continue
+        frame = int(row[columns["Frame"]])
+        rows[frame] = StickFrame(
+            frame, StickState(*(number(row, field) for field in
+                                ("ls.x", "ls.y", "lx.r", "ls.theta"))),
+            StickState(*(number(row, field) for field in
+                         ("rs.x", "rs.y", "rs.r", "rs.theta"))))
+    return StickFrames(rows)

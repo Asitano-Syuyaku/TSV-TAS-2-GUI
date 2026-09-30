@@ -19,15 +19,20 @@ def descendants(widget):
 class PalettePageDefinitionTests(unittest.TestCase):
     def test_pages_and_existing_advanced_templates(self):
         self.assertEqual(PALETTE_PAGES, (
-            ("buttons", "left_stick", "right_stick", "commands"),
-            ("cappy", "accel", "gyro", "notation"),
+            ("buttons", "left_stick", "right_stick", "stick_preview"),
+            ("commands", "cappy", "accel", "gyro", "notation"),
         ))
         self.assertEqual(PALETTE_CATEGORIES,
-                         tuple(category for page in PALETTE_PAGES for category in page))
+                         tuple(category for page in PALETTE_PAGES for category in page
+                               if category != "stick_preview"))
         self.assertFalse(set(PALETTE_PAGES[0]) & set(PALETTE_PAGES[1]))
         advanced = [item for category in PALETTE_PAGES[1]
                     for item in CANDIDATES if item.category == category]
         self.assertEqual([(item.text, item.select) for item in advanced], [
+            ("/tp 0 0 0", (4, 5)), ("/ctp 0 0 0", (5, 6)),
+            ("/absStick on", (10, 12)), ("/speed 2", (7, 8)),
+            ("/pause", None), ("/loadFile 1", (10, 11)),
+            ("/reloadFile", None), ("/demo on", (6, 8)),
             ("ca", None), ("cb", None), ("cx", None), ("cy", None),
             ("cls(0)", (4, 5)), ("crs(0)", (4, 5)),
             ("la(0; 0; 0)", (3, 4)), ("ra(0; 0; 0)", (3, 4)),
@@ -68,7 +73,7 @@ class PalettePageTkTests(unittest.TestCase):
                 editor._show_palette_page(number)
                 root.update()
                 self.assertEqual(editor._palette_page_label.cget("text"), f"{number} / 2")
-                self.assertEqual(editor.input_palette.winfo_width(), 330)
+                self.assertEqual(editor.input_palette.winfo_width(), 400)
                 page, canvas = editor._palette_pages[number - 1]
                 content = canvas.winfo_children()[0]
                 headings = [child.cget("text") for child in content.winfo_children()
@@ -173,7 +178,8 @@ class PalettePageTkTests(unittest.TestCase):
                 self.assertFalse(editor.document.modified)
                 grid.cancel_edit()
         # A commit participates in the shared Raw/Table Undo/Redo history.
-        buttons[0].invoke()
+        cappy = buttons[next(index for index, item in enumerate(expected) if item.text == "ca")]
+        cappy.invoke()
         editor.table_grid.commit_edit()
         self.assertEqual(editor.document.text, "\tca")
         self.assertTrue(editor.document.modified)

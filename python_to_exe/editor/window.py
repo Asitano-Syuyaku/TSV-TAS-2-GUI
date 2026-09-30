@@ -58,6 +58,8 @@ LABELS = {
         "clear_cells": "Clear Cells",
         "input_palette": "Input Palette", "buttons": "Buttons",
         "left_stick": "Left Stick", "right_stick": "Right Stick",
+        "stick_preview": "Stick Preview (1P)",
+        "preview_updating": "Updating...", "preview_unavailable": "Unavailable",
         "commands": "STAS Commands",
         "cappy": "Cappy", "accel": "Accel", "gyro": "Gyro", "notation": "Notation",
         "validate": "Validate", "validating": "Validating...",
@@ -112,6 +114,8 @@ LABELS = {
         "clear_cells": "セルを消去",
         "input_palette": "入力パレット", "buttons": "ボタン",
         "left_stick": "左スティック", "right_stick": "右スティック",
+        "stick_preview": "スティックプレビュー (1P)",
+        "preview_updating": "更新中...", "preview_unavailable": "未確定",
         "commands": "STASコマンド",
         "cappy": "Cappy", "accel": "加速度", "gyro": "ジャイロ", "notation": "記法",
         "validate": "検証", "validating": "検証中...",
@@ -170,6 +174,7 @@ class EditorWindow(tk.Toplevel):
         self._frame_inspector = None
         self._inspector_snapshot = None
         self._positions = None
+        self._stick_frames = None
         self._position_key = None
         self._position_revision = 0
         self._document_revision = 0
@@ -386,7 +391,9 @@ class EditorWindow(tk.Toplevel):
                 continue
 
     def _build_input_palette(self):
-        self.input_palette = tk.Frame(self.table_area, width=330, relief="groove",
+        from .stick_preview import StickPreview
+
+        self.input_palette = tk.Frame(self.table_area, width=400, relief="groove",
                                       borderwidth=1)
         self.input_palette.pack_propagate(False)
         self.input_palette.pack(side="right", fill="y")
@@ -422,6 +429,10 @@ class EditorWindow(tk.Toplevel):
             for category in categories:
                 tk.Label(content, text=self.words[category], anchor="w").pack(
                     fill="x", padx=6, pady=(5, 1))
+                if category == "stick_preview":
+                    self.stick_preview = StickPreview(content)
+                    self.stick_preview.pack(fill="x", padx=3)
+                    continue
                 group = tk.Frame(content)
                 group.pack(fill="x", padx=3)
                 for column in (0, 1):
@@ -592,6 +603,9 @@ class EditorWindow(tk.Toplevel):
         if event.widget is self:
             self._flush_workspace()
             self._closed = True
+            # Release Tk images on the UI thread, before background CSV parsing
+            # can collect a destroyed Editor's cyclic references.
+            self._palette_icons.clear()
             for name in ("_gutter_job", "_highlight_job", "_position_job",
                          "_position_poll_job", "_recovery_job"):
                 job = getattr(self, name, None)
@@ -667,6 +681,21 @@ class EditorWindow(tk.Toplevel):
                        f"{self.words['frame_end']}: {end} | "
                        f"{self.words['frame_total']}: {self._positions.total_frames}f")
         self.frame_status.configure(text=message)
+        if hasattr(self, "stick_preview"):
+            self._update_stick_preview(line)
+
+    def _update_stick_preview(self, line):
+        unavailable = self._position_unavailable_message()
+        if unavailable:
+            message = self.words["preview_updating" if unavailable == self.words["frame_updating"]
+                                 else "preview_unavailable"]
+            self.stick_preview.show(message=message)
+            return
+        position = self._positions.for_line(line)
+        if position is None or self._stick_frames is None:
+            self.stick_preview.show(message=self.words["preview_unavailable"])
+            return
+        self.stick_preview.show(position.start, self._stick_frames.history(position.start))
 
     def focus_frame_entry(self):
         # Focusing this field does not commit or cancel a pending Table edit.
@@ -768,6 +797,7 @@ class EditorWindow(tk.Toplevel):
         self._position_key = key
         self._position_revision += 1
         self._positions = None
+        self._stick_frames = None
         if self._position_job is not None:
             self.after_cancel(self._position_job)
             self._position_job = None
@@ -791,16 +821,18 @@ class EditorWindow(tk.Toplevel):
         revision = self._position_revision
         snapshot = self.document.text
         base_dir = getattr(self.master, "base_dir", None)
+        results = self._position_queue
         self._position_worker_active = True
         self._position_waiting = False
 
         def worker():
             try:
-                result = analyze_positions(snapshot, base_dir=base_dir)
+                result = analyze_positions(snapshot, base_dir=base_dir, include_sticks=True)
             except Exception as error:
                 traceback.print_exc()
                 result = PositionResult(error=str(error))
-            self._position_queue.put((revision, result))
+            # The worker keeps only plain data and its queue, not Tk widgets.
+            results.put((revision, result))
 
         try:
             threading.Thread(target=worker, daemon=True).start()
@@ -820,6 +852,7 @@ class EditorWindow(tk.Toplevel):
         self._position_worker_active = False
         if revision == self._position_revision:
             self._positions = result.positions if result.success else None
+            self._stick_frames = result.sticks if result.success else None
             self._update_frame_info(self._current_line())
         if self._position_waiting and self._position_job is None:
             self._start_position_analysis()

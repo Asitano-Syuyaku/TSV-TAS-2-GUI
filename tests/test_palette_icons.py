@@ -89,9 +89,9 @@ class PaletteTkTests(unittest.TestCase):
                 self.assertEqual(set(editor._palette_icons), set(BUTTON_KEYS.values()))
                 self.assertTrue(editor.show_table())
                 root.update()
-                self.assertEqual(editor.input_palette.cget("width"), 330)
+                self.assertEqual(editor.input_palette.cget("width"), 400)
                 self.assertEqual(editor.input_palette.winfo_manager(), "pack")
-                self.assertEqual(editor.input_palette.winfo_width(), 330)
+                self.assertEqual(editor.input_palette.winfo_width(), 400)
                 palette_buttons = list(buttons_in(editor.input_palette))
                 icon_buttons = []
                 for item in (item for item in CANDIDATES if item.category == "buttons"):

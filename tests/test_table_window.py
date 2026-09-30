@@ -232,20 +232,23 @@ class TableWindowTests(unittest.TestCase):
                             Canvas=lambda master, **kw: Widget("canvas", master, **kw),
                             Scrollbar=lambda master, **kw: Widget("scrollbar", master, **kw),
                             Label=lambda master, **kw: Widget("label", master, **kw),
-                            Button=lambda master, **kw: Widget("button", master, **kw)):
+                            Button=lambda master, **kw: Widget("button", master, **kw)), \
+             patch.dict(sys.modules, {"python_to_exe.editor.stick_preview": SimpleNamespace(
+                 StickPreview=lambda master: Widget("preview", master))}):
             window._build_input_palette()
             icon = object()
             window._palette_icons = {"button_a": icon}
             icon_button = window._palette_button(window.input_palette, CANDIDATES[0])
             motion = next(item for item in CANDIDATES if item.category == "accel")
             motion_button = window._palette_button(window.input_palette, motion)
-        self.assertEqual(window.input_palette.options["width"], 330)
+        self.assertEqual(window.input_palette.options["width"], 400)
         self.assertEqual(window.input_palette.placement, {"side": "right", "fill": "y"})
         self.assertFalse(window.input_palette.propagate)
         labels = [item.options["text"] for item in widgets
                   if item.kind == "label" and item is not window._palette_page_label]
         self.assertEqual(labels, [window.words["input_palette"]] +
-                         [window.words[category] for category in PALETTE_CATEGORIES])
+                         [window.words[category] for page in PALETTE_PAGES for category in page])
+        self.assertEqual(window.stick_preview.kind, "preview")
         palette_buttons = [item for item in widgets if item.kind == "button"
                            and item.placement and "row" in item.placement]
         expected = [item for category in PALETTE_CATEGORIES
