@@ -48,6 +48,8 @@ This example holds the left stick upward for five frames, then inputs A and the 
 
 The Japanese and English launchers use the same conversion behavior; only displayed language differs. `-l` is an interactive CLI option for repeated compilation and is not in the GUI.
 
+After a successful conversion, the dialog and log show the output file path. The log also lists the Debug CSV and intermediate TSV generated from `.txt` input, when enabled or applicable, and indicates when FTP transfer was attempted. Editor F5/F8 use the same result display. **Open Output Folder／出力フォルダーを開く** beside Output Directory opens the currently specified folder, even before conversion. An empty or missing folder produces an error.
+
 ### Recent files and preferences
 
 Editor File → **Recent Files／最近使ったファイル** lists up to 10 `.tsv`/`.txt` paths, newest first, from Open, Save, Save As, Editor conversion, and Converter Input Browse. Reusing a path moves it to the top. Selecting an entry opens it in the current Editor and asks about any unsaved changes. Selecting a deleted file shows an error and removes its entry; **Clear Recent Files／履歴を消去** clears the list. Startup does not open a file automatically.

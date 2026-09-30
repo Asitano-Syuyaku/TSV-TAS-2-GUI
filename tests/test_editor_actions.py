@@ -70,6 +70,13 @@ class EditorActionTkTests(unittest.TestCase):
                                CREATE_NO_WINDOW=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
     @staticmethod
+    def write_outputs(command):
+        primary = Path(command[-1])
+        primary.write_bytes(b"generated")
+        if any("d" in flag[1:] for flag in command[2:-2] if flag.startswith("-")):
+            Path(str(primary) + "-debug.csv").write_bytes(b"debug")
+
+    @staticmethod
     def file_menu(editor):
         menu = editor.nametowidget(editor.cget("menu"))
         index = next(i for i in range(menu.index("end") + 1)
@@ -108,10 +115,11 @@ class EditorActionTkTests(unittest.TestCase):
                 def runner(command, **options):
                     # The source must already contain the committed/saved cell.
                     calls.append((command, Path(command[-2]).read_bytes()))
+                    self.write_outputs(command)
                     return subprocess.CompletedProcess(command, 0, "generated\n", "")
 
                 with patch("python_to_exe.converter_gui.subprocess", self.process_module(runner)), \
-                     patch("python_to_exe.converter_gui.messagebox.showinfo"):
+                     patch("python_to_exe.converter_gui.messagebox.showinfo") as success:
                     app.ftp_var.set(True)
                     self.assertEqual(self.shortcut(grid.canvas, "F5"), "break")
                     self.wait_for(app, lambda: not app._busy())
@@ -123,6 +131,10 @@ class EditorActionTkTests(unittest.TestCase):
                     self.assertFalse(editor.document.modified)
                     self.assertFalse((work / "ftp_config.json").exists())
                     self.assertTrue(app.ftp_var.get())
+                    primary = work / "chosen result.txt"
+                    self.assertEqual(app._last_successful_output, primary)
+                    self.assertIn(str(primary), success.call_args.args[1])
+                    self.assertNotIn(app.words["result_ftp"], success.call_args.args[1])
                     # Saving retains the shared Raw/Table Undo and Redo history.
                     editor.undo()
                     self.assertEqual(editor.document.text, "1\ta\n")
@@ -153,6 +165,10 @@ class EditorActionTkTests(unittest.TestCase):
                     self.assertIn(app.words["editor_local"], log)
                     self.assertIn(app.words["editor_send"], log)
                     self.assertEqual(len(calls), 2)
+                    self.assertEqual(success.call_count, 2)
+                    self.assertIn(app.words["result_ftp"], success.call_args.args[1])
+                    self.assertIn(f"{app.words['result_output']}: {primary}", log)
+                    self.assertIn(f"{app.words['result_debug']}: {primary}-debug.csv", log)
                 self.doCleanups()
 
     def test_untitled_cancel_both_actions_then_send_saves_real_file_and_fills_outputs(self):
@@ -166,6 +182,7 @@ class EditorActionTkTests(unittest.TestCase):
 
             def runner(command, **options):
                 calls.append(command)
+                self.write_outputs(command)
                 return subprocess.CompletedProcess(command, 0, "", "")
 
             with patch("python_to_exe.converter_gui.subprocess", self.process_module(runner)), \
@@ -216,6 +233,7 @@ class EditorActionTkTests(unittest.TestCase):
                     calls.append(command)
                     started.set()
                     release.wait(5)
+                    self.write_outputs(command)
                     return subprocess.CompletedProcess(command, 0, "", "")
 
                 with patch("python_to_exe.converter_gui.subprocess", self.process_module(runner)), \

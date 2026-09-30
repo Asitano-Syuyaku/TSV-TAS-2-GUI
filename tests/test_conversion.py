@@ -21,6 +21,15 @@ from converter_logic import build_commands, load_ftp_config, python_command, sav
 from app_settings import AppSettings
 
 
+def mock_generated_files(command, **options):
+    """A successful subprocess fixture must now produce its promised files."""
+    primary = Path(command[-1])
+    primary.write_bytes(b"generated")
+    if any("d" in flag[1:] for flag in command[2:-2] if flag.startswith("-")):
+        Path(str(primary) + "-debug.csv").write_bytes(b"debug")
+    return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+
 class ConversionTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="tas gui test ")
@@ -267,13 +276,14 @@ class GuiStartupTests(unittest.TestCase):
                         values = (str(source), directory, "out with spaces", format_name,
                                   format_name == "nxtas", True, False)
                         with patch("converter_gui.subprocess.run") as run:
-                            run.return_value = types.SimpleNamespace(returncode=0, stdout="", stderr="")
+                            run.side_effect = mock_generated_files
                             app.convert(values, ("", "", "", ""))
                             captured.append(run.call_args.args[0])
                         app.after = lambda delay, callback, *args, **kwargs: callback(*args, **kwargs)
                         app._drain_events()
                         self.assertEqual(app.convert_btn.state, "normal")
-                        self.assertEqual(len(messages), 1)
+                        self.assertEqual(len(messages), 2)
+                        self.assertIn(str(app._last_successful_output), messages[-1])
                     self.assertEqual(captured[0], captured[1])
                 with patch("converter_gui.subprocess.run") as run, \
                      patch.object(fake_tk.messagebox, "showerror") as showerror:
@@ -351,7 +361,7 @@ class EditorConverterFlowTests(unittest.TestCase):
                                 with patch.object(self.gui.threading, "Thread", ImmediateThread), \
                                      patch.object(self.gui.subprocess, "run") as run, \
                                      patch.object(self.gui, "save_ftp_config", wraps=self.gui.save_ftp_config) as save:
-                                    run.return_value = types.SimpleNamespace(returncode=0, stdout="", stderr="")
+                                    run.side_effect = mock_generated_files
                                     self.assertTrue(app._convert_editor_file(source, send_ftp=send))
                                     command = run.call_args.args[0]
                                     captured.append(command)
@@ -404,7 +414,7 @@ class EditorConverterFlowTests(unittest.TestCase):
                 app.ftp_var.set(checked)
                 with patch.object(self.gui.threading, "Thread", ImmediateThread), \
                      patch.object(self.gui.subprocess, "run") as run:
-                    run.return_value = types.SimpleNamespace(returncode=0, stdout="", stderr="")
+                    run.side_effect = mock_generated_files
                     self.assertTrue(app.start_conversion())
                     command = run.call_args.args[0]
                     self.assertEqual("-f" in command, checked)
@@ -566,7 +576,12 @@ class EditorConverterFlowTests(unittest.TestCase):
 
                 with patch.object(self.gui.threading, "Thread", ImmediateThread), \
                      patch.object(self.gui.subprocess, "run") as run:
-                    run.return_value = types.SimpleNamespace(returncode=0, stdout="done", stderr="diagnostic")
+                    def generated_with_logs(command, **options):
+                        result = mock_generated_files(command, **options)
+                        result.stdout, result.stderr = "done", "diagnostic"
+                        return result
+
+                    run.side_effect = generated_with_logs
                     self.assertTrue(app._convert_editor_file(source, send_ftp=True))
                     commands.append(run.call_args.args[0])
                 self.assertIn("-fned", commands[-1])

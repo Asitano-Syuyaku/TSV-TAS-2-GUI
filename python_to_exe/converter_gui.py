@@ -11,10 +11,12 @@ from tkinter import filedialog, messagebox
 
 if __package__:
     from .app_settings import AppSettings
-    from .converter_logic import build_commands, load_ftp_config, save_ftp_config, scripts_dir
+    from .converter_logic import (build_commands, conversion_outputs, load_ftp_config,
+                                  open_output_folder, save_ftp_config, scripts_dir)
 else:
     from app_settings import AppSettings
-    from converter_logic import build_commands, load_ftp_config, save_ftp_config, scripts_dir
+    from converter_logic import (build_commands, conversion_outputs, load_ftp_config,
+                                 open_output_folder, save_ftp_config, scripts_dir)
 
 
 TEXT = {
@@ -22,12 +24,16 @@ TEXT = {
         "title": "TAS Scripts Converter Tool", "input": "Input Script File (.txt or .tsv):",
         "output": "Output Directory:", "name": "Output File Name (without extension):",
         "browse": "Browse...", "edit": "Edit...", "format": "Output format:",
+        "open_output": "Open Output Folder",
         "binary": "LunaKit binary", "stas": "STAS", "nxtas": "nx-TAS",
         "skip": "Skip empty frames (nx-TAS only)", "debug": "Debug output (CSV)",
         "ftp": "Send via FTP (SMO/tas/scripts)", "ip": "FTP IP:",
         "port": "Port:", "user": "Username:", "password": "Password:",
         "start": "Start Conversion", "running": "Running: ",
         "success": "Conversion completed successfully.", "success_title": "Success",
+        "result_output": "Output", "result_debug": "Debug CSV",
+        "result_intermediate": "Intermediate TSV", "result_ftp": "FTP transfer was attempted.",
+        "output_missing": "Expected output file was not generated: {path}",
         "error_title": "Error",
         "editor_local": "Editor: local conversion",
         "editor_send": "Editor: convert + FTP",
@@ -37,12 +43,16 @@ TEXT = {
         "title": "TAS scripts 変換ツール", "input": "入力スクリプトファイル (.txt または .tsv):",
         "output": "出力ディレクトリ:", "name": "出力ファイル名 (拡張子なし):",
         "browse": "参照...", "edit": "編集...", "format": "出力形式:",
+        "open_output": "出力フォルダーを開く",
         "binary": "LunaKit バイナリ", "stas": "STAS", "nxtas": "nx-TAS",
         "skip": "空フレームを省略 (nx-TAS のみ)", "debug": "Debug 出力 (CSV)",
         "ftp": "FTPで送信 (SMO/tas/scripts)", "ip": "FTP IP:",
         "port": "ポート:", "user": "ユーザー:", "password": "パスワード:",
         "start": "変換実行", "running": "実行: ",
         "success": "変換が正常に完了しました。", "success_title": "成功",
+        "result_output": "出力", "result_debug": "Debug CSV",
+        "result_intermediate": "中間TSV", "result_ftp": "FTP送信を実行しました。",
+        "output_missing": "生成されるはずの出力ファイルが見つかりません: {path}",
         "error_title": "エラー",
         "editor_local": "Editor: ローカル変換",
         "editor_send": "Editor: 変換 + FTP送信",
@@ -56,6 +66,7 @@ ERROR_JA = {
     "Output name must be a file name without a directory": "出力名にはディレクトリを含めないでください。",
     "Input file does not exist": "入力ファイルが見つかりません。",
     "Output directory does not exist": "出力ディレクトリが見つかりません。",
+    "Output directory is required": "出力ディレクトリを指定してください。",
     "Input must be a .txt or .tsv file": "入力ファイルは .txt または .tsv にしてください。",
     "Skip empty frames is available only for nx-TAS": "空フレームの省略は nx-TAS のみ利用できます。",
     "Intermediate TSV would overwrite the input file": "中間 TSV が入力ファイルを上書きします。",
@@ -78,6 +89,7 @@ class TASConverterApp(tk.Tk):
         self.base_dir = scripts_dir()
         self._events = SimpleQueue()
         self._conversion_running = False
+        self._last_successful_output = None
         self._validation_running = False
         self._analysis_running = False
 
@@ -92,7 +104,10 @@ class TASConverterApp(tk.Tk):
         tk.Label(self, text=self.words["output"]).grid(row=1, column=0, padx=5, pady=5, sticky="e")
         self.output_entry = tk.Entry(self, width=50)
         self.output_entry.grid(row=1, column=1, padx=5, pady=5)
-        tk.Button(self, text=self.words["browse"], command=self.browse_output).grid(row=1, column=2, padx=5, pady=5)
+        output_buttons = tk.Frame(self)
+        output_buttons.grid(row=1, column=2, padx=5, pady=5)
+        tk.Button(output_buttons, text=self.words["browse"], command=self.browse_output).pack(side="left")
+        tk.Button(output_buttons, text=self.words["open_output"], command=self.open_output_folder).pack(side="left")
 
         tk.Label(self, text=self.words["name"]).grid(row=2, column=0, padx=5, pady=5, sticky="e")
         self.outname_entry = tk.Entry(self, width=50)
@@ -273,6 +288,13 @@ class TASConverterApp(tk.Tk):
             self.output_entry.insert(0, path)
             self.settings.update(last_output_directory=os.path.abspath(path))
 
+    def open_output_folder(self):
+        try:
+            open_output_folder(self.output_entry.get().strip())
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            detail = ERROR_JA.get(str(error), str(error)) if self.language == "ja" else str(error)
+            messagebox.showerror(self.words["error_title"], detail)
+
     def toggle_skip(self):
         enabled = self.format_var.get() == "nxtas"
         if not enabled:
@@ -330,7 +352,7 @@ class TASConverterApp(tk.Tk):
                 self.log("\n".join(logs))
                 logs.clear()
             if kind == "success":
-                messagebox.showinfo(self.words["success_title"], message)
+                self._show_conversion_result(message)
             elif kind == "error":
                 messagebox.showerror(self.words["error_title"], message)
             elif kind == "validation":
@@ -353,13 +375,28 @@ class TASConverterApp(tk.Tk):
             self.log("\n".join(logs))
         self.after(50, self._drain_events)
 
+    def _show_conversion_result(self, outputs):
+        self._last_successful_output = outputs.primary
+        lines = [self.words["success"], f"{self.words['result_output']}: {outputs.primary}"]
+        for key, path in (("result_debug", outputs.debug_csv),
+                          ("result_intermediate", outputs.intermediate_tsv)):
+            if path is not None:
+                lines.append(f"{self.words[key]}: {path}")
+        message = f"{self.words['success']}\n\n{self.words['result_output']}:\n{outputs.primary}"
+        if outputs.ftp_requested:
+            lines.append(self.words["result_ftp"])
+            message += "\n\n" + self.words["result_ftp"]
+        self.log("\n".join(lines))
+        messagebox.showinfo(self.words["success_title"], message)
+
     def convert(self, values, ftp_values):
         started = False
         try:
             commands = build_commands(*values, base_dir=self.base_dir)
+            outputs = conversion_outputs(*values[:4], debug=values[5], ftp=values[6])
             if values[6]:
                 save_ftp_config(self.base_dir, *ftp_values)
-            for command in commands:
+            for index, command in enumerate(commands):
                 display = subprocess.list2cmdline(command) if os.name == "nt" else shlex.join(command)
                 self._events.put(("log", self.words["running"] + display))
                 started = True
@@ -375,8 +412,12 @@ class TASConverterApp(tk.Tk):
                     if self.language == "ja":
                         raise RuntimeError(f"{script} は終了コード {result.returncode} で失敗しました。")
                     raise RuntimeError(f"{script} exited with status {result.returncode}")
-            self._events.put(("log", self.words["success"]))
-            self._events.put(("success", self.words["success"]))
+                expected = outputs.intermediate_tsv if index < len(commands) - 1 else outputs.primary
+                if not expected.is_file():
+                    raise RuntimeError(self.words["output_missing"].format(path=expected))
+            if outputs.debug_csv is not None and not outputs.debug_csv.is_file():
+                raise RuntimeError(self.words["output_missing"].format(path=outputs.debug_csv))
+            self._events.put(("success", outputs))
         except Exception as error:
             if not started:
                 self._events.put(("log", self.words["preflight_failed"]))

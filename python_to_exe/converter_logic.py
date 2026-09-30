@@ -3,11 +3,57 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 
 FORMATS = ("binary", "stas", "nxtas")
+
+
+@dataclass(frozen=True)
+class ConversionOutputs:
+    primary: Path
+    debug_csv: Optional[Path] = None
+    intermediate_tsv: Optional[Path] = None
+    ftp_requested: bool = False
+
+
+def conversion_outputs(input_path, output_dir, base_name, output_format, debug=False, ftp=False):
+    """Compute expected paths without writing files or requiring them to exist.
+
+    Like build_commands, resolve paths before appending literal filename suffixes.
+    The command builder remains responsible for input and collision validation.
+    """
+    if output_format not in FORMATS:
+        raise ValueError("Unknown output format")
+    source = Path(input_path).resolve()
+    destination = Path(output_dir).resolve()
+    suffix = {"binary": "", "stas": ".stas", "nxtas": ".txt"}[output_format]
+    primary = destination / (base_name + suffix)
+    return ConversionOutputs(
+        primary=primary,
+        debug_csv=Path(str(primary) + "-debug.csv") if debug else None,
+        intermediate_tsv=destination / (base_name + ".tsv") if source.suffix.lower() == ".txt" else None,
+        ftp_requested=bool(ftp),
+    )
+
+
+def open_output_folder(directory):
+    """Ask the native file manager to open an existing folder, without a shell."""
+    if not directory:
+        raise ValueError("Output directory is required")
+    folder = Path(directory).resolve()
+    if not folder.is_dir():
+        raise ValueError("Output directory does not exist")
+    if sys.platform.startswith("win"):
+        os.startfile(str(folder))
+    else:
+        command = "open" if sys.platform == "darwin" else "xdg-open"
+        subprocess.run([command, str(folder)], check=True, capture_output=True,
+                       text=True, errors="replace", timeout=10)
 
 
 def scripts_dir(gui_file=None):
@@ -54,9 +100,10 @@ def build_commands(input_path, output_dir, base_name, output_format,
 
     base_dir = Path(base_dir or scripts_dir()).resolve()
     interpreter = list(interpreter or python_command())
+    outputs = conversion_outputs(source, destination, base_name, output_format, debug, ftp)
     commands = []
     if extension == ".txt":
-        tsv_path = destination / (base_name + ".tsv")
+        tsv_path = outputs.intermediate_tsv
         if tsv_path == source:
             raise ValueError("Intermediate TSV would overwrite the input file")
         commands.append(interpreter + [str(base_dir / "nx-tas-to-tsv-tas.py"),
@@ -64,8 +111,7 @@ def build_commands(input_path, output_dir, base_name, output_format,
     else:
         tsv_path = source
 
-    suffix = {"binary": "", "stas": ".stas", "nxtas": ".txt"}[output_format]
-    output_path = destination / (base_name + suffix)
+    output_path = outputs.primary
     if output_path == source:
         raise ValueError("Output file would overwrite the input file")
     options = "".join(("f" if ftp else "", "n" if output_format == "nxtas" else "",
