@@ -42,7 +42,12 @@ class StickPreview(tk.Frame):
             return
         self._key = key
         self.frame, self.samples = frame, samples
-        self.status.configure(text=message if frame is None else f"{frame}f · 1P")
+        if frame is None:
+            self.status.configure(text=message)
+            self.status.grid()
+        else:
+            self.status.configure(text="")
+            self.status.grid_remove()
         for column in range(2):
             self._draw(column)
 
