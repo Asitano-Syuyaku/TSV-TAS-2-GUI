@@ -1,10 +1,12 @@
 """Real Tk integration: run explicitly under WSLg or another graphical desktop."""
 
+import gc
 import tempfile
 import threading
 import time
 import tkinter as tk
 import unittest
+import weakref
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -22,6 +24,56 @@ class RealTkSmokeTests(unittest.TestCase):
         settings_dir = tempfile.TemporaryDirectory()
         self.addCleanup(settings_dir.cleanup)
         self.app_settings = AppSettings(Path(settings_dir.name) / "settings.json")
+
+    def test_repeated_analyze_and_document_replacement_release_large_caches(self):
+        try:
+            app = TASConverterApp("en", settings=self.app_settings)
+        except tk.TclError as error:
+            self.skipTest(f"graphical Tk display unavailable: {error}")
+        self.addCleanup(app.destroy)
+        app.withdraw()
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "repeat.tsv"
+            source.write_text("1000\tls(90)\trs(180)\ta\n", encoding="utf-8")
+            editor = app._create_editor()
+
+            def wait_for(condition):
+                deadline = time.monotonic() + 10
+                while not condition() and time.monotonic() < deadline:
+                    app.update()
+                    time.sleep(0.01)
+                app.update()
+                self.assertTrue(condition(), "analysis did not finish")
+
+            for _ in range(3):
+                self.assertTrue(editor.open_file(source))
+                editor.show_table()
+                editor._show_palette_page(2)
+                editor._show_palette_page(1)
+                wait_for(lambda: editor._stick_frames is not None)
+                sticks_ref = weakref.ref(editor._stick_frames)
+                self.assertTrue(editor.analyze_frames())
+                wait_for(lambda: not editor._analysis_pending)
+                inspector_ref = weakref.ref(editor._frame_inspector)
+                frames_ref = weakref.ref(editor._frame_inspector.frames)
+                editor._frame_inspector.destroy()
+                app.update()
+                gc.collect()
+                self.assertIsNone(inspector_ref())
+                self.assertIsNone(frames_ref())
+                self.assertIsNone(editor._inspector_snapshot)
+                self.assertTrue(editor.new_document())
+                app.update()
+                gc.collect()
+                self.assertIsNone(sticks_ref())
+                self.assertFalse(editor.document.modified)
+
+            editor_ref = weakref.ref(editor)
+            editor.destroy()
+            del editor
+            app.update()
+            gc.collect()
+            self.assertIsNone(editor_ref())
 
     def test_multirow_frame_position_uses_selection_not_active_row(self):
         try:

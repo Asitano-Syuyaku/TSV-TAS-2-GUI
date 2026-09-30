@@ -76,8 +76,13 @@ class PalettePageTkTests(unittest.TestCase):
                 self.assertEqual(editor.input_palette.winfo_width(), 400)
                 page, canvas = editor._palette_pages[number - 1]
                 content = canvas.winfo_children()[0]
-                headings = [child.cget("text") for child in content.winfo_children()
-                            if isinstance(child, tk.Label)]
+                # The preview heading shares a nested row with its Pending label.
+                headings = []
+                for child in content.winfo_children():
+                    if isinstance(child, tk.Label):
+                        headings.append(child.cget("text"))
+                    elif child is editor.stick_preview:
+                        headings.append(child.title.cget("text"))
                 self.assertEqual(headings, [editor.words[category] for category in categories])
                 self.assertTrue(page.winfo_ismapped())
                 self.assertFalse(editor._palette_pages[2 - number][0].winfo_ismapped())

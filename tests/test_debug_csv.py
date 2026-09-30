@@ -8,7 +8,9 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from python_to_exe.editor.debug_csv import SUMMARY_FIELDS, load_debug_csv, parse_debug_csv
+from python_to_exe.editor.debug_csv import (SUMMARY_FIELDS, load_debug_csv,
+                                           load_stick_csv, parse_debug_csv,
+                                           resolved_sticks)
 from python_to_exe.editor.frame_inspector import MAIN_COLUMNS
 from python_to_exe.editor.validation import analyze_script
 
@@ -94,6 +96,56 @@ class DebugCsvTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "fields"):
                 parse_debug_csv(io.StringIO(header + first + "\n" + malformed + second,
                                             newline=""))
+
+    def test_streamed_sticks_match_full_csv_with_2p_gaps_and_windows_blanks(self):
+        source = make_csv([(0, False), (0, True), (3, False), (3, True), (3, False)],
+                          extra=("lx.r", "rs.r", "future.motion"))
+        rows = list(csv.reader(source))
+        headers = rows[0]
+        for index, row in enumerate(rows[1:]):
+            row[headers.index("ls.x")] = str(index * 100)
+            row[headers.index("ls.y")] = "nan" if index == 4 else "1234"
+            row[headers.index("Command")] = "日本語,\"quoted\""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "日本語 with spaces-debug.csv"
+            with path.open("w", encoding="utf-8", newline="") as target:
+                csv.writer(target).writerows(rows)
+            original = path.read_bytes()
+            for content in (original, original.replace(b"\r\n", b"\r\r\n")):
+                path.write_bytes(content)
+                full = load_debug_csv(path)
+                streamed = load_stick_csv(path)
+                self.assertEqual(streamed, resolved_sticks(full))
+                self.assertEqual(tuple(streamed.rows), (0, 3))
+                self.assertEqual(streamed.rows[3].left.x, 400)
+                self.assertIsNone(streamed.rows[3].left.y)
+                self.assertEqual(full.detail(4)["Command"], "日本語,\"quoted\"")
+                self.assertIn("future.motion", full.detail(4))
+
+    def test_streamed_reader_still_validates_discarded_2p_rows(self):
+        original = make_csv([(0, False), (1, True)]).getvalue()
+        rows = list(csv.reader(io.StringIO(original)))
+        cases = ((rows[-1][:-1], "fields"),
+                 (["-1"] + rows[-1][1:], "negative Frame"),
+                 (["bad"] + rows[-1][1:], "invalid Frame"),
+                 (["1", "maybe"] + rows[-1][2:], "invalid 2ndPlayer"))
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "bad.csv"
+            for bad_row, error in cases:
+                with path.open("w", encoding="utf-8", newline="") as target:
+                    csv.writer(target).writerows(rows[:-1] + [bad_row])
+                with self.assertRaisesRegex(ValueError, error):
+                    load_stick_csv(path)
+
+    def test_shared_values_keep_every_literal_and_are_local_to_each_read(self):
+        original = make_csv(((index, False) for index in range(5000))).getvalue()
+        first = parse_debug_csv(io.StringIO(original))
+        second = parse_debug_csv(io.StringIO(original))
+        self.assertEqual(first, second)
+        column = first.headers.index("new.motion.field")
+        self.assertEqual(first.rows[-1][0], "4999")
+        self.assertIs(first.rows[0][column], first.rows[-1][column])
+        self.assertIsNot(first.rows[0][column], second.rows[0][column])
 
     def test_ten_thousand_rows_parse_and_lookup(self):
         source = make_csv(((frame, False) for frame in range(10000)),

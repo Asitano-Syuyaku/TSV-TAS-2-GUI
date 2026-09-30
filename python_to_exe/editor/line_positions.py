@@ -7,7 +7,7 @@ from typing import Optional
 
 from .validation import _run_commands
 from .snapshot import ScriptSnapshot, script_workspace
-from .debug_csv import StickFrames, load_debug_csv, resolved_sticks
+from .debug_csv import StickFrames, load_stick_csv
 
 if __package__ == "editor":
     from converter_logic import build_commands
@@ -20,6 +20,8 @@ FIELDS = ("SourceLine", "StartFrame", "Duration", "EndFrame", "TotalFrames")
 
 @dataclass(frozen=True)
 class LinePosition:
+    __slots__ = ("start", "duration", "end")
+
     start: int
     duration: int
     end: Optional[int]
@@ -126,7 +128,7 @@ def analyze_positions(snapshot, base_dir=None, runner=None, include_sticks=False
             if include_sticks:
                 # A bad/missing preview CSV must not hide a valid line map.
                 try:
-                    sticks = resolved_sticks(load_debug_csv(commands[-1][-1] + "-debug.csv"))
+                    sticks = load_stick_csv(commands[-1][-1] + "-debug.csv")
                 except (OSError, ValueError, csv.Error) as error:
                     return PositionResult(positions, error=str(error))
             return PositionResult(positions, sticks=sticks)

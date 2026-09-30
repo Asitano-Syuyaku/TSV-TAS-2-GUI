@@ -1383,7 +1383,9 @@ class EditorWindow(tk.Toplevel):
                 self._problem_snapshot = None
                 from .frame_inspector import FrameInspector
                 if self._frame_inspector is None or not self._frame_inspector.winfo_exists():
-                    self._frame_inspector = FrameInspector(self, self.words, result.frames, source_name)
+                    self._frame_inspector = FrameInspector(
+                        self, self.words, result.frames, source_name,
+                        on_close=self._frame_inspector_closed)
                 else:
                     self._frame_inspector.set_data(result.frames, source_name)
                     self._frame_inspector.lift()
@@ -1408,6 +1410,11 @@ class EditorWindow(tk.Toplevel):
             self._analysis_pending = False
             self._problems_panel.pack_forget()
         return bool(started)
+
+    def _frame_inspector_closed(self, inspector):
+        if self._frame_inspector is inspector:
+            self._frame_inspector = None
+            self._inspector_snapshot = None
 
     def _inspection_snapshot(self):
         suffix = self.document.path.suffix.lower() if self.document.path else ".tsv"

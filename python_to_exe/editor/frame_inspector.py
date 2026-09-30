@@ -18,12 +18,13 @@ HEADER_HEIGHT = 26
 
 
 class FrameInspector(tk.Toplevel):
-    def __init__(self, master, words, frames, source):
+    def __init__(self, master, words, frames, source, on_close=None):
         super().__init__(master)
         self.words = words
         self.frames = frames
         self.source = Path(source)
         self.selected_row = None
+        self._on_close = on_close
         self._draw_job = None
         self._column_edges = [0]
         for _, _, width in MAIN_COLUMNS:
@@ -77,9 +78,16 @@ class FrameInspector(tk.Toplevel):
         self.set_data(frames, source)
 
     def _on_destroy(self, event):
-        if event.widget is self and self._draw_job is not None:
-            self.after_cancel(self._draw_job)
-            self._draw_job = None
+        if event.widget is self:
+            if self._draw_job is not None:
+                self.after_cancel(self._draw_job)
+                self._draw_job = None
+            # A parent can still reference the destroyed window until its next
+            # Analyze. Never keep a large CSV alive solely through that shell.
+            self.frames = None
+            callback, self._on_close = self._on_close, None
+            if callback is not None:
+                callback(self)
 
     def _scrolled(self, scrollbar, first, last):
         scrollbar.set(first, last)
