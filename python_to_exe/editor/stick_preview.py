@@ -4,6 +4,7 @@ import tkinter as tk
 
 
 STICK_SCALE = 32767.0
+PLOT_HEIGHT = 126
 TRAIL_COLORS = ("#cc2828", "#dc7777", "#e7aaaa", "#f0cece")
 
 
@@ -26,11 +27,11 @@ class StickPreview(tk.Frame):
         self.status.grid(row=0, column=0, columnspan=2, sticky="ew", padx=3)
         for column, name in enumerate(("LS", "RS")):
             self.grid_columnconfigure(column, weight=1, uniform="sticks")
-            tk.Label(self, text=name).grid(row=1, column=column)
-            canvas = tk.Canvas(self, width=160, height=138, highlightthickness=0,
+            tk.Label(self, text=name, pady=0).grid(row=1, column=column)
+            canvas = tk.Canvas(self, width=160, height=PLOT_HEIGHT, highlightthickness=0,
                                background="white")
             canvas.grid(row=2, column=column, sticky="ew", padx=2)
-            values = tk.Label(self, text="x: —  y: —\nr: —  θ: —")
+            values = tk.Label(self, text="x: —  y: —\nr: —  θ: —", pady=0)
             values.grid(row=3, column=column, sticky="ew")
             self.plots.append(canvas)
             self.values.append(values)
@@ -55,7 +56,7 @@ class StickPreview(tk.Frame):
         canvas = self.plots[column]
         canvas.delete("all")
         width = max(canvas.winfo_width(), 160)
-        height = 138
+        height = PLOT_HEIGHT
         cx, cy = width / 2, height / 2
         radius = min(width, height) / 2 - 10
         canvas.create_line(cx - radius, cy, cx + radius, cy, fill="#dddddd")
