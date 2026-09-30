@@ -4,7 +4,8 @@ import tkinter as tk
 
 from .column_layout import ColumnLayout
 from .table_model import CellSelection, TableModel, visible_span
-from .theme import COLORS, LINE_WIDTHS, ROW_HINTS, SYNTAX_COLORS, entry_options
+from .theme import (COLORS, LINE_WIDTHS, ROW_HINTS, SIZES, SYNTAX_COLORS,
+                    TABLE_COLUMN_WIDTHS, entry_options)
 from .tsv_syntax import (CompletionState, candidates_for, classify_cell, classify_row,
                          completion_span, insert_template)
 
@@ -57,10 +58,10 @@ class TableGrid(tk.Frame):
         self.labels = labels or {}
         self.row_height = max(font.metrics("linespace") + 8, 24)
         self.column_width = max(font.measure("0" * 18) + 12, 160)
-        # Keep the suggested A-G columns visible in a normal editor window.
-        # H and later retain the usual virtual-column default width.
+        # A-G guide widths; H and later keep the font-based default.
+        # ColumnLayout's saved/manual overrides take precedence over these.
         self._columns = ColumnLayout(
-            self.column_width, default_widths=dict(enumerate((112, 148, 148, 84, 84, 84, 84))))
+            self.column_width, default_widths=dict(enumerate(TABLE_COLUMN_WIDTHS)))
         self.header_height = self.row_height
         self.gutter_width = max(font.measure("00000") + 12, 48)
         self.model = TableModel("")
@@ -221,14 +222,14 @@ class TableGrid(tk.Frame):
         return self._columns
 
     def _update_region(self):
-        viewport_columns = self.columns.cover_count(
-            max(0, self.canvas.winfo_width() - self.gutter_width))
         viewport_rows = max(1, (max(0, self.canvas.winfo_height() - self.header_height)
                                 + self.row_height - 1) // self.row_height)
+        # Start with A-H. A wider viewport alone must not add I and later;
+        # real data and navigation still expand the session's virtual grid.
         self.display_column_count = max(getattr(self, "display_column_count", 0),
-                                        7,
+                                        SIZES["initial_columns"],
                                         self.model.column_count + 1, self.selected[1] + 1,
-                                        self.selection.anchor[1] + 1, viewport_columns)
+                                        self.selection.anchor[1] + 1)
         self.display_row_count = max(getattr(self, "display_row_count", 0),
                                      self.model.row_count + 1, self.selected[0] + 1,
                                      self.selection.anchor[0] + 1, viewport_rows)

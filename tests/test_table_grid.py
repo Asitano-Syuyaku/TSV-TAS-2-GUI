@@ -199,7 +199,7 @@ class TableGridTests(unittest.TestCase):
     def tearDownClass(cls):
         sys.modules.pop("python_to_exe.editor.grid", None)
 
-    def test_a_to_g_guides_are_visual_only_and_h_remains_virtual(self):
+    def test_a_to_g_guides_are_visual_only_with_initial_a_to_h_columns(self):
         grid = self.module.TableGrid.__new__(self.module.TableGrid)
         grid.canvas = CanvasStub(origin_y=0, width=800, height=240)
         grid.model = TableModel("")
@@ -216,16 +216,16 @@ class TableGridTests(unittest.TestCase):
         grid.labels = {"duration_header": "フレーム数", "button_header": "ボタン"}
         before = grid.model.to_text()
         grid._update_region()
-        self.assertGreaterEqual(grid.display_column_count, 7)
+        self.assertEqual(grid.display_column_count, 8)
         self.assertEqual(grid.model.to_text(), before)
         self.assertEqual([self.module.column_heading(index, grid.labels)
                           for index in range(8)],
                          ["A · フレーム数", "B · LS", "C · RS",
                           "D · ボタン", "E · ボタン", "F · ボタン", "G · ボタン", "H"])
-        for _ in range(7):
+        for _ in range(8):
             grid._move(0, 1)
-        self.assertEqual(grid.selected, (0, 7))
-        self.assertGreaterEqual(grid.display_column_count, 8)
+        self.assertEqual(grid.selected, (0, 8))
+        self.assertEqual(grid.display_column_count, 9)
         self.assertEqual(grid.model.to_text(), before)
 
     def test_draws_only_visible_cells_and_headers(self):
@@ -409,6 +409,41 @@ class TableGridTests(unittest.TestCase):
             path = Path(folder) / "virtual.tsv"
             document.save(path)
             self.assertEqual(path.read_bytes(), b"A\tB")
+
+    def test_wide_initial_view_stops_at_h_but_navigation_paste_and_insert_can_extend(self):
+        grid, _, changes = self._navigation_grid("")
+        grid.font = types.SimpleNamespace(measure=lambda value: len(value) * 8)
+        grid._columns = self.module.ColumnLayout(
+            grid.column_width, default_widths=dict(enumerate(self.module.TABLE_COLUMN_WIDTHS)))
+        grid.canvas.width = 2000
+        grid._canvas_resized()
+        self.assertEqual(grid.display_column_count, 8)
+        self.module.TableGrid._draw_visible(grid)
+        for column in range(8):
+            self.assertTrue(any(box == grid._cell_box(0, column) for box, _ in grid.canvas.boxes))
+        self.assertFalse(any(box == grid._cell_box(0, 8) for box, _ in grid.canvas.boxes))
+        self.assertEqual(grid.model.to_text(), "")
+        self.assertEqual(changes, [])
+
+        grid._move(0, 8)
+        self.assertEqual(grid.selected, (0, 8))
+        self.assertEqual(grid.display_column_count, 9)
+        self.assertEqual(grid.model.to_text(), "")
+        grid._move(0, -8)
+        self.assertEqual(grid.display_column_count, 9)  # Reached cells remain available.
+
+        transformed = []
+        grid.on_transform = lambda before, after: transformed.append((before, after)) or True
+        grid.selected = (0, 7)
+        self.assertTrue(grid.paste_text("H\tI\t"))
+        self.assertEqual(grid.model.to_text(), "\t" * 7 + "H\tI\t")
+        self.assertEqual(grid.model.column_count, 10)
+        self.assertGreaterEqual(grid.display_column_count, 10)
+        grid.selected = (0, 7)
+        self.assertTrue(grid.insert_column_right())
+        self.assertEqual(grid.model.to_text(), "\t" * 7 + "H\t\tI\t")
+        self.assertEqual(grid.model.column_count, 11)
+        self.assertEqual(len(transformed), 2)
 
     def test_new_document_and_resize_fill_viewport_without_serializing(self):
         grid, _, _ = self._navigation_grid("")

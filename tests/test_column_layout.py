@@ -3,9 +3,27 @@
 import unittest
 
 from python_to_exe.editor.column_layout import ColumnLayout
+from python_to_exe.editor.theme import TABLE_COLUMN_WIDTHS
 
 
 class ColumnLayoutTests(unittest.TestCase):
+    def test_editor_guide_defaults_widen_ls_rs_and_buttons_only(self):
+        columns = ColumnLayout(160, default_widths=dict(enumerate(TABLE_COLUMN_WIDTHS)))
+        self.assertEqual([columns.width(index) for index in range(9)],
+                         [112, 178, 178, 99, 99, 99, 99, 160, 160])
+        self.assertEqual(columns.export_widths(), {})
+        self.assertEqual(columns.width(100), 160)
+
+    def test_saved_widths_override_new_defaults_including_previous_default_values(self):
+        columns = ColumnLayout(160, default_widths=dict(enumerate(TABLE_COLUMN_WIDTHS)))
+        saved = {"1": 148, "2": 130, "3": 84, "7": 240, "99": 230}
+        columns.import_widths(saved)
+        self.assertEqual(columns.export_widths(), saved)
+        self.assertEqual([columns.width(index) for index in range(8)],
+                         [112, 148, 130, 84, 99, 99, 99, 240])
+        self.assertEqual(columns.width(99), 230)
+        self.assertEqual(saved, {"1": 148, "2": 130, "3": 84, "7": 240, "99": 230})
+
     def test_positions_hits_and_virtual_columns_after_resize(self):
         columns = ColumnLayout(160)
         self.assertEqual(columns.cover_count(470), 3)
