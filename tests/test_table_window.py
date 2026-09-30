@@ -247,8 +247,10 @@ class TableWindowTests(unittest.TestCase):
         labels = [item.options["text"] for item in widgets
                   if item.kind == "label" and item is not window._palette_page_label]
         self.assertEqual(labels, [window.words["input_palette"]] +
-                         [window.words[category] for page in PALETTE_PAGES for category in page])
+                         [window.words[category] for page in PALETTE_PAGES for category in page
+                          if category != "stick_preview"])
         self.assertEqual(window.stick_preview.kind, "preview")
+        self.assertEqual(window.stick_preview.options["title"], window.words["stick_preview"])
         palette_buttons = [item for item in widgets if item.kind == "button"
                            and item.placement and "row" in item.placement]
         expected = [item for category in PALETTE_CATEGORIES
@@ -304,7 +306,8 @@ class TableWindowTests(unittest.TestCase):
         for (page, _canvas), categories in zip(window._palette_pages, PALETTE_PAGES):
             page_labels = [item.options["text"] for item in widgets if item.kind == "label"
                            and item.master.master is _canvas]
-            self.assertEqual(page_labels, [window.words[category] for category in categories])
+            self.assertEqual(page_labels, [window.words[category] for category in categories
+                                           if category != "stick_preview"])
         window._palette_next.options["command"]()
         self.assertEqual(window._palette_page, 2)
         self.assertEqual(window._palette_page_label.options["text"], "2 / 2")

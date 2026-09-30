@@ -57,11 +57,21 @@ class EditorThemeTests(unittest.TestCase):
             with patch("tkinter.font.Font", FontCopy):
                 fonts = theme.editor_fonts(master)
             self.assertEqual(fonts["standard"], theme.FONTS["standard"])
-            self.assertEqual(len(copies), 2)
+            self.assertEqual(len(copies), 3)
             self.assertTrue(all(copy.options["root"] is master for copy in copies))
             self.assertEqual(fonts["heading"].options["weight"], "bold")
+            self.assertEqual(fonts["frame_info"].options["font"], theme.FONTS["standard"])
+            self.assertEqual(fonts["frame_info"].options["weight"], "bold")
+            self.assertNotIn("size", fonts["frame_info"].options)
             self.assertLess(abs(fonts["small"].options["size"]), abs(size))
             self.assertEqual(fonts["small"].options["size"] > 0, size > 0)
+
+    def test_frame_info_uses_primary_text_and_full_size_font(self):
+        style = theme.label_options("secondary_background", "frame_info")
+        self.assertEqual(style["foreground"], theme.COLORS["text"])
+        self.assertNotEqual(style["foreground"], theme.COLORS["muted_text"])
+        self.assertEqual(style["font"], theme.FONTS["standard"])
+        self.assertEqual(style["pady"], 0)
 
 
 if __name__ == "__main__":

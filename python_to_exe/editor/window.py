@@ -278,7 +278,7 @@ class EditorWindow(tk.Toplevel):
         self.frame_entry.bind("<Return>", lambda event: self._shortcut(self.go_to_frame))
         self.frame_entry.bind("<Escape>", lambda event: self._shortcut(self._focus_editor))
         self.frame_status = tk.Label(view_bar, anchor="e", padx=SPACING["gap"],
-                                     **label_options("secondary_background", "small", self._theme_fonts))
+                                     **label_options("secondary_background", "frame_info", self._theme_fonts))
         self.frame_status.pack(side="right", padx=SPACING["gap"])
         self.table_tools = tk.Frame(view_bar, background=COLORS["panel_background"])
         tk.Button(self.table_tools, text=self.words["add_row"],
@@ -450,14 +450,15 @@ class EditorWindow(tk.Toplevel):
             canvas.bind("<Configure>", lambda event, target=canvas, item=content_id:
                         target.itemconfigure(item, width=event.width))
             for category in categories:
+                if category == "stick_preview":
+                    self.stick_preview = StickPreview(content, fonts=fonts,
+                                                       title=self.words[category])
+                    self.stick_preview.pack(fill="x", padx=SPACING["gap"])
+                    continue
                 tk.Label(content, text=self.words[category], anchor="w",
                          **label_options(role="heading", fonts=fonts)).pack(
                     fill="x", padx=SPACING["section"],
                     pady=(SPACING["category_top"], SPACING["category_bottom"]))
-                if category == "stick_preview":
-                    self.stick_preview = StickPreview(content, fonts=fonts)
-                    self.stick_preview.pack(fill="x", padx=SPACING["gap"])
-                    continue
                 group = tk.Frame(content, background=COLORS["panel_background"])
                 group.pack(fill="x", padx=SPACING["gap"])
                 for column in (0, 1):
@@ -472,7 +473,7 @@ class EditorWindow(tk.Toplevel):
                     group.grid_rowconfigure(row, minsize=SIZES["palette_row"])
                     self._palette_button(group, candidate).grid(
                         row=row, column=column, columnspan=span,
-                        sticky="ew", padx=SPACING["button_gap"], pady=1)
+                        sticky="ew", padx=SPACING["button_gap"], pady=SPACING["palette_grid_y"])
                     slot += span
             self._bind_palette_scroll(page, canvas)
             self._palette_pages.append((page, canvas))

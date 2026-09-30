@@ -31,12 +31,14 @@ COLORS = {
 # Named Tk fonts inherit the OS's font choices and CJK fallback. Copies below
 # adjust only size/weight, leaving the Converter's shared named fonts untouched.
 FONTS = {"standard": "TkDefaultFont", "small": "TkSmallCaptionFont",
-         "heading": "TkHeadingFont"}
+         "heading": "TkHeadingFont", "frame_info": "TkDefaultFont"}
 SMALL_FONT_STEP = 1
 SPACING = {"outer": 8, "section": 6, "gap": 4, "button_gap": 2,
            "toolbar_y": 4, "button_x": 7, "button_y": 2, "status_y": 2,
-           "category_top": 4, "category_bottom": 1}
-SIZES = {"palette_width": 400, "palette_row": 30, "plot_width": 160, "plot_height": 126}
+           "category_top": 4, "category_bottom": 1, "palette_button_y": 0,
+           "palette_grid_y": 0}
+# Keep the 24px icons and plots full size; trim button chrome for numeric space.
+SIZES = {"palette_width": 400, "palette_row": 26, "plot_width": 160, "plot_height": 126}
 LINE_WIDTHS = {"grid": 1, "header": 1, "selection": 2, "active": 2,
                "header_divider": 2}
 SYNTAX_COLORS = {"comment": "#53805a", "command": "#80529e",
@@ -58,7 +60,10 @@ def editor_fonts(master):
     heading = font.Font(root=master, font=FONTS["heading"])
     # Tkinter ignores constructor style options when a source font is supplied.
     heading.configure(weight="bold")
-    return {"standard": FONTS["standard"], "small": small, "heading": heading}
+    frame_info = font.Font(root=master, font=FONTS["frame_info"])
+    frame_info.configure(weight="bold")
+    return {"standard": FONTS["standard"], "small": small, "heading": heading,
+            "frame_info": frame_info}
 
 
 def label_options(surface="panel_background", role="standard", fonts=None):
@@ -78,11 +83,12 @@ def button_options(kind="toolbar", selected=False, fonts=None):
         "activebackground": COLORS["accent_hover" if primary else "palette_hover"],
         "activeforeground": COLORS["panel_background" if primary else "text"],
         "disabledforeground": COLORS["muted_text"],
-        "relief": "flat", "overrelief": "flat", "borderwidth": 1,
+        "relief": "flat", "overrelief": "flat", "borderwidth": 0 if palette else 1,
         "highlightthickness": 1, "highlightbackground": COLORS["subtle_border"],
         "highlightcolor": COLORS["accent"],
         "font": (fonts or FONTS)["standard"],
-        "padx": SPACING["button_x"], "pady": SPACING["button_y"],
+        "padx": SPACING["button_x"],
+        "pady": SPACING["palette_button_y" if palette else "button_y"],
     }
 
 

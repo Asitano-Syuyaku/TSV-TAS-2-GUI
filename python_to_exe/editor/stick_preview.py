@@ -18,14 +18,21 @@ def point_position(state, center_x, center_y, radius):
 
 
 class StickPreview(tk.Frame):
-    def __init__(self, master, fonts=None):
+    def __init__(self, master, fonts=None, title=""):
         super().__init__(master, background=COLORS["panel_background"])
         self.frame = None
         self.samples = ()
         self._key = None
         self.plots, self.values = [], []
-        self.status = tk.Label(self, text="—", anchor="w", **label_options(role="small", fonts=fonts))
-        self.status.grid(row=0, column=0, columnspan=2, sticky="ew", padx=3)
+        heading = tk.Frame(self, background=COLORS["panel_background"])
+        heading.grid(row=0, column=0, columnspan=2, sticky="ew", padx=SPACING["button_gap"],
+                     pady=(SPACING["category_top"], SPACING["category_bottom"]))
+        self.title = tk.Label(heading, text=title, anchor="w",
+                              **label_options(role="heading", fonts=fonts))
+        self.title.pack(side="left")
+        self.status = tk.Label(heading, text="—", anchor="e",
+                               **label_options(role="small", fonts=fonts))
+        self.status.pack(side="right", padx=(SPACING["gap"], 0))
         for column, name in enumerate(("LS", "RS")):
             self.grid_columnconfigure(column, weight=1, uniform="sticks")
             tk.Label(self, text=name, **label_options(role="heading", fonts=fonts)).grid(row=1, column=column)
@@ -46,10 +53,10 @@ class StickPreview(tk.Frame):
         self.frame, self.samples = frame, samples
         if frame is None:
             self.status.configure(text=message)
-            self.status.grid()
+            self.status.pack(side="right", padx=(SPACING["gap"], 0))
         else:
             self.status.configure(text="")
-            self.status.grid_remove()
+            self.status.pack_forget()
         for column in range(2):
             self._draw(column)
 
