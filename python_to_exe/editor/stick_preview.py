@@ -2,6 +2,7 @@
 
 import tkinter as tk
 
+from . import theme as default_theme
 from .theme import COLORS, SIZES, SPACING, TRAIL_COLORS, label_options
 
 
@@ -18,7 +19,12 @@ def point_position(state, center_x, center_y, radius):
 
 
 class StickPreview(tk.Frame):
-    def __init__(self, master, fonts=None, title=""):
+    ui_theme = default_theme
+
+    def __init__(self, master, fonts=None, title="", ui_theme=None):
+        self.ui_theme = ui_theme or default_theme
+        COLORS = self.ui_theme.COLORS
+        label_options = self.ui_theme.label_options
         super().__init__(master, background=COLORS["panel_background"])
         self.frame = None
         self.samples = ()
@@ -61,6 +67,7 @@ class StickPreview(tk.Frame):
             self._draw(column)
 
     def _draw(self, column):
+        COLORS = self.ui_theme.COLORS
         canvas = self.plots[column]
         canvas.delete("all")
         width = max(canvas.winfo_width(), SIZES["plot_width"])

@@ -96,6 +96,8 @@ ERROR_JA = {
 
 
 class TASConverterApp(tk.Tk):
+    editor_class = None
+
     def __init__(self, language="en", settings=None):
         super().__init__()
         self.language = language
@@ -261,10 +263,12 @@ class TASConverterApp(tk.Tk):
 
     def _create_editor(self, initial_path=None, recovery=None):
         # Import on demand so conversion-only startup does not load editor widgets.
-        if __package__:
-            from .editor.window import EditorWindow
-        else:
-            from editor.window import EditorWindow
+        EditorWindow = getattr(self, "editor_class", None)
+        if EditorWindow is None:
+            if __package__:
+                from .editor.window import EditorWindow
+            else:
+                from editor.window import EditorWindow
         return EditorWindow(self, language=self.language,
                      initial_path=initial_path, recovery=recovery,
                      on_saved=self._editor_saved, on_convert=self._convert_editor_file,

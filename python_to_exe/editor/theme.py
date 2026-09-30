@@ -68,36 +68,45 @@ def editor_fonts(master):
             "frame_info": frame_info}
 
 
-def label_options(surface="panel_background", role="standard", fonts=None):
-    return {"background": COLORS[surface],
-            "foreground": COLORS["muted_text" if role == "small" else "text"],
+def label_options(surface="panel_background", role="standard", fonts=None, *, colors=None):
+    colors = COLORS if colors is None else colors
+    return {"background": colors[surface],
+            "foreground": colors["muted_text" if role == "small" else "text"],
             "font": (fonts or FONTS)[role], "pady": 0}
 
 
-def button_options(kind="toolbar", selected=False, fonts=None):
+def button_options(kind="toolbar", selected=False, fonts=None, *, colors=None):
+    colors = COLORS if colors is None else colors
     primary = kind == "primary" or selected
     palette = kind == "palette"
     return {
-        "background": COLORS["accent" if primary else
+        "background": colors["accent" if primary else
                              "palette_button" if palette else "secondary_background"],
-        "foreground": COLORS["panel_background" if primary else
+        "foreground": colors["panel_background" if primary else
                              "palette_text" if palette else "text"],
-        "activebackground": COLORS["accent_hover" if primary else "palette_hover"],
-        "activeforeground": COLORS["panel_background" if primary else "text"],
-        "disabledforeground": COLORS["muted_text"],
+        "activebackground": colors["accent_hover" if primary else "palette_hover"],
+        "activeforeground": colors["panel_background" if primary else "text"],
+        "disabledforeground": colors["muted_text"],
         "relief": "flat", "overrelief": "flat", "borderwidth": 0 if palette else 1,
-        "highlightthickness": 1, "highlightbackground": COLORS["subtle_border"],
-        "highlightcolor": COLORS["accent"],
+        "highlightthickness": 1, "highlightbackground": colors["subtle_border"],
+        "highlightcolor": colors["accent"],
         "font": (fonts or FONTS)["standard"],
         "padx": SPACING["button_x"],
         "pady": SPACING["palette_button_y" if palette else "button_y"],
     }
 
 
-def entry_options():
-    return {"background": COLORS["panel_background"], "foreground": COLORS["text"],
-            "insertbackground": COLORS["accent"], "relief": "flat", "borderwidth": 0,
-            "highlightthickness": 1, "highlightbackground": COLORS["border"],
-            "highlightcolor": COLORS["accent"],
-            "selectbackground": COLORS["selection_background"],
-            "selectforeground": COLORS["text"]}
+def entry_options(*, colors=None):
+    colors = COLORS if colors is None else colors
+    return {"background": colors["panel_background"], "foreground": colors["text"],
+            "insertbackground": colors["accent"], "relief": "flat", "borderwidth": 0,
+            "highlightthickness": 1, "highlightbackground": colors["border"],
+            "highlightcolor": colors["accent"],
+            "selectbackground": colors["selection_background"],
+            "selectforeground": colors["text"]}
+
+
+# Separate editing-surface tokens allow local chrome themes without darkening
+# the grid or changing its layout, syntax colors, or interaction behavior.
+TABLE_COLORS = COLORS
+table_entry_options = entry_options

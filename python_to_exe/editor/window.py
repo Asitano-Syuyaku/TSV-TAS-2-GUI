@@ -8,6 +8,7 @@ from queue import Empty, SimpleQueue
 from tkinter import filedialog, font as tkfont, messagebox
 
 from .document import EditorDocument
+from . import theme as default_theme
 from .file_state import ExternalFileConflict
 from .recovery import DEBOUNCE_MS, RecoverySnapshot, RecoveryStore
 from .resources import palette_icon_path
@@ -143,10 +144,19 @@ LABELS = {
 
 
 class EditorWindow(tk.Toplevel):
+    ui_theme = default_theme
+    table_grid_class = None  # Normal grid is still imported lazily below.
+
     def __init__(self, master, language="en", initial_path=None, on_saved=None,
                  on_convert=None, can_convert=None, on_validate=None, can_validate=None,
                  on_analyze=None, can_analyze=None, settings=None, recovery=None):
         super().__init__(master)
+        # Instance/class injection keeps JP/EN normal entrypoints and global Tk
+        # styles unchanged when a specialized editor uses a different theme.
+        COLORS = self.ui_theme.COLORS
+        button_options = self.ui_theme.button_options
+        entry_options = self.ui_theme.entry_options
+        label_options = self.ui_theme.label_options
         self.words = LABELS[language]
         self.settings = settings if settings is not None else getattr(master, "settings", None)
         if self.settings is None:
@@ -314,7 +324,8 @@ class EditorWindow(tk.Toplevel):
         # Import lazily so file/document logic remains usable without Tk widgets.
         from .grid import TableGrid
         self.table_area = tk.Frame(self, background=COLORS["app_background"])
-        self.table_grid = TableGrid(self.table_area, fixed_font, self._table_cell_changed,
+        grid_class = self.table_grid_class or TableGrid
+        self.table_grid = grid_class(self.table_area, fixed_font, self._table_cell_changed,
                                     self._table_text_changed, self._update_status,
                                     self.undo, self.redo, self.words,
                                     on_edit_change=self._table_edit_pending,
@@ -412,6 +423,10 @@ class EditorWindow(tk.Toplevel):
     def _build_input_palette(self):
         from .stick_preview import StickPreview
 
+        ui_theme = getattr(self, "ui_theme", default_theme)
+        COLORS = ui_theme.COLORS
+        button_options = ui_theme.button_options
+        label_options = ui_theme.label_options
         fonts = getattr(self, "_theme_fonts", FONTS)
         self.input_palette = tk.Frame(self.table_area, width=SIZES["palette_width"],
                                       background=COLORS["panel_background"],
@@ -452,7 +467,7 @@ class EditorWindow(tk.Toplevel):
             for category in categories:
                 if category == "stick_preview":
                     self.stick_preview = StickPreview(content, fonts=fonts,
-                                                       title=self.words[category])
+                                                       title=self.words[category], ui_theme=ui_theme)
                     self.stick_preview.pack(fill="x", padx=SPACING["gap"])
                     continue
                 tk.Label(content, text=self.words[category], anchor="w",
@@ -570,6 +585,7 @@ class EditorWindow(tk.Toplevel):
                      candidate.label in ("ls(angle)", "rs(angle)")) else 1
 
     def _palette_button(self, parent, candidate):
+        button_options = getattr(self, "ui_theme", default_theme).button_options
         image = getattr(self, "_palette_icons", {}).get(candidate.icon_key)
         options = {**button_options("palette"),
                    "text": (candidate.short_label or candidate.display_label)
@@ -645,6 +661,7 @@ class EditorWindow(tk.Toplevel):
                 self._recovery_store.release(self._recovery_id)
 
     def _draw_line_numbers(self):
+        COLORS = getattr(self, "ui_theme", default_theme).COLORS
         self._gutter_job = None
         if not self.winfo_exists():
             return
@@ -910,6 +927,7 @@ class EditorWindow(tk.Toplevel):
                 self.document.path.suffix.lower() == ".tsv")
 
     def _update_view_button(self):
+        button_options = getattr(self, "ui_theme", default_theme).button_options
         if hasattr(self, "_table_button"):
             self._table_button.configure(
                 state="normal" if self._table_available() else "disabled",

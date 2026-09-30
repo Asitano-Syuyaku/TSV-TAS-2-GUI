@@ -137,7 +137,8 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(set(saved), {"version", "recent_files", "output_format", "debug_enabled",
                                       "last_input_directory", "last_output_directory",
                                       "editor_width", "editor_height", "editor_view",
-                                      "editor_palette_page", "editor_column_widths"})
+                                      "editor_palette_page", "editor_column_widths",
+                                      "dopagaki_intensity"})
         self.assertEqual(saved["version"], 1)
         self.assertNotIn("not stored", self.path.read_text(encoding="utf-8"))
 

@@ -52,7 +52,8 @@ def _clean(values):
     defaults = dict(version=VERSION, recent_files=[], output_format="binary",
                     debug_enabled=False, last_input_directory="", last_output_directory="",
                     editor_width=EDITOR_SIZE_DEFAULT[0], editor_height=EDITOR_SIZE_DEFAULT[1],
-                    editor_view="raw", editor_palette_page=0, editor_column_widths={})
+                    editor_view="raw", editor_palette_page=0, editor_column_widths={},
+                    dopagaki_intensity="MID")
     if (not isinstance(values, dict) or type(values.get("version")) is not int
             or values["version"] != VERSION):
         return defaults
@@ -69,6 +70,8 @@ def _clean(values):
             defaults[key] = value
     if values.get("editor_view") in ("raw", "table"):
         defaults["editor_view"] = values["editor_view"]
+    if values.get("dopagaki_intensity") in ("OFF", "LOW", "MID", "FULL"):
+        defaults["dopagaki_intensity"] = values["dopagaki_intensity"]
     page = values.get("editor_palette_page")
     if type(page) is int and page in (0, 1):
         defaults["editor_palette_page"] = page

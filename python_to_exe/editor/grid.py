@@ -3,6 +3,7 @@
 import tkinter as tk
 
 from .column_layout import ColumnLayout
+from . import theme as default_theme
 from .table_model import CellSelection, TableModel, visible_span
 from .theme import (COLORS, LINE_WIDTHS, ROW_HINTS, SIZES, SYNTAX_COLORS,
                     TABLE_COLUMN_WIDTHS, entry_options)
@@ -44,9 +45,11 @@ def column_heading(index, labels=None):
 
 
 class TableGrid(tk.Frame):
+    ui_theme = default_theme
+
     def __init__(self, master, font, on_change, on_transform, on_select,
                  on_undo, on_redo, labels=None, on_edit_change=None, on_column_resize=None):
-        super().__init__(master, background=COLORS["panel_background"])
+        super().__init__(master, background=self.ui_theme.TABLE_COLORS["panel_background"])
         self.font = font
         self.on_change = on_change
         self.on_transform = on_transform
@@ -68,6 +71,7 @@ class TableGrid(tk.Frame):
         self.selection = CellSelection()
         self._editor = None
         self._entry_widget = None
+        self._entry_value_trace = None
         self._draw_job = None
         self._scroll_region = None
         self.display_row_count = 0
@@ -80,7 +84,7 @@ class TableGrid(tk.Frame):
         self._completion = CompletionState()
         self._popup = None
 
-        self.canvas = tk.Canvas(self, background=CANVAS_BACKGROUND, highlightthickness=0,
+        self.canvas = tk.Canvas(self, background=self.ui_theme.TABLE_COLORS["panel_background"], highlightthickness=0,
                                 takefocus=True)
         vertical = tk.Scrollbar(self, orient="vertical", command=self._scroll_y)
         horizontal = tk.Scrollbar(self, orient="horizontal", command=self._scroll_x)
@@ -261,6 +265,17 @@ class TableGrid(tk.Frame):
         self._draw_job = None
         if not self.winfo_exists():
             return
+        COLORS = self.ui_theme.TABLE_COLORS
+        CELL_BACKGROUND = COLORS["panel_background"]
+        GRID_LINE = COLORS["subtle_border"]
+        HEADER_BACKGROUND = COLORS["header_background"]
+        HEADER_SELECTED = COLORS["header_selected"]
+        HEADER_LINE = COLORS["border"]
+        SELECTION_BACKGROUND = COLORS["selection_background"]
+        SELECTION_LINE = COLORS["accent"]
+        ACTIVE_BACKGROUND = COLORS["active_cell"]
+        ACTIVE_LINE = COLORS["active_selection_outline"]
+        DURATION_BACKGROUND = COLORS["duration_background"]
         canvas = self.canvas
         x0, y0 = canvas.canvasx(0), canvas.canvasy(0)
         width, height = canvas.winfo_width(), canvas.winfo_height()
@@ -596,11 +611,14 @@ class TableGrid(tk.Frame):
             options = {}
             if getattr(self, "on_edit_change", None) is not None:
                 self._entry_value = tk.StringVar(self)
-                self._entry_value.trace_add("write", lambda *_: self._notify_edit_change())
+                self._entry_value_trace = self._entry_value.trace_add(
+                    "write", lambda *_: self._notify_edit_change())
                 options["textvariable"] = self._entry_value
-            style = entry_options()
-            style.update(background=ACTIVE_BACKGROUND, highlightthickness=LINE_WIDTHS["active"],
-                         highlightbackground=ACTIVE_LINE, highlightcolor=ACTIVE_LINE)
+            colors = self.ui_theme.TABLE_COLORS
+            style = self.ui_theme.table_entry_options()
+            style.update(background=colors["active_cell"], highlightthickness=LINE_WIDTHS["active"],
+                         highlightbackground=colors["active_selection_outline"],
+                         highlightcolor=colors["active_selection_outline"])
             editor = tk.Entry(self.canvas, font=self.font, exportselection=False, **style, **options)
             self._entry_widget = editor
             self._bind_entry_navigation(editor)
