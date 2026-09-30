@@ -185,6 +185,62 @@ class ConversionResultTests(unittest.TestCase):
             self.assertNotIn(app.words[key], log)
             self.assertNotIn(app.words[key], success.call_args.args[1])
 
+    def test_every_conversion_stage_uses_utf8_without_changing_parent_environment(self):
+        for language in ("en", "ja"):
+            for extension in (".tsv", ".txt"):
+                for ftp in (False, True):
+                    with self.subTest(language=language, extension=extension, ftp=ftp):
+                        source = self.work / ("入力 with spaces" + extension)
+                        source.write_text("1\ta" if extension == ".tsv"
+                                          else "0 KEY_A 0;0 0;0\n", encoding="utf-8")
+                        app = self.app(language)
+                        with patch.dict(os.environ, {"PYTHONUTF8": "0", "TAS_ENV_TEST": "keep"}):
+                            before = dict(os.environ)
+                            with patch("python_to_exe.converter_gui.subprocess.run",
+                                       side_effect=self.generate) as run:
+                                app.convert((str(source), str(self.work), "出力 result", "stas",
+                                             False, True, ftp), ("example.invalid", "5000", "", ""))
+                            self.assertEqual(dict(os.environ), before)
+                            self.assertEqual(run.call_count, 2 if extension == ".txt" else 1)
+                            for call in run.call_args_list:
+                                options = call.kwargs
+                                self.assertTrue(options["text"])
+                                self.assertEqual(options.get("encoding"), "utf-8")
+                                self.assertEqual(options["errors"], "replace")
+                                self.assertEqual(options["env"], {**before, "PYTHONUTF8": "1"})
+                                self.assertIsNot(options["env"], os.environ)
+                                self.assertFalse(options.get("shell", False))
+
+    def test_real_gui_worker_converts_japanese_tsv_and_txt_under_non_utf8_environment(self):
+        for extension in (".tsv", ".txt"):
+            source = self.work / ("入力 with spaces" + extension)
+            source.write_text("1\ta\t// 日本語コメント\n1\tls(90)\n" if extension == ".tsv"
+                              else "0 KEY_A 0;0 0;0\n1 KEY_B 0;0 0;0\n", encoding="utf-8")
+            destination = self.work / "出力 directory"
+            destination.mkdir(exist_ok=True)
+            for output_format, signature in (("binary", b"BOOB"), ("stas", b"STAS"),
+                                             ("nxtas", b"0 ")):
+                with self.subTest(extension=extension, output_format=output_format):
+                    app = self.app()
+                    app.base_dir = ROOT
+                    name = extension[1:] + " 日本語 output " + output_format
+                    with patch.dict(os.environ, {"PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0",
+                                                 "LC_ALL": "C", "LANG": "C"}), \
+                         patch("python_to_exe.converter_gui.messagebox.showinfo") as success, \
+                         patch("python_to_exe.converter_gui.messagebox.showerror") as failure:
+                        before = dict(os.environ)
+                        app.convert((str(source), str(destination), name, output_format,
+                                     output_format == "nxtas", True, False), ())
+                        app._drain_events()
+                        self.assertEqual(dict(os.environ), before)
+                    self.assertFalse(failure.called, failure.call_args)
+                    success.assert_called_once()
+                    outputs = conversion_outputs(source, destination, name, output_format, debug=True)
+                    self.assertTrue(outputs.primary.read_bytes().startswith(signature))
+                    self.assertTrue(outputs.debug_csv.read_bytes().startswith(b"Frame,2ndPlayer,"))
+                    if extension == ".txt":
+                        self.assertIn("a", outputs.intermediate_tsv.read_text(encoding="utf-8"))
+
     def test_failure_missing_artifacts_and_nonzero_exit_keep_previous_success(self):
         for mode in ("exit", "primary", "debug", "intermediate", "second_stage"):
             with self.subTest(mode=mode):

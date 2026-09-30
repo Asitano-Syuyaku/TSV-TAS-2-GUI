@@ -1,6 +1,7 @@
 """Real Tk Editor save/local-convert/FTP actions; no network transfer is performed."""
 
 import json
+import os
 import subprocess
 import tempfile
 import threading
@@ -114,6 +115,10 @@ class EditorActionTkTests(unittest.TestCase):
 
                 def runner(command, **options):
                     # The source must already contain the committed/saved cell.
+                    self.assertTrue(options["text"])
+                    self.assertEqual(options["encoding"], "utf-8")
+                    self.assertEqual(options["errors"], "replace")
+                    self.assertEqual(options["env"], {**os.environ, "PYTHONUTF8": "1"})
                     calls.append((command, Path(command[-2]).read_bytes()))
                     self.write_outputs(command)
                     return subprocess.CompletedProcess(command, 0, "generated\n", "")
@@ -217,6 +222,88 @@ class EditorActionTkTests(unittest.TestCase):
                 self.assertEqual(app.outname_entry.get(), source.stem)
                 self.assertEqual(editor.document.path, source)
                 self.assertFalse(editor.document.modified)
+
+    def test_japanese_f5_f8_snapshots_and_txt_pipeline_with_real_converters(self):
+        for language in ("en", "ja"):
+            with self.subTest(language=language), tempfile.TemporaryDirectory(
+                    prefix="tas UTF-8 workflow 日本語 ") as folder:
+                work = Path(folder)
+                source = work / "入力 with spaces.tsv"
+                source.write_text("1\ta\t// 日本語コメント\n1\tls(90)\n", encoding="utf-8")
+                destination = work / "出力 directory"
+                destination.mkdir()
+                app = self.make_app(work, language)
+                app.base_dir = ROOT
+                app._set_input_path(source)
+                app.output_entry.delete(0, "end")
+                app.output_entry.insert(0, str(destination))
+                app.format_var.set("stas")
+                app.debug_var.set(True)
+                editor = self.open_editor(app)
+                editor.show_table()
+                grid = editor.table_grid
+                calls = []
+
+                def runner(command, **options):
+                    self.assertEqual(options["encoding"], "utf-8")
+                    self.assertEqual(options["errors"], "replace")
+                    self.assertTrue(options["text"])
+                    self.assertEqual(options["env"], {**os.environ, "PYTHONUTF8": "1"})
+                    calls.append(command)
+                    # Mock only the FTP boundary: compile with the real scripts,
+                    # but never send to a server or overwrite repository config.
+                    local_command = list(command)
+                    if local_command[2].startswith("-"):
+                        local_command[2] = local_command[2].replace("f", "")
+                    return subprocess.run(local_command, **options)
+
+                with patch.dict(os.environ, {"PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0",
+                                             "LC_ALL": "C", "LANG": "C"}), \
+                     patch("python_to_exe.converter_gui.subprocess", self.process_module(runner)), \
+                     patch("python_to_exe.converter_gui.save_ftp_config") as ftp_config, \
+                     patch("python_to_exe.converter_gui.messagebox.showinfo") as success, \
+                     patch("python_to_exe.converter_gui.messagebox.showerror") as failure:
+                    before = dict(os.environ)
+                    for key, ftp_checkbox, comment in (("F5", True, "// 日本語 local"),
+                                                       ("F8", False, "// 日本語 send")):
+                        app.ftp_var.set(ftp_checkbox)
+                        grid.selected = (0, 2)
+                        grid.begin_edit(initial=comment)
+                        self.assertEqual(self.shortcut(grid._editor, key), "break")
+                        self.wait_for(app, lambda: not app._busy())
+                        self.assertIn(comment, source.read_text(encoding="utf-8"))
+                        self.assertFalse(editor.document.modified)
+                        self.assertIn("-sd" if key == "F5" else "-fsd", calls[-1])
+                        self.assertTrue(app._last_successful_output.read_bytes().startswith(b"STAS"))
+                    self.assertEqual(success.call_count, 2)
+                    ftp_config.assert_called_once_with(ROOT, "example.invalid", "5000",
+                                                       "tester", "test password")
+
+                    saved = source.read_bytes()
+                    grid.begin_edit(initial="// 未保存の日本語")
+                    self.assertEqual(self.shortcut(grid._editor, "F6"), "break")
+                    self.wait_for(app, lambda: not editor._validation_pending)
+                    self.assertEqual(editor._problems_title.cget("text"), editor.words["no_errors"])
+                    self.assertEqual(self.shortcut(grid.canvas, "F7"), "break")
+                    self.wait_for(app, lambda: not editor._analysis_pending)
+                    self.assertEqual(editor._frame_inspector.frames.total_frames, 2)
+                    self.assertTrue(editor.document.modified)
+                    self.assertEqual(source.read_bytes(), saved)
+
+                    nx_source = work / "nx 入力 with spaces.txt"
+                    nx_source.write_text("0 KEY_A 0;0 0;0\n1 KEY_B 0;0 0;0\n", encoding="utf-8")
+                    app._set_input_path(nx_source)
+                    count = len(calls)
+                    app.convert_btn.invoke()
+                    self.wait_for(app, lambda: not app._busy())
+                    self.assertEqual(len(calls) - count, 2)
+                    self.assertEqual(Path(calls[count][1]).name, "nx-tas-to-tsv-tas.py")
+                    self.assertEqual(Path(calls[count + 1][1]).name, "tsv-tas.py")
+                    self.assertTrue((destination / (nx_source.stem + ".tsv")).is_file())
+                    self.assertEqual(success.call_count, 3)
+                    failure.assert_not_called()
+                    self.assertEqual(dict(os.environ), before)
+                self.doCleanups()
 
     def test_repeated_f5_f8_checks_and_analyze_to_send_are_busy_protected(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -1,5 +1,6 @@
 """Non-destructive converter snapshots, including the actual Tk/worker boundary."""
 
+import os
 import subprocess
 import tempfile
 import threading
@@ -47,7 +48,13 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual(source.parent, output.parent)
             self.assertEqual(options["env"]["PYTHONUTF8"], "1")
             self.assertEqual(options["encoding"], "utf-8")
-            return subprocess.run(command, **options)
+            self.assertTrue(options["text"])
+            self.assertEqual(options["errors"], "replace")
+            before = dict(os.environ)
+            self.assertEqual(options["env"], {**before, "PYTHONUTF8": "1"})
+            result = subprocess.run(command, **options)
+            self.assertEqual(dict(os.environ), before)
+            return result
         return run
 
     def test_validate_analyze_and_positions_share_isolated_workspace_and_flags(self):

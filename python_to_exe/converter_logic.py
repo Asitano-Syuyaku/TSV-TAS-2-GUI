@@ -13,6 +13,16 @@ from typing import Optional
 FORMATS = ("binary", "stas", "nxtas")
 
 
+def utf8_subprocess_kwargs():
+    """Use UTF-8 for companion scripts and captured text, without changing the GUI env.
+
+    The scripts use locale-default open() in some modes; PYTHONUTF8 makes their
+    file I/O match UTF-8 Editor buffers on Windows as well as source runs.
+    """
+    return {"text": True, "encoding": "utf-8", "errors": "replace",
+            "env": {**os.environ, "PYTHONUTF8": "1"}}
+
+
 @dataclass(frozen=True)
 class ConversionOutputs:
     primary: Path

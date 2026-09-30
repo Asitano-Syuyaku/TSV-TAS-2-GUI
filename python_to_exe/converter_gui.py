@@ -13,11 +13,13 @@ from tkinter import filedialog, messagebox
 if __package__:
     from .app_settings import AppSettings
     from .converter_logic import (build_commands, conversion_outputs, load_ftp_config,
-                                  open_output_folder, save_ftp_config, scripts_dir)
+                                  open_output_folder, save_ftp_config, scripts_dir,
+                                  utf8_subprocess_kwargs)
 else:
     from app_settings import AppSettings
     from converter_logic import (build_commands, conversion_outputs, load_ftp_config,
-                                 open_output_folder, save_ftp_config, scripts_dir)
+                                 open_output_folder, save_ftp_config, scripts_dir,
+                                 utf8_subprocess_kwargs)
 
 
 TEXT = {
@@ -457,8 +459,8 @@ class TASConverterApp(tk.Tk):
                 self._events.put(("log", self.words["running"] + display))
                 started = True
                 result = subprocess.run(command, cwd=self.base_dir, capture_output=True,
-                                        text=True, errors="replace",
-                                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                                        **utf8_subprocess_kwargs())
                 if result.stdout:
                     self._events.put(("log", result.stdout.rstrip()))
                 if result.stderr:

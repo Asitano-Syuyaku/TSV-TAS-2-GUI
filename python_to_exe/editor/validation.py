@@ -1,7 +1,6 @@
 """Run the bundled converter in disposable output paths for Editor tools."""
 
 import csv
-import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -12,9 +11,9 @@ from .debug_csv import DebugFrames, load_debug_csv
 from .snapshot import ScriptSnapshot, script_workspace
 
 if __package__ == "editor":
-    from converter_logic import build_commands
+    from converter_logic import build_commands, utf8_subprocess_kwargs
 else:
-    from ..converter_logic import build_commands
+    from ..converter_logic import build_commands, utf8_subprocess_kwargs
 
 
 # These are the source-row forms emitted by the current stas-dev converter.
@@ -77,12 +76,9 @@ def _run_commands(commands, base_dir, runner, source_is_tsv):
     stdout, stderr = [], []
     for command in commands:
         try:
-            result = runner(command, cwd=base_dir, capture_output=True, text=True,
-                            encoding="utf-8", errors="replace",
-                            # Companion scripts use locale-default file encoding in
-                            # some modes. Editor buffers are always UTF-8, on Windows too.
-                            env={**os.environ, "PYTHONUTF8": "1"},
-                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            result = runner(command, cwd=base_dir, capture_output=True,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                            **utf8_subprocess_kwargs())
         except (OSError, ValueError, RuntimeError) as error:
             stderr.append(str(error))
             return ValidationResult(False, "".join(stdout), "".join(stderr),
