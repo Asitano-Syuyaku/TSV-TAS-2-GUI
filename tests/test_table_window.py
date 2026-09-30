@@ -234,7 +234,7 @@ class TableWindowTests(unittest.TestCase):
                             Label=lambda master, **kw: Widget("label", master, **kw),
                             Button=lambda master, **kw: Widget("button", master, **kw)), \
              patch.dict(sys.modules, {"python_to_exe.editor.stick_preview": SimpleNamespace(
-                 StickPreview=lambda master: Widget("preview", master))}):
+                 StickPreview=lambda master, **kw: Widget("preview", master, **kw))}):
             window._build_input_palette()
             icon = object()
             window._palette_icons = {"button_a": icon}

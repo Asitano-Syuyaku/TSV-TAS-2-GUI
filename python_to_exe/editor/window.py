@@ -14,6 +14,8 @@ from .resources import palette_icon_path
 from .snapshot import ScriptSnapshot
 from .text_ops import (file_kind, find_next as next_match, find_previous as previous_match,
                        line_column, replace_all as replace_every, replace_current as replace_match)
+from .theme import (COLORS, FONTS, SIZES, SPACING, SYNTAX_COLORS, button_options,
+                    editor_fonts, entry_options, label_options)
 from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
 
 if __package__ == "editor":
@@ -22,9 +24,7 @@ else:
     from ..app_settings import AppSettings, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
 
 
-HIGHLIGHT_COLORS = {"comment": "#53805a", "command": "#8741a8",
-                    "variable": "#9a621f", "duration": "#295fa3",
-                    "input": "#234a84"}
+HIGHLIGHT_COLORS = SYNTAX_COLORS
 
 
 LABELS = {
@@ -198,6 +198,8 @@ class EditorWindow(tk.Toplevel):
                                 self.settings.get("editor_height"))
         self.geometry(f"{self._workspace_size[0]}x{self._workspace_size[1]}")
         self.minsize(*EDITOR_SIZE_MIN)
+        self.configure(background=COLORS["app_background"])
+        self._theme_fonts = editor_fonts(self)
 
         menu = tk.Menu(self)
         file_menu = tk.Menu(menu, tearoff=False)
@@ -249,41 +251,53 @@ class EditorWindow(tk.Toplevel):
         menu.add_cascade(label=self.words["table_menu"], menu=table_menu)
         self.config(menu=menu)
 
-        view_bar = tk.Frame(self)
-        view_bar.pack(fill="x")
-        tk.Button(view_bar, text=self.words["raw_view"], command=self.show_raw).pack(side="left")
+        view_bar = tk.Frame(self, background=COLORS["panel_background"],
+                            highlightthickness=1, highlightbackground=COLORS["subtle_border"])
+        view_bar.pack(fill="x", padx=SPACING["outer"], pady=SPACING["toolbar_y"])
+        self._raw_button = tk.Button(view_bar, text=self.words["raw_view"],
+                                     command=self.show_raw, **button_options())
+        self._raw_button.pack(side="left", padx=SPACING["button_gap"], pady=SPACING["gap"])
         self._table_button = tk.Button(view_bar, text=self.words["table_view"],
-                                       command=self.show_table)
-        self._table_button.pack(side="left")
-        tk.Button(view_bar, text=self.words["validate"], command=self.validate).pack(side="left")
-        frame_navigation = tk.Frame(view_bar)
-        frame_navigation.pack(side="right", padx=(0, 6))
-        tk.Label(frame_navigation, text=self.words["go_to"]).pack(side="left")
-        self.frame_entry = tk.Entry(frame_navigation, width=7, exportselection=False)
-        self.frame_entry.pack(side="left", padx=3)
+                                       command=self.show_table, **button_options())
+        self._table_button.pack(side="left", padx=SPACING["button_gap"])
+        tk.Button(view_bar, text=self.words["validate"], command=self.validate,
+                  **button_options()).pack(side="left", padx=SPACING["gap"])
+        frame_navigation = tk.Frame(view_bar, background=COLORS["panel_background"])
+        frame_navigation.pack(side="right", padx=SPACING["gap"])
+        tk.Label(frame_navigation, text=self.words["go_to"],
+                 **label_options(role="small", fonts=self._theme_fonts)).pack(side="left")
+        self.frame_entry = tk.Entry(frame_navigation, width=7, exportselection=False,
+                                    font=self._theme_fonts["standard"], **entry_options())
+        self.frame_entry.pack(side="left", padx=SPACING["gap"])
         self.frame_go_button = tk.Button(frame_navigation, text=self.words["go"],
-                                         command=self.go_to_frame)
+                                         command=self.go_to_frame, **button_options("primary"))
         self.frame_go_button.pack(side="left")
-        self._frame_jump_feedback = tk.Label(frame_navigation, anchor="w")
+        self._frame_jump_feedback = tk.Label(frame_navigation, anchor="w",
+                                             **label_options(role="small", fonts=self._theme_fonts))
+        self._frame_jump_feedback.configure(foreground=COLORS["warning"])
         self.frame_entry.bind("<Return>", lambda event: self._shortcut(self.go_to_frame))
         self.frame_entry.bind("<Escape>", lambda event: self._shortcut(self._focus_editor))
-        self.frame_status = tk.Label(view_bar, anchor="e")
-        self.frame_status.pack(side="right", padx=8)
-        self.table_tools = tk.Frame(view_bar)
+        self.frame_status = tk.Label(view_bar, anchor="e", padx=SPACING["gap"],
+                                     **label_options("secondary_background", "small", self._theme_fonts))
+        self.frame_status.pack(side="right", padx=SPACING["gap"])
+        self.table_tools = tk.Frame(view_bar, background=COLORS["panel_background"])
         tk.Button(self.table_tools, text=self.words["add_row"],
-                  command=lambda: self._table_action("insert_row_below")).pack(side="left")
+                  command=lambda: self._table_action("insert_row_below"),
+                  **button_options()).pack(side="left", padx=SPACING["button_gap"])
         tk.Button(self.table_tools, text=self.words["add_column"],
-                  command=lambda: self._table_action("insert_column_right")).pack(side="left")
+                  command=lambda: self._table_action("insert_column_right"),
+                  **button_options()).pack(side="left", padx=SPACING["button_gap"])
 
-        frame = tk.Frame(self)
-        frame.pack(fill="both", expand=True)
+        frame = tk.Frame(self, background=COLORS["app_background"])
+        frame.pack(fill="both", expand=True, padx=SPACING["outer"])
         self.raw_frame = frame
         fixed_font = tkfont.nametofont("TkFixedFont")
         self._fixed_font = fixed_font
-        self.line_numbers = tk.Canvas(frame, width=40, highlightthickness=0)
+        self.line_numbers = tk.Canvas(frame, width=40, highlightthickness=0,
+                                       background=COLORS["secondary_background"])
         self.text = tk.Text(frame, wrap="none", font=fixed_font, undo=True,
                             exportselection=False,
-                            tabs=(fixed_font.measure(" " * 8),))
+                            tabs=(fixed_font.measure(" " * 8),), **entry_options())
         vertical = tk.Scrollbar(frame, orient="vertical", command=self.text.yview)
         horizontal = tk.Scrollbar(frame, orient="horizontal", command=self.text.xview)
         self.text.configure(yscrollcommand=lambda first, last: self._on_scroll(vertical, first, last),
@@ -299,7 +313,7 @@ class EditorWindow(tk.Toplevel):
 
         # Import lazily so file/document logic remains usable without Tk widgets.
         from .grid import TableGrid
-        self.table_area = tk.Frame(self)
+        self.table_area = tk.Frame(self, background=COLORS["app_background"])
         self.table_grid = TableGrid(self.table_area, fixed_font, self._table_cell_changed,
                                     self._table_text_changed, self._update_status,
                                     self.undo, self.redo, self.words,
@@ -310,14 +324,19 @@ class EditorWindow(tk.Toplevel):
         self._load_palette_icons()
         self._build_input_palette()
         self.table_grid.pack(side="left", fill="both", expand=True)
-        self.status = tk.Label(self, anchor="w")
-        self.status.pack(fill="x")
-        self._problems_panel = tk.Frame(self, relief="groove", borderwidth=1)
-        self._problems_title = tk.Label(self._problems_panel, anchor="w")
+        self.status = tk.Label(self, anchor="w", padx=SPACING["outer"],
+                               **label_options("secondary_background", "small", self._theme_fonts))
+        self.status.configure(pady=SPACING["status_y"])
+        self.status.pack(fill="x", pady=(SPACING["gap"], 0))
+        self._problems_panel = tk.Frame(self, background=COLORS["panel_background"],
+                                        highlightthickness=1, highlightbackground=COLORS["border"])
+        self._problems_title = tk.Label(self._problems_panel, anchor="w",
+                                         **label_options(role="heading", fonts=self._theme_fonts))
         self._problems_title.pack(fill="x")
         self._problems_text = tk.Text(self._problems_panel, height=4, wrap="word",
-                                      state="disabled", takefocus=False)
-        self._problems_text.tag_configure("jump", foreground="#075ca8", underline=True)
+                                      state="disabled", takefocus=False,
+                                      font=fixed_font, **entry_options())
+        self._problems_text.tag_configure("jump", foreground=COLORS["accent"], underline=True)
         self._problems_text.bind("<Double-Button-1>", self._problem_double_click)
         self._problem_rows = {}
         self._problem_snapshot = None
@@ -393,48 +412,54 @@ class EditorWindow(tk.Toplevel):
     def _build_input_palette(self):
         from .stick_preview import StickPreview
 
-        self.input_palette = tk.Frame(self.table_area, width=400, relief="groove",
-                                      borderwidth=1)
+        fonts = getattr(self, "_theme_fonts", FONTS)
+        self.input_palette = tk.Frame(self.table_area, width=SIZES["palette_width"],
+                                      background=COLORS["panel_background"],
+                                      highlightthickness=1, highlightbackground=COLORS["subtle_border"])
         self.input_palette.pack_propagate(False)
         self.input_palette.pack(side="right", fill="y")
-        header = tk.Frame(self.input_palette)
-        header.pack(fill="x", padx=6, pady=4)
-        tk.Label(header, text=self.words["input_palette"], anchor="w").pack(side="left")
+        header = tk.Frame(self.input_palette, background=COLORS["panel_background"])
+        header.pack(fill="x", padx=SPACING["section"], pady=SPACING["gap"])
+        tk.Label(header, text=self.words["input_palette"], anchor="w",
+                 **label_options(role="heading", fonts=fonts)).pack(side="left")
         self._palette_next = tk.Button(
-            header, text="▶", width=2, padx=0, takefocus=False,
-            command=lambda: self._show_palette_page(self._palette_page + 1))
+            header, text="▶", width=2, takefocus=False,
+            command=lambda: self._show_palette_page(self._palette_page + 1), **button_options())
         self._palette_next.pack(side="right")
-        self._palette_page_label = tk.Label(header)
-        self._palette_page_label.pack(side="right", padx=3)
+        self._palette_page_label = tk.Label(header, **label_options(role="small", fonts=fonts))
+        self._palette_page_label.pack(side="right", padx=SPACING["gap"])
         self._palette_previous = tk.Button(
-            header, text="◀", width=2, padx=0, takefocus=False,
-            command=lambda: self._show_palette_page(self._palette_page - 1))
+            header, text="◀", width=2, takefocus=False,
+            command=lambda: self._show_palette_page(self._palette_page - 1), **button_options())
         self._palette_previous.pack(side="right")
-        body = tk.Frame(self.input_palette)
+        body = tk.Frame(self.input_palette, background=COLORS["panel_background"])
         body.pack(fill="both", expand=True)
         self._palette_pages = []
         for categories in PALETTE_PAGES:
-            page = tk.Frame(body)
-            canvas = tk.Canvas(page, highlightthickness=0, yscrollincrement=20)
+            page = tk.Frame(body, background=COLORS["panel_background"])
+            canvas = tk.Canvas(page, highlightthickness=0, yscrollincrement=20,
+                               background=COLORS["panel_background"])
             scrollbar = tk.Scrollbar(page, orient="vertical", command=canvas.yview)
             canvas.configure(yscrollcommand=scrollbar.set)
             scrollbar.pack(side="right", fill="y")
             canvas.pack(side="left", fill="both", expand=True)
-            content = tk.Frame(canvas)
+            content = tk.Frame(canvas, background=COLORS["panel_background"])
             content_id = canvas.create_window((0, 0), window=content, anchor="nw")
             content.bind("<Configure>", lambda event, target=canvas:
                          target.configure(scrollregion=target.bbox("all")))
             canvas.bind("<Configure>", lambda event, target=canvas, item=content_id:
                         target.itemconfigure(item, width=event.width))
             for category in categories:
-                tk.Label(content, text=self.words[category], anchor="w").pack(
-                    fill="x", padx=6, pady=(5, 1))
+                tk.Label(content, text=self.words[category], anchor="w",
+                         **label_options(role="heading", fonts=fonts)).pack(
+                    fill="x", padx=SPACING["section"],
+                    pady=(SPACING["category_top"], SPACING["category_bottom"]))
                 if category == "stick_preview":
-                    self.stick_preview = StickPreview(content)
-                    self.stick_preview.pack(fill="x", padx=3)
+                    self.stick_preview = StickPreview(content, fonts=fonts)
+                    self.stick_preview.pack(fill="x", padx=SPACING["gap"])
                     continue
-                group = tk.Frame(content)
-                group.pack(fill="x", padx=3)
+                group = tk.Frame(content, background=COLORS["panel_background"])
+                group.pack(fill="x", padx=SPACING["gap"])
                 for column in (0, 1):
                     group.grid_columnconfigure(column, weight=1, uniform="palette")
                 slot = 0
@@ -444,10 +469,10 @@ class EditorWindow(tk.Toplevel):
                     if span == 2 and slot % 2:
                         slot += 1
                     row, column = divmod(slot, 2)
-                    group.grid_rowconfigure(row, minsize=30)
+                    group.grid_rowconfigure(row, minsize=SIZES["palette_row"])
                     self._palette_button(group, candidate).grid(
                         row=row, column=column, columnspan=span,
-                        sticky="ew", padx=2, pady=1)
+                        sticky="ew", padx=SPACING["button_gap"], pady=1)
                     slot += span
             self._bind_palette_scroll(page, canvas)
             self._palette_pages.append((page, canvas))
@@ -545,12 +570,13 @@ class EditorWindow(tk.Toplevel):
 
     def _palette_button(self, parent, candidate):
         image = getattr(self, "_palette_icons", {}).get(candidate.icon_key)
-        options = {"text": (candidate.short_label or candidate.display_label)
+        options = {**button_options("palette"),
+                   "text": (candidate.short_label or candidate.display_label)
                    if image is not None else candidate.display_label,
                    "anchor": "w",
                    "command": lambda item=candidate: self.table_grid.insert_candidate(item)}
         if image is not None:
-            options.update(image=image, compound="left", padx=4)
+            options.update(image=image, compound="left")
         return tk.Button(parent, **options)
 
     @staticmethod
@@ -606,6 +632,7 @@ class EditorWindow(tk.Toplevel):
             # Release Tk images on the UI thread, before background CSV parsing
             # can collect a destroyed Editor's cyclic references.
             self._palette_icons.clear()
+            getattr(self, "_theme_fonts", {}).clear()
             for name in ("_gutter_job", "_highlight_job", "_position_job",
                          "_position_poll_job", "_recovery_job"):
                 job = getattr(self, name, None)
@@ -634,7 +661,8 @@ class EditorWindow(tk.Toplevel):
             if line > last_line:
                 break
             self.line_numbers.create_text(width - 5, details[1] + details[3] / 2,
-                                          text=str(line), anchor="e", font=self._fixed_font)
+                                          text=str(line), anchor="e", font=self._fixed_font,
+                                          fill=COLORS["muted_text"])
             following = self.text.index(f"{index}+1line")
             if following == index:
                 break
@@ -883,7 +911,10 @@ class EditorWindow(tk.Toplevel):
     def _update_view_button(self):
         if hasattr(self, "_table_button"):
             self._table_button.configure(
-                state="normal" if self._table_available() else "disabled")
+                state="normal" if self._table_available() else "disabled",
+                **button_options(selected=getattr(self, "_view", "raw") == "table"))
+        if hasattr(self, "_raw_button"):
+            self._raw_button.configure(**button_options(selected=self._view == "raw"))
 
     def show_raw(self, *, remember=True):
         if getattr(self, "_view", "raw") == "table":
@@ -892,13 +923,14 @@ class EditorWindow(tk.Toplevel):
             self.table_area.pack_forget()
             if hasattr(self, "table_tools"):
                 self.table_tools.pack_forget()
-            self.raw_frame.pack(fill="both", expand=True, before=self.status)
+            self.raw_frame.pack(fill="both", expand=True, before=self.status, padx=SPACING["outer"])
             self._view = "raw"
             self._update_status()
             self.text.focus_set()
             self._schedule_highlight()
         if remember:
             self._remember_workspace(editor_view="raw")
+        self._update_view_button()
         return True
 
     def show_table(self, *, remember=True):
@@ -911,10 +943,11 @@ class EditorWindow(tk.Toplevel):
         self._sync_text()
         self.table_grid.set_text(self.document.text)
         self.raw_frame.pack_forget()
-        self.table_area.pack(fill="both", expand=True, before=self.status)
+        self.table_area.pack(fill="both", expand=True, before=self.status, padx=SPACING["outer"])
         if hasattr(self, "table_tools"):
             self.table_tools.pack(side="left", after=self._table_button)
         self._view = "table"
+        self._update_view_button()
         self._update_status()
         self.table_grid.canvas.focus_set()
         return True
@@ -992,7 +1025,7 @@ class EditorWindow(tk.Toplevel):
             self.table_area.pack_forget()
             if hasattr(self, "table_tools"):
                 self.table_tools.pack_forget()
-            self.raw_frame.pack(fill="both", expand=True, before=self.status)
+            self.raw_frame.pack(fill="both", expand=True, before=self.status, padx=SPACING["outer"])
             self._view = "raw"
         if hasattr(self, "table_grid"):
             self.table_grid.selected = (0, 0)

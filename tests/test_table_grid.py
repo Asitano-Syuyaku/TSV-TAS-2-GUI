@@ -277,11 +277,12 @@ class TableGridTests(unittest.TestCase):
         adjacent_box = grid._cell_box(0, 2)
         self.assertEqual(blank_box[2], adjacent_box[0])
         self.assertTrue(matching(blank_box, fill=self.module.SELECTION_BACKGROUND,
-                                 outline=self.module.GRID_LINE, width=2))
+                                 outline=self.module.GRID_LINE, width=self.module.LINE_WIDTHS["grid"]))
         active_box = grid._cell_box(1, 2)
         self.assertTrue(matching(active_box, fill=self.module.ACTIVE_BACKGROUND,
-                                 outline=self.module.GRID_LINE, width=2))
-        self.assertTrue(matching(active_box, outline=self.module.ACTIVE_LINE, width=3))
+                                 outline=self.module.GRID_LINE, width=self.module.LINE_WIDTHS["grid"]))
+        self.assertTrue(matching(active_box, outline=self.module.ACTIVE_LINE,
+                                 width=self.module.LINE_WIDTHS["active"]))
         self.assertTrue(any(style.get("outline") == self.module.SELECTION_LINE
                             for _, style in grid.canvas.boxes))
         self.assertTrue(matching((160, 48, 208, 72),

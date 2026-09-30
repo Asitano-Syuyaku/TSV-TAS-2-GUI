@@ -4,26 +4,22 @@ import tkinter as tk
 
 from .column_layout import ColumnLayout
 from .table_model import CellSelection, TableModel, visible_span
+from .theme import COLORS, LINE_WIDTHS, ROW_HINTS, SYNTAX_COLORS, entry_options
 from .tsv_syntax import (CompletionState, candidates_for, classify_cell, classify_row,
                          completion_span, insert_template)
 
 
-CANVAS_BACKGROUND = "#f2f5f9"
-CELL_BACKGROUND = "#ffffff"
-GRID_LINE = "#8d9aab"
-HEADER_BACKGROUND = "#e4ebf3"
-HEADER_SELECTED = "#c9d9ec"
-HEADER_LINE = "#65768b"
-SELECTION_BACKGROUND = "#c9e0fb"
-SELECTION_LINE = "#4e86bf"
-ACTIVE_BACKGROUND = "#a9d0fb"
-ACTIVE_LINE = "#075ca8"
-ROW_HINTS = {"comment": "#68a476", "command": "#a873bf",
-             "variable": "#c69550", "control": "#599ab4",
-             "blank": "#c6d0db", "input": "#8fa9d0"}
-DURATION_BACKGROUND = "#f1f6fd"
-SYNTAX_COLORS = {"duration": "#295fa3", "command": "#8741a8",
-                 "comment": "#53805a", "variable": "#9a621f", "input": "#234a84"}
+CANVAS_BACKGROUND = COLORS["panel_background"]
+CELL_BACKGROUND = COLORS["panel_background"]
+GRID_LINE = COLORS["subtle_border"]
+HEADER_BACKGROUND = COLORS["header_background"]
+HEADER_SELECTED = COLORS["header_selected"]
+HEADER_LINE = COLORS["border"]
+SELECTION_BACKGROUND = COLORS["selection_background"]
+SELECTION_LINE = COLORS["accent"]
+ACTIVE_BACKGROUND = COLORS["active_cell"]
+ACTIVE_LINE = COLORS["active_selection_outline"]
+DURATION_BACKGROUND = COLORS["duration_background"]
 
 
 def column_label(index):
@@ -49,7 +45,7 @@ def column_heading(index, labels=None):
 class TableGrid(tk.Frame):
     def __init__(self, master, font, on_change, on_transform, on_select,
                  on_undo, on_redo, labels=None, on_edit_change=None, on_column_resize=None):
-        super().__init__(master)
+        super().__init__(master, background=COLORS["panel_background"])
         self.font = font
         self.on_change = on_change
         self.on_transform = on_transform
@@ -291,19 +287,19 @@ class TableGrid(tk.Frame):
                                               else SELECTION_BACKGROUND if chosen
                                               else DURATION_BACKGROUND if column == 0 and role == "input"
                                               else CELL_BACKGROUND),
-                                        outline=GRID_LINE, width=2, tags="grid")
+                                        outline=GRID_LINE, width=LINE_WIDTHS["grid"], tags="grid")
                 value = self.model.cell(row, column)
                 if value:
                     canvas.create_text(x1 + 6, y1 + self.row_height / 2,
                                        text=self._display(value, self.columns.width(column)), anchor="w",
                                        fill=SYNTAX_COLORS.get(classify_cell(value, column),
-                                                              "#1f2937"),
+                                                              COLORS["text"]),
                                        font=self.font, tags="grid")
         if top != bottom or left != right:
             x1, y1, _, _ = self._cell_box(top, left)
             _, _, x2, y2 = self._cell_box(bottom, right)
             canvas.create_rectangle(x1 + 1, y1 + 1, x2 - 1, y2 - 1,
-                                    outline=SELECTION_LINE, width=2, tags="grid")
+                                    outline=SELECTION_LINE, width=LINE_WIDTHS["selection"], tags="grid")
         # Opaque headers cover cells scrolled beneath the fixed row-number gutter.
         for row in rows:
             y = self.header_height + row * self.row_height
@@ -311,11 +307,11 @@ class TableGrid(tk.Frame):
             canvas.create_rectangle(x0, y, x0 + self.gutter_width, y + self.row_height,
                                     fill=HEADER_SELECTED if axis != "column" and top <= row <= bottom
                                     else HEADER_BACKGROUND,
-                                    outline=HEADER_LINE, width=2, tags="grid")
+                                    outline=HEADER_LINE, width=LINE_WIDTHS["header"], tags="grid")
             canvas.create_line(x0 + 4, y + 3, x0 + 4, y + self.row_height - 3,
                                fill=ROW_HINTS[role], width=4, tags="grid")
             canvas.create_text(x0 + self.gutter_width - 5, y + self.row_height / 2,
-                               text=str(row + 1), anchor="e", fill="#26384d",
+                               text=str(row + 1), anchor="e", fill=COLORS["muted_text"],
                                font=self.font, tags="grid")
         for column in columns:
             x = self.gutter_width + self.columns.edge(column)
@@ -323,20 +319,20 @@ class TableGrid(tk.Frame):
             canvas.create_rectangle(x, y0, x + column_width, y0 + self.header_height,
                                     fill=HEADER_SELECTED if axis != "row" and left <= column <= right
                                     else HEADER_BACKGROUND,
-                                    outline=HEADER_LINE, width=2, tags="grid")
+                                    outline=HEADER_LINE, width=LINE_WIDTHS["header"], tags="grid")
             canvas.create_text(x + column_width / 2, y0 + self.header_height / 2,
                                text=column_heading(column, getattr(self, "labels", None)),
-                               fill="#26384d",
+                               fill=COLORS["text"],
                                font=self.font, tags="grid")
         canvas.create_rectangle(x0, y0, x0 + self.gutter_width,
                                 y0 + self.header_height, fill=HEADER_BACKGROUND,
-                                outline=HEADER_LINE, width=2, tags="grid")
+                                outline=HEADER_LINE, width=LINE_WIDTHS["header"], tags="grid")
         canvas.create_line(x0 + self.gutter_width, y0,
                            x0 + self.gutter_width, y0 + height,
-                           fill=HEADER_LINE, width=3, tags="grid")
+                           fill=HEADER_LINE, width=LINE_WIDTHS["header_divider"], tags="grid")
         canvas.create_line(x0, y0 + self.header_height,
                            x0 + width, y0 + self.header_height,
-                           fill=HEADER_LINE, width=3, tags="grid")
+                           fill=HEADER_LINE, width=LINE_WIDTHS["header_divider"], tags="grid")
         row, column = self.selected
         if row in rows and column in columns:
             x1, y1, x2, y2 = self._cell_box(row, column)
@@ -344,7 +340,7 @@ class TableGrid(tk.Frame):
             y1 = max(y1, y0 + self.header_height)
             if x1 < x2 and y1 < y2:
                 canvas.create_rectangle(x1, y1, x2, y2,
-                                        outline=ACTIVE_LINE, width=3, tags="grid")
+                                        outline=ACTIVE_LINE, width=LINE_WIDTHS["active"], tags="grid")
         self._position_editor()
 
     def _display(self, value, width):
@@ -601,10 +597,10 @@ class TableGrid(tk.Frame):
                 self._entry_value = tk.StringVar(self)
                 self._entry_value.trace_add("write", lambda *_: self._notify_edit_change())
                 options["textvariable"] = self._entry_value
-            editor = tk.Entry(self.canvas, font=self.font, exportselection=False,
-                              background=ACTIVE_BACKGROUND, relief="flat",
-                              highlightthickness=3, highlightbackground=ACTIVE_LINE,
-                              highlightcolor=ACTIVE_LINE, **options)
+            style = entry_options()
+            style.update(background=ACTIVE_BACKGROUND, highlightthickness=LINE_WIDTHS["active"],
+                         highlightbackground=ACTIVE_LINE, highlightcolor=ACTIVE_LINE)
+            editor = tk.Entry(self.canvas, font=self.font, exportselection=False, **style, **options)
             self._entry_widget = editor
             self._bind_entry_navigation(editor)
         editor.delete(0, "end")

@@ -203,6 +203,7 @@ python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/
 | `python_to_exe/app_settings.py` | user config内の非機密設定と共有Recent Files履歴 |
 | `python_to_exe/editor/` | テキスト／表の編集画面、ファイル状態、検索・置換、入力支援、Validation、Debug CSV解析とFrame Inspector |
 | `python_to_exe/editor/recovery.py` | user config内の文書別Recovery snapshot、復元、元ファイルの変更検出 |
+| `python_to_exe/editor/theme.py` | Editor専用のlight theme。色、system font、余白、罫線、widget styleを集約。Converter画面のstyleは変更しない |
 | `ftp_config.json` | FTP接続設定。実credentialをcommitしないこと |
 | `tests/test_conversion.py` | ローカル変換とGUI引数のテスト |
 

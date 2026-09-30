@@ -2,10 +2,11 @@
 
 import tkinter as tk
 
+from .theme import COLORS, SIZES, SPACING, TRAIL_COLORS, label_options
+
 
 STICK_SCALE = 32767.0
-PLOT_HEIGHT = 126
-TRAIL_COLORS = ("#cc2828", "#dc7777", "#e7aaaa", "#f0cece")
+PLOT_HEIGHT = SIZES["plot_height"]
 
 
 def point_position(state, center_x, center_y, radius):
@@ -17,21 +18,21 @@ def point_position(state, center_x, center_y, radius):
 
 
 class StickPreview(tk.Frame):
-    def __init__(self, master):
-        super().__init__(master)
+    def __init__(self, master, fonts=None):
+        super().__init__(master, background=COLORS["panel_background"])
         self.frame = None
         self.samples = ()
         self._key = None
         self.plots, self.values = [], []
-        self.status = tk.Label(self, text="—", anchor="w")
+        self.status = tk.Label(self, text="—", anchor="w", **label_options(role="small", fonts=fonts))
         self.status.grid(row=0, column=0, columnspan=2, sticky="ew", padx=3)
         for column, name in enumerate(("LS", "RS")):
             self.grid_columnconfigure(column, weight=1, uniform="sticks")
-            tk.Label(self, text=name, pady=0).grid(row=1, column=column)
-            canvas = tk.Canvas(self, width=160, height=PLOT_HEIGHT, highlightthickness=0,
-                               background="white")
-            canvas.grid(row=2, column=column, sticky="ew", padx=2)
-            values = tk.Label(self, text="x: —  y: —\nr: —  θ: —", pady=0)
+            tk.Label(self, text=name, **label_options(role="heading", fonts=fonts)).grid(row=1, column=column)
+            canvas = tk.Canvas(self, width=SIZES["plot_width"], height=PLOT_HEIGHT, highlightthickness=0,
+                               background=COLORS["panel_background"])
+            canvas.grid(row=2, column=column, sticky="ew", padx=SPACING["button_gap"])
+            values = tk.Label(self, text="x: —  y: —\nr: —  θ: —", **label_options(role="small", fonts=fonts))
             values.grid(row=3, column=column, sticky="ew")
             self.plots.append(canvas)
             self.values.append(values)
@@ -55,15 +56,15 @@ class StickPreview(tk.Frame):
     def _draw(self, column):
         canvas = self.plots[column]
         canvas.delete("all")
-        width = max(canvas.winfo_width(), 160)
+        width = max(canvas.winfo_width(), SIZES["plot_width"])
         height = PLOT_HEIGHT
         cx, cy = width / 2, height / 2
         radius = min(width, height) / 2 - 10
-        canvas.create_line(cx - radius, cy, cx + radius, cy, fill="#dddddd")
-        canvas.create_line(cx, cy - radius, cx, cy + radius, fill="#dddddd")
+        canvas.create_line(cx - radius, cy, cx + radius, cy, fill=COLORS["preview_axis"])
+        canvas.create_line(cx, cy - radius, cx, cy + radius, fill=COLORS["preview_axis"])
         canvas.create_oval(cx - radius, cy - radius, cx + radius, cy + radius,
-                           outline="#777777")
-        canvas.create_oval(cx - 2, cy - 2, cx + 2, cy + 2, fill="#777777", outline="")
+                           outline=COLORS["preview_circle"])
+        canvas.create_oval(cx - 2, cy - 2, cx + 2, cy + 2, fill=COLORS["preview_center"], outline="")
         current = None
         for sample in reversed(self.samples):
             age = self.frame - sample.frame

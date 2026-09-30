@@ -203,6 +203,7 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 | `python_to_exe/app_settings.py` | Non-sensitive preferences and shared Recent Files in user config |
 | `python_to_exe/editor/` | Raw Text/Table editor, file state, find/replace, input hints, validation, Debug CSV parsing, and Frame Inspector |
 | `python_to_exe/editor/recovery.py` | Per-document Recovery snapshots in user config, restoration, and original-file change detection |
+| `python_to_exe/editor/theme.py` | Editor-only light theme: colors, system fonts, spacing, grid lines, and widget styles. Converter window styles are unchanged |
 | `ftp_config.json` | FTP connection settings; do not commit real credentials |
 | `tests/test_conversion.py` | Local conversion and GUI argument tests |
 
