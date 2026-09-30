@@ -8,12 +8,17 @@ from pathlib import Path
 
 if __package__:
     from .converter_logic import FORMATS
+    from .editor.column_layout import clean_column_widths
 else:
     from converter_logic import FORMATS
+    from editor.column_layout import clean_column_widths
 
 
 APP_NAME = "TSV-TAS-2-GUI"
 VERSION = 1
+EDITOR_SIZE_DEFAULT = (1200, 700)
+EDITOR_SIZE_MIN = (800, 500)
+EDITOR_SIZE_MAX = (4096, 2160)
 
 
 def settings_path(platform=None, environ=None, home=None):
@@ -45,7 +50,9 @@ def _path(value, relative=False):
 
 def _clean(values):
     defaults = dict(version=VERSION, recent_files=[], output_format="binary",
-                    debug_enabled=False, last_input_directory="", last_output_directory="")
+                    debug_enabled=False, last_input_directory="", last_output_directory="",
+                    editor_width=EDITOR_SIZE_DEFAULT[0], editor_height=EDITOR_SIZE_DEFAULT[1],
+                    editor_view="raw", editor_palette_page=0, editor_column_widths={})
     if (not isinstance(values, dict) or type(values.get("version")) is not int
             or values["version"] != VERSION):
         return defaults
@@ -55,6 +62,17 @@ def _clean(values):
         defaults["debug_enabled"] = values["debug_enabled"]
     for key in ("last_input_directory", "last_output_directory"):
         defaults[key] = _path(values.get(key))
+    for key, low, high in zip(("editor_width", "editor_height"),
+                              EDITOR_SIZE_MIN, EDITOR_SIZE_MAX):
+        value = values.get(key)
+        if type(value) is int and low <= value <= high:
+            defaults[key] = value
+    if values.get("editor_view") in ("raw", "table"):
+        defaults["editor_view"] = values["editor_view"]
+    page = values.get("editor_palette_page")
+    if type(page) is int and page in (0, 1):
+        defaults["editor_palette_page"] = page
+    defaults["editor_column_widths"] = clean_column_widths(values.get("editor_column_widths"))
     recent = values.get("recent_files")
     if isinstance(recent, list):
         seen = set()
@@ -84,18 +102,19 @@ class AppSettings:
 
     def get(self, key, default=None):
         value = self._values.get(key, default)
-        return list(value) if isinstance(value, list) else value
+        return value.copy() if isinstance(value, (list, dict)) else value
 
     @property
     def recent_files(self):
         return tuple(self._values["recent_files"])
 
-    def update(self, **values):
+    def update(self, *, persist=True, **values):
         cleaned = _clean({**self._values, **values, "version": VERSION})
         if cleaned == self._values:
             return False
         self._values = cleaned
-        self.save()
+        if persist:
+            self.save()
         return True
 
     def add_recent(self, path):

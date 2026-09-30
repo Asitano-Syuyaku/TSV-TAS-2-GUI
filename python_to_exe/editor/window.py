@@ -17,9 +17,9 @@ from .text_ops import (file_kind, find_next as next_match, find_previous as prev
 from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
 
 if __package__ == "editor":
-    from app_settings import AppSettings
+    from app_settings import AppSettings, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
 else:
-    from ..app_settings import AppSettings
+    from ..app_settings import AppSettings, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
 
 
 HIGHLIGHT_COLORS = {"comment": "#53805a", "command": "#8741a8",
@@ -188,7 +188,11 @@ class EditorWindow(tk.Toplevel):
         self._highlight_range = None
         self._palette_icons = {}  # Keep PhotoImage references alive for Tk buttons.
         self._view = "raw"
-        self.geometry("1200x700")
+        self._workspace_job = None
+        self._workspace_size = (self.settings.get("editor_width"),
+                                self.settings.get("editor_height"))
+        self.geometry(f"{self._workspace_size[0]}x{self._workspace_size[1]}")
+        self.minsize(*EDITOR_SIZE_MIN)
 
         menu = tk.Menu(self)
         file_menu = tk.Menu(menu, tearoff=False)
@@ -294,7 +298,10 @@ class EditorWindow(tk.Toplevel):
         self.table_grid = TableGrid(self.table_area, fixed_font, self._table_cell_changed,
                                     self._table_text_changed, self._update_status,
                                     self.undo, self.redo, self.words,
-                                    on_edit_change=self._table_edit_pending)
+                                    on_edit_change=self._table_edit_pending,
+                                    on_column_resize=self._remember_column_width)
+        self.table_grid.columns.import_widths(self.settings.get("editor_column_widths"))
+        self.table_grid._update_region()
         self._load_palette_icons()
         self._build_input_palette()
         self.table_grid.pack(side="left", fill="both", expand=True)
@@ -350,6 +357,7 @@ class EditorWindow(tk.Toplevel):
             self.bind(sequence, lambda event, action=command: self._shortcut(action))
         self.protocol("WM_DELETE_WINDOW", self.close_editor)
         self.bind("<Destroy>", self._on_destroy)
+        self.bind("<Configure>", self._workspace_resized)
         self._update_title()
         self._update_status()
         self._schedule_line_numbers()
@@ -362,6 +370,7 @@ class EditorWindow(tk.Toplevel):
             self.open_file(initial_path)
         else:
             self._position_document_changed()
+            self._restore_editor_view()
 
     def _load_palette_icons(self):
         for candidate in CANDIDATES:
@@ -431,9 +440,11 @@ class EditorWindow(tk.Toplevel):
                     slot += span
             self._bind_palette_scroll(page, canvas)
             self._palette_pages.append((page, canvas))
-        self._show_palette_page(1)
+        settings = getattr(self, "settings", None)
+        self._show_palette_page(settings.get("editor_palette_page", 0) + 1 if settings else 1,
+                                remember=False)
 
-    def _show_palette_page(self, number):
+    def _show_palette_page(self, number, *, remember=True):
         if not 1 <= number <= len(self._palette_pages):
             return
         for index, (page, canvas) in enumerate(self._palette_pages, start=1):
@@ -446,6 +457,53 @@ class EditorWindow(tk.Toplevel):
         self._palette_page_label.configure(text=f"{number} / {len(self._palette_pages)}")
         self._palette_previous.configure(state="disabled" if number == 1 else "normal")
         self._palette_next.configure(state="disabled" if number == len(self._palette_pages) else "normal")
+        if remember:
+            self._remember_workspace(editor_palette_page=number - 1)
+
+    def _remember_workspace(self, **values):
+        settings = getattr(self, "settings", None)
+        if settings is not None:
+            settings.update(**values)
+
+    def _remember_column_width(self, column):
+        # Merge just the dragged column with shared state. Another Editor's newer
+        # widths must not be replaced by this window's older local layout.
+        widths = self.settings.get("editor_column_widths")
+        key = str(column)
+        overrides = self.table_grid.columns.export_widths()
+        if key in overrides:
+            widths[key] = overrides[key]
+        else:
+            widths.pop(key, None)
+        self._remember_workspace(editor_column_widths=widths)
+
+    def _workspace_resized(self, event):
+        if event.widget is not self or self._closed:
+            return
+        size = event.width, event.height
+        if (size == self._workspace_size or
+                not all(low <= value <= high for value, low, high in
+                        zip(size, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX))):
+            return
+        self._workspace_size = size
+        # Keep only the changed fields in the shared state now. Debounce the disk
+        # write, not a stale per-window copy of all workspace preferences.
+        self.settings.update(editor_width=size[0], editor_height=size[1], persist=False)
+        if self._workspace_job is not None:
+            self.after_cancel(self._workspace_job)
+        self._workspace_job = self.after(400, self._flush_workspace)
+
+    def _flush_workspace(self):
+        job = getattr(self, "_workspace_job", None)
+        if job is not None:
+            self.after_cancel(job)
+            self._workspace_job = None
+            self.settings.save()
+
+    def _restore_editor_view(self):
+        settings = getattr(self, "settings", None)
+        if settings is not None and settings.get("editor_view") == "table" and self._table_available():
+            self.show_table(remember=False)
 
     def _bind_palette_scroll(self, widget, canvas):
         # Widget-local bindings also cover buttons; Table keeps its own wheel events.
@@ -532,6 +590,7 @@ class EditorWindow(tk.Toplevel):
 
     def _on_destroy(self, event):
         if event.widget is self:
+            self._flush_workspace()
             self._closed = True
             for name in ("_gutter_job", "_highlight_job", "_position_job",
                          "_position_poll_job", "_recovery_job"):
@@ -793,7 +852,7 @@ class EditorWindow(tk.Toplevel):
             self._table_button.configure(
                 state="normal" if self._table_available() else "disabled")
 
-    def show_raw(self):
+    def show_raw(self, *, remember=True):
         if getattr(self, "_view", "raw") == "table":
             if not self._commit_table_edit():
                 return False
@@ -805,11 +864,15 @@ class EditorWindow(tk.Toplevel):
             self._update_status()
             self.text.focus_set()
             self._schedule_highlight()
+        if remember:
+            self._remember_workspace(editor_view="raw")
         return True
 
-    def show_table(self):
+    def show_table(self, *, remember=True):
         if not self._table_available():
             return False
+        if remember:
+            self._remember_workspace(editor_view="table")
         if getattr(self, "_view", "raw") == "table":
             return True
         self._sync_text()
@@ -911,6 +974,7 @@ class EditorWindow(tk.Toplevel):
         self._update_view_button()
         self._schedule_line_numbers()
         self._schedule_highlight()
+        self._restore_editor_view()
 
     def undo(self):
         if not self._commit_table_edit():
@@ -945,26 +1009,26 @@ class EditorWindow(tk.Toplevel):
     def cut(self):
         if getattr(self, "_view", "raw") == "table":
             return self.table_grid.clipboard_action("Cut")
-        if not self.show_raw():
+        if not self.show_raw(remember=False):
             return
         self.text.event_generate("<<Cut>>")
 
     def copy(self):
         if getattr(self, "_view", "raw") == "table":
             return self.table_grid.clipboard_action("Copy")
-        if not self.show_raw():
+        if not self.show_raw(remember=False):
             return
         self.text.event_generate("<<Copy>>")
 
     def paste(self):
         if getattr(self, "_view", "raw") == "table":
             return self.table_grid.clipboard_action("Paste")
-        if not self.show_raw():
+        if not self.show_raw(remember=False):
             return
         self.text.event_generate("<<Paste>>")
 
     def select_all(self):
-        if not self.show_raw():
+        if not self.show_raw(remember=False):
             return
         self.text.tag_add("sel", "1.0", "end-1c")
         self.text.mark_set("insert", "end-1c")
@@ -972,7 +1036,7 @@ class EditorWindow(tk.Toplevel):
         self._update_status()
 
     def show_find(self, replace=False):
-        if not self.show_raw():
+        if not self.show_raw(remember=False):
             return
         if self._find_dialog is None or not self._find_dialog.winfo_exists():
             dialog = tk.Toplevel(self)
@@ -1033,7 +1097,7 @@ class EditorWindow(tk.Toplevel):
         return True
 
     def find_next(self):
-        if not self.show_raw():
+        if not self.show_raw(remember=False):
             return False
         query = self.find_query.get()
         if not query:
@@ -1044,7 +1108,7 @@ class EditorWindow(tk.Toplevel):
         return self._select_match(next_match(self.text.get("1.0", "end-1c"), query, start))
 
     def find_previous(self):
-        if not self.show_raw():
+        if not self.show_raw(remember=False):
             return False
         query = self.find_query.get()
         if not query:
@@ -1055,7 +1119,7 @@ class EditorWindow(tk.Toplevel):
         return self._select_match(previous_match(self.text.get("1.0", "end-1c"), query, start))
 
     def replace_current(self):
-        if not self.show_raw():
+        if not self.show_raw(remember=False):
             return False
         query = self.find_query.get()
         selection = self._selection_offsets()
@@ -1076,7 +1140,7 @@ class EditorWindow(tk.Toplevel):
         return True
 
     def replace_all(self):
-        if not self.show_raw():
+        if not self.show_raw(remember=False):
             return 0
         query = self.find_query.get()
         original = self.text.get("1.0", "end-1c")
@@ -1380,7 +1444,7 @@ class EditorWindow(tk.Toplevel):
             self._position_document_changed()
         self._update_status()
         if getattr(self, "_view", "raw") == "table" and saved_path.suffix.lower() != ".tsv":
-            self.show_raw()
+            self.show_raw(remember=False)
         self._update_view_button()
         self._record_recent(saved_path)
         if self.on_saved:

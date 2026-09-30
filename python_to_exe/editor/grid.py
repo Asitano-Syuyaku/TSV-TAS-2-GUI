@@ -48,7 +48,7 @@ def column_heading(index, labels=None):
 
 class TableGrid(tk.Frame):
     def __init__(self, master, font, on_change, on_transform, on_select,
-                 on_undo, on_redo, labels=None, on_edit_change=None):
+                 on_undo, on_redo, labels=None, on_edit_change=None, on_column_resize=None):
         super().__init__(master)
         self.font = font
         self.on_change = on_change
@@ -57,14 +57,14 @@ class TableGrid(tk.Frame):
         self.on_undo = on_undo
         self.on_redo = on_redo
         self.on_edit_change = on_edit_change
+        self.on_column_resize = on_column_resize
         self.labels = labels or {}
         self.row_height = max(font.metrics("linespace") + 8, 24)
         self.column_width = max(font.measure("0" * 18) + 12, 160)
-        self._columns = ColumnLayout(self.column_width)
         # Keep the suggested A-G columns visible in a normal editor window.
         # H and later retain the usual virtual-column default width.
-        for column, width in enumerate((112, 148, 148, 84, 84, 84, 84)):
-            self._columns.set_width(column, width)
+        self._columns = ColumnLayout(
+            self.column_width, default_widths=dict(enumerate((112, 148, 148, 84, 84, 84, 84))))
         self.header_height = self.row_height
         self.gutter_width = max(font.measure("00000") + 12, 48)
         self.model = TableModel("")
@@ -531,11 +531,14 @@ class TableGrid(tk.Frame):
 
     def _release(self, event):
         if getattr(self, "_resize_column", None) is not None:
+            column = self._resize_column
             self._resize_column = None
             self._drag_axis = None
             self._ensure_visible()
             self._schedule_draw()
             self._header_motion(event)
+            if getattr(self, "on_column_resize", None) is not None:
+                self.on_column_resize(column)
             return "break"
         self._drag_ready = False
         self._drag_axis = None

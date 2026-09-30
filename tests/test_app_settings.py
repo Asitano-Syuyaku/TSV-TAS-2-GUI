@@ -135,7 +135,9 @@ class SettingsTests(unittest.TestCase):
                         port=5000, document="not stored", undo=["not stored"], frames=[1])
         saved = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(set(saved), {"version", "recent_files", "output_format", "debug_enabled",
-                                      "last_input_directory", "last_output_directory"})
+                                      "last_input_directory", "last_output_directory",
+                                      "editor_width", "editor_height", "editor_view",
+                                      "editor_palette_page", "editor_column_widths"})
         self.assertEqual(saved["version"], 1)
         self.assertNotIn("not stored", self.path.read_text(encoding="utf-8"))
 
