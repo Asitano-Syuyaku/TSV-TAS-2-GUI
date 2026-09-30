@@ -1224,6 +1224,33 @@ class TableGridTests(unittest.TestCase):
             document.save()
             self.assertEqual(source.read_bytes(), b"A\ta")
 
+    def test_advanced_palette_reuses_text_and_placeholder_insertion(self):
+        from python_to_exe.editor.tsv_syntax import CANDIDATES, PALETTE_PAGES
+
+        for candidate in (item for item in CANDIDATES if item.category in PALETTE_PAGES[1]):
+            with self.subTest(candidate=candidate.label):
+                grid, _, _ = self._navigation_grid("1\told\tkeep")
+                grid.selected = (0, 1)
+                with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+                    grid.insert_candidate(candidate)
+                    editor = grid._editor
+                    self.assertEqual(editor.value, candidate.text)
+                    self.assertEqual(editor.selected_range, candidate.select)
+                    self.assertEqual(grid.selected, (0, 1))
+                    self.assertEqual(grid.model.to_text(), "1\told\tkeep")
+                    self.assertTrue(grid.commit_edit())
+                    self.assertEqual(grid.model.to_text(), "1\t" + candidate.text + "\tkeep")
+                    grid.begin_edit()
+                    self.assertIs(grid._editor, editor)
+                    editor.delete(0, "end")
+                    editor.insert(0, "ab")
+                    editor.icursor(1)
+                    grid.insert_candidate(candidate)
+                    self.assertEqual(editor.value, "a" + candidate.text + "b")
+                    self.assertEqual(editor.selected_range,
+                                     tuple(1 + value for value in candidate.select)
+                                     if candidate.select else None)
+
 
 if __name__ == "__main__":
     unittest.main()

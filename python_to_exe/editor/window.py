@@ -10,7 +10,7 @@ from .document import EditorDocument
 from .resources import palette_icon_path
 from .text_ops import (file_kind, find_next as next_match, find_previous as previous_match,
                        line_column, replace_all as replace_every, replace_current as replace_match)
-from .tsv_syntax import CANDIDATES, PALETTE_CATEGORIES, syntax_spans
+from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
 
 
 HIGHLIGHT_COLORS = {"comment": "#53805a", "command": "#8741a8",
@@ -42,6 +42,7 @@ LABELS = {
         "input_palette": "Input Palette", "buttons": "Buttons",
         "left_stick": "Left Stick", "right_stick": "Right Stick",
         "commands": "STAS Commands",
+        "cappy": "Cappy", "accel": "Accel", "gyro": "Gyro", "notation": "Notation",
         "validate": "Validate", "validating": "Validating...",
         "no_errors": "No errors", "problems": "Problems",
         "jump_hint": "Double-click a line message to jump",
@@ -83,6 +84,7 @@ LABELS = {
         "input_palette": "入力パレット", "buttons": "ボタン",
         "left_stick": "左スティック", "right_stick": "右スティック",
         "commands": "STASコマンド",
+        "cappy": "Cappy", "accel": "加速度", "gyro": "ジャイロ", "notation": "記法",
         "validate": "検証", "validating": "検証中...",
         "no_errors": "エラーなし", "problems": "問題",
         "jump_hint": "行を含むメッセージをダブルクリックで移動",
@@ -305,43 +307,98 @@ class EditorWindow(tk.Toplevel):
                                       borderwidth=1)
         self.input_palette.pack_propagate(False)
         self.input_palette.pack(side="right", fill="y")
-        tk.Label(self.input_palette, text=self.words["input_palette"],
-                 anchor="w").pack(fill="x", padx=6, pady=4)
+        header = tk.Frame(self.input_palette)
+        header.pack(fill="x", padx=6, pady=4)
+        tk.Label(header, text=self.words["input_palette"], anchor="w").pack(side="left")
+        self._palette_next = tk.Button(
+            header, text="▶", width=2, padx=0, takefocus=False,
+            command=lambda: self._show_palette_page(self._palette_page + 1))
+        self._palette_next.pack(side="right")
+        self._palette_page_label = tk.Label(header)
+        self._palette_page_label.pack(side="right", padx=3)
+        self._palette_previous = tk.Button(
+            header, text="◀", width=2, padx=0, takefocus=False,
+            command=lambda: self._show_palette_page(self._palette_page - 1))
+        self._palette_previous.pack(side="right")
         body = tk.Frame(self.input_palette)
         body.pack(fill="both", expand=True)
-        canvas = tk.Canvas(body, highlightthickness=0)
-        scrollbar = tk.Scrollbar(body, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-        content = tk.Frame(canvas)
-        content_id = canvas.create_window((0, 0), window=content, anchor="nw")
-        content.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(content_id, width=event.width))
-        for category in PALETTE_CATEGORIES:
-            tk.Label(content, text=self.words[category], anchor="w").pack(
-                fill="x", padx=6, pady=(5, 1))
-            group = tk.Frame(content)
-            group.pack(fill="x", padx=3)
-            for column in (0, 1):
-                group.grid_columnconfigure(column, weight=1, uniform="palette")
-            slot = 0
-            candidates = (item for item in CANDIDATES if item.category == category)
-            for candidate in candidates:
-                span = self._palette_span(candidate)
-                if span == 2 and slot % 2:
-                    slot += 1
-                row, column = divmod(slot, 2)
-                group.grid_rowconfigure(row, minsize=30)
-                self._palette_button(group, candidate).grid(
-                    row=row, column=column, columnspan=span,
-                    sticky="ew", padx=2, pady=1)
-                slot += span
-        self.palette_canvas = canvas
+        self._palette_pages = []
+        for categories in PALETTE_PAGES:
+            page = tk.Frame(body)
+            canvas = tk.Canvas(page, highlightthickness=0, yscrollincrement=20)
+            scrollbar = tk.Scrollbar(page, orient="vertical", command=canvas.yview)
+            canvas.configure(yscrollcommand=scrollbar.set)
+            scrollbar.pack(side="right", fill="y")
+            canvas.pack(side="left", fill="both", expand=True)
+            content = tk.Frame(canvas)
+            content_id = canvas.create_window((0, 0), window=content, anchor="nw")
+            content.bind("<Configure>", lambda event, target=canvas:
+                         target.configure(scrollregion=target.bbox("all")))
+            canvas.bind("<Configure>", lambda event, target=canvas, item=content_id:
+                        target.itemconfigure(item, width=event.width))
+            for category in categories:
+                tk.Label(content, text=self.words[category], anchor="w").pack(
+                    fill="x", padx=6, pady=(5, 1))
+                group = tk.Frame(content)
+                group.pack(fill="x", padx=3)
+                for column in (0, 1):
+                    group.grid_columnconfigure(column, weight=1, uniform="palette")
+                slot = 0
+                candidates = (item for item in CANDIDATES if item.category == category)
+                for candidate in candidates:
+                    span = self._palette_span(candidate)
+                    if span == 2 and slot % 2:
+                        slot += 1
+                    row, column = divmod(slot, 2)
+                    group.grid_rowconfigure(row, minsize=30)
+                    self._palette_button(group, candidate).grid(
+                        row=row, column=column, columnspan=span,
+                        sticky="ew", padx=2, pady=1)
+                    slot += span
+            self._bind_palette_scroll(page, canvas)
+            self._palette_pages.append((page, canvas))
+        self._show_palette_page(1)
+
+    def _show_palette_page(self, number):
+        if not 1 <= number <= len(self._palette_pages):
+            return
+        for index, (page, canvas) in enumerate(self._palette_pages, start=1):
+            if index == number:
+                page.pack(fill="both", expand=True)
+                self.palette_canvas = canvas
+            else:
+                page.pack_forget()
+        self._palette_page = number
+        self._palette_page_label.configure(text=f"{number} / {len(self._palette_pages)}")
+        self._palette_previous.configure(state="disabled" if number == 1 else "normal")
+        self._palette_next.configure(state="disabled" if number == len(self._palette_pages) else "normal")
+
+    def _bind_palette_scroll(self, widget, canvas):
+        # Widget-local bindings also cover buttons; Table keeps its own wheel events.
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            widget.bind(sequence, lambda event, target=canvas: self._palette_wheel(event, target))
+        for child in widget.winfo_children():
+            self._bind_palette_scroll(child, canvas)
+
+    @staticmethod
+    def _palette_wheel(event, canvas):
+        direction = getattr(event, "num", None)
+        if direction in (4, 5):
+            units = -1 if direction == 4 else 1
+        else:
+            delta = getattr(event, "delta", 0)
+            if not delta:
+                return "break"
+            units = -int(delta / 120) if abs(delta) >= 120 else (-1 if delta > 0 else 1)
+        first, last = canvas.yview()
+        if last - first < 1:
+            canvas.yview_scroll(units * 3, "units")
+        return "break"
 
     @staticmethod
     def _palette_span(candidate):
-        return 2 if candidate.label in ("ls(angle)", "rs(angle)") else 1
+        return 2 if (candidate.category in ("gyro", "notation") or
+                     candidate.label in ("ls(angle)", "rs(angle)")) else 1
 
     def _palette_button(self, parent, candidate):
         image = getattr(self, "_palette_icons", {}).get(candidate.icon_key)

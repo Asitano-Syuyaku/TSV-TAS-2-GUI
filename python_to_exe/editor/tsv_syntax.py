@@ -77,7 +77,11 @@ CANDIDATES = (
     Candidate("notation", "[2]a (local duration)", "[2]a"),
 )
 
-PALETTE_CATEGORIES = ("buttons", "left_stick", "right_stick", "commands")
+PALETTE_PAGES = (
+    ("buttons", "left_stick", "right_stick", "commands"),
+    ("cappy", "accel", "gyro", "notation"),
+)
+PALETTE_CATEGORIES = tuple(category for page in PALETTE_PAGES for category in page)
 _FRAGMENT = re.compile(r"(?:/[A-Za-z]*|\$[A-Za-z_]*|[A-Za-z][A-Za-z0-9_-]*)$")
 _DURATION = re.compile(r"\s*(?:\d+(?:\.\d+)?|\$[A-Za-z_][A-Za-z0-9_]*)\s*$")
 _FUNCTION_NAMES = sorted({item.text.split("(", 1)[0] for item in CANDIDATES

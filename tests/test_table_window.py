@@ -163,7 +163,7 @@ class TableWindowTests(unittest.TestCase):
         self.assertFalse(window.document.modified)
 
     def test_sidebar_groups_existing_candidates_and_uses_table_insertion(self):
-        from python_to_exe.editor.tsv_syntax import CANDIDATES, PALETTE_CATEGORIES
+        from python_to_exe.editor.tsv_syntax import CANDIDATES, PALETTE_CATEGORIES, PALETTE_PAGES
 
         widgets = []
 
@@ -174,6 +174,7 @@ class TableWindowTests(unittest.TestCase):
                 self.options = options
                 self.placement = None
                 self.bindings = {}
+                self.scrolls = []
                 widgets.append(self)
 
             def pack(self, **options):
@@ -181,6 +182,12 @@ class TableWindowTests(unittest.TestCase):
 
             def grid(self, **options):
                 self.placement = options
+
+            def pack_forget(self):
+                self.placement = None
+
+            def winfo_children(self):
+                return [item for item in widgets if item.master is self]
 
             def grid_columnconfigure(self, *_args, **_kwargs):
                 pass
@@ -207,7 +214,10 @@ class TableWindowTests(unittest.TestCase):
                 return (0, 0, 220, 1000)
 
             def yview(self, *_args):
-                pass
+                return (0, 0.5)
+
+            def yview_scroll(self, *args):
+                self.scrolls.append(args)
 
             def set(self, *_args):
                 pass
@@ -232,11 +242,12 @@ class TableWindowTests(unittest.TestCase):
         self.assertEqual(window.input_palette.options["width"], 330)
         self.assertEqual(window.input_palette.placement, {"side": "right", "fill": "y"})
         self.assertFalse(window.input_palette.propagate)
-        labels = [item.options["text"] for item in widgets if item.kind == "label"]
+        labels = [item.options["text"] for item in widgets
+                  if item.kind == "label" and item is not window._palette_page_label]
         self.assertEqual(labels, [window.words["input_palette"]] +
                          [window.words[category] for category in PALETTE_CATEGORIES])
-        buttons = [item for item in widgets if item.kind == "button"]
-        palette_buttons = buttons[:-2]
+        palette_buttons = [item for item in widgets if item.kind == "button"
+                           and item.placement and "row" in item.placement]
         expected = [item for category in PALETTE_CATEGORIES
                     for item in CANDIDATES if item.category == category]
         self.assertEqual([item.options["text"] for item in palette_buttons],
@@ -251,13 +262,15 @@ class TableWindowTests(unittest.TestCase):
             category_buttons = [button for button, item in zip(palette_buttons, expected)
                                 if item.category == category]
             self.assertEqual({button.placement["column"] for button in category_buttons
-                              if button.placement["columnspan"] == 1}, {0, 1})
+                              if button.placement["columnspan"] == 1},
+                             set() if category in ("gyro", "notation") else {0, 1})
         self.assertEqual({category: 1 + max(button.placement["row"]
                                             for button, item in zip(palette_buttons, expected)
                                             if item.category == category)
                           for category in PALETTE_CATEGORIES},
                          {"buttons": 8, "left_stick": 2,
-                          "right_stick": 2, "commands": 4})
+                          "right_stick": 2, "commands": 4,
+                          "cappy": 3, "accel": 1, "gyro": 2, "notation": 6})
         self.assertEqual(icon_button.options["image"], icon)
         self.assertEqual(icon_button.options["compound"], "left")
         self.assertEqual(icon_button.options["text"], "A")
@@ -279,6 +292,34 @@ class TableWindowTests(unittest.TestCase):
         self.assertIs(inserted[0], expected[-1])
         self.assertEqual(window.palette_canvas.kind, "canvas")
         self.assertTrue(any(item.kind == "scrollbar" for item in widgets))
+        self.assertEqual(window._palette_page, 1)
+        self.assertEqual(window._palette_page_label.options["text"], "1 / 2")
+        self.assertEqual(window._palette_previous.options["state"], "disabled")
+        self.assertEqual(window._palette_next.options["state"], "normal")
+        self.assertIsNotNone(window._palette_pages[0][0].placement)
+        self.assertIsNone(window._palette_pages[1][0].placement)
+        for (page, _canvas), categories in zip(window._palette_pages, PALETTE_PAGES):
+            page_labels = [item.options["text"] for item in widgets if item.kind == "label"
+                           and item.master.master is _canvas]
+            self.assertEqual(page_labels, [window.words[category] for category in categories])
+        window._palette_next.options["command"]()
+        self.assertEqual(window._palette_page, 2)
+        self.assertEqual(window._palette_page_label.options["text"], "2 / 2")
+        self.assertEqual(window._palette_previous.options["state"], "normal")
+        self.assertEqual(window._palette_next.options["state"], "disabled")
+        self.assertIsNone(window._palette_pages[0][0].placement)
+        self.assertIsNotNone(window._palette_pages[1][0].placement)
+        window._show_palette_page(3)
+        self.assertEqual(window._palette_page, 2)
+        window._palette_previous.options["command"]()
+        self.assertEqual(window._palette_page, 1)
+        window._show_palette_page(0)
+        self.assertEqual(window._palette_page, 1)
+        canvas = window.palette_canvas
+        canvas.bindings["<MouseWheel>"](SimpleNamespace(delta=-120))
+        canvas.bindings["<Button-4>"](SimpleNamespace(num=4))
+        canvas.bindings["<Button-5>"](SimpleNamespace(num=5))
+        self.assertEqual(canvas.scrolls, [(3, "units"), (-3, "units"), (3, "units")])
 
     def test_raw_highlight_reads_visible_lines_only_without_modifying_document(self):
         class HighlightText:
