@@ -1,7 +1,6 @@
 """Private, per-document recovery snapshots; never write original script files."""
 
 import copy
-import hashlib
 import json
 import logging
 import math
@@ -15,14 +14,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from .file_state import disk_status, text_hash
+
 
 VERSION = 1
 DEBOUNCE_MS = 1000
 _ID = re.compile(r"[0-9a-f]{32}\Z")
-
-
-def text_hash(text):
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -53,13 +50,8 @@ class RecoverySnapshot:
     def external_status(self):
         if self.original_path is None:
             return None
-        try:
-            actual = hashlib.sha256(Path(self.original_path).read_bytes()).hexdigest()
-        except FileNotFoundError:
-            return "missing"
-        except OSError:
-            return "unreadable"
-        return None if actual == self.saved_text_hash else "changed"
+        status = disk_status(self.original_path, self.saved_text_hash)
+        return None if status == "unchanged" else status
 
     def restore(self, document):
         document.restore(self.original_path, self.text, self.saved_raw)

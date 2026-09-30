@@ -8,6 +8,8 @@ from collections import Counter
 from difflib import SequenceMatcher
 from pathlib import Path
 
+from .file_state import ExternalFileConflict, disk_status, same_path, text_hash
+
 
 _NEWLINES = re.compile(r"\r\n|\r|\n")
 _SUFFIXES = {".tsv", ".txt"}
@@ -64,6 +66,19 @@ class EditorDocument:
         self._endings = _NEWLINES.findall(raw)
         self._recovered_unsaved = True
 
+    def external_status(self, path=None):
+        # A different Save As target has no baseline; its dialog handles overwrite.
+        if self.path is None:
+            return "unchanged"
+        try:
+            target = self._path(path if path is not None else self.path)
+            if not same_path(target, self.path):
+                return "unchanged"
+        except (OSError, RuntimeError):
+            # If path identity cannot be resolved, do not bypass the save guard.
+            return "unreadable"
+        return disk_status(self.path, text_hash(self._saved_raw))
+
     def _serialize(self):
         # Normally _raw_text is the saved text; after recovery it anchors snapshot endings.
         serialized_text = _NEWLINES.sub("\n", self._raw_text)
@@ -90,10 +105,16 @@ class EditorDocument:
             for i, line in enumerate(lines[:-1])
         ) + lines[-1]
 
-    def save(self, path=None):
+    def save(self, path=None, *, overwrite_external=False):
         if path is None and self.path is None:
             raise ValueError("Choose a file name before saving")
         target = self._path(path if path is not None else self.path)
+        status = self.external_status(target)
+        if status == "unreadable" or (status != "unchanged" and not overwrite_external):
+            raise ExternalFileConflict(target, status)
+        # This content check is not an OS lock: another writer can still race with
+        # the atomic replacement below. Explicit consent permits changed/missing
+        # targets, never an unreadable target.
         raw = self._serialize()
         # Write beside the target so replacement does not expose a partial file.
         descriptor, temporary = tempfile.mkstemp(prefix=".tas-editor-", dir=target.parent)

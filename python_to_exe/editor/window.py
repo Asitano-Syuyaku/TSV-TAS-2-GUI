@@ -8,6 +8,7 @@ from queue import Empty, SimpleQueue
 from tkinter import filedialog, font as tkfont, messagebox
 
 from .document import EditorDocument
+from .file_state import ExternalFileConflict
 from .recovery import DEBOUNCE_MS, RecoverySnapshot, RecoveryStore
 from .resources import palette_icon_path
 from .snapshot import ScriptSnapshot
@@ -35,6 +36,11 @@ LABELS = {
         "recent_files": "Recent Files", "clear_recent": "Clear Recent Files",
         "no_recent": "(Empty)", "missing_recent": "File no longer exists:",
         "close": "Close", "unsaved": "Save changes before continuing?",
+        "external_title": "File changed outside the Editor",
+        "external_changed": "This file has changed outside the Editor.\nOverwrite it with the current Editor contents?",
+        "external_missing": "The original file has been deleted.\nRecreate it at the same location?",
+        "external_unreadable": "Cannot check the current file contents. The file was not saved.\nCheck permissions or use Save As to a different path.",
+        "external_retry": "The file changed after the save check. It was not saved.\nTry Save again to confirm the current disk state.",
         "error": "Editor error", "edit": "Edit", "undo": "Undo", "redo": "Redo",
         "cut": "Cut", "copy": "Copy", "paste": "Paste", "select_all": "Select All",
         "search": "Search", "find": "Find...", "replace": "Replace...",
@@ -79,6 +85,11 @@ LABELS = {
         "recent_files": "最近使ったファイル", "clear_recent": "履歴を消去",
         "no_recent": "（履歴なし）", "missing_recent": "ファイルが見つかりません:",
         "close": "閉じる", "unsaved": "変更を保存してから続行しますか？",
+        "external_title": "Editor外のファイル変更",
+        "external_changed": "このファイルはEditor外で変更されています。\n現在のEditor内容で上書きしますか？",
+        "external_missing": "元ファイルが削除されています。\n同じ場所へ再作成しますか？",
+        "external_unreadable": "現在のファイル内容を確認できないため、保存しませんでした。\nアクセス権を確認するか、別pathへ名前を付けて保存してください。",
+        "external_retry": "保存確認後にファイルが変更されたため、保存しませんでした。\n再度保存してdiskの状態を確認してください。",
         "error": "エディターのエラー", "edit": "編集", "undo": "元に戻す",
         "redo": "やり直す", "cut": "切り取り", "copy": "コピー",
         "paste": "貼り付け", "select_all": "すべて選択", "search": "検索",
@@ -1089,10 +1100,11 @@ class EditorWindow(tk.Toplevel):
             return False
         if self.can_convert is not None and not self.can_convert():
             return False
-        if not self._commit_table_edit():
-            return False
         self._sync_text()
-        if (self.document.path is None or self.document.modified) and not self.save():
+        # Table may contain a pending Entry value not yet in document.text.
+        if (self.document.path is None or self.document.modified or
+                getattr(self, "_view", "raw") == "table" or
+                self.document.external_status() != "unchanged") and not self.save():
             return False
         self._record_recent(self.document.path)
         return bool(self.on_convert(self.document.path, send_ftp=send_ftp))
@@ -1259,13 +1271,27 @@ class EditorWindow(tk.Toplevel):
         return self._save_to(path) if path else False
 
     def _save_to(self, path):
-        if not self._commit_table_edit():
-            return False
-        self._sync_text()
         try:
-            saved_path = self.document.save(path)
+            status = self.document.external_status(path)
+            overwrite_external = status in ("changed", "missing")
+            if status == "unreadable":
+                raise ExternalFileConflict(path, status)
+            if overwrite_external and not messagebox.askyesno(
+                    self.words["external_title"], self.words["external_" + status] + "\n\n" + str(path),
+                    parent=self, icon="warning", default="no"):
+                return False
+            # Refusing a conflict does not even commit a pending cell or touch Undo.
+            if not self._commit_table_edit():
+                return False
+            self._sync_text()
+            saved_path = self.document.save(path, overwrite_external=overwrite_external)
         except (OSError, UnicodeError, ValueError) as error:
-            messagebox.showerror(self.words["error"], str(error), parent=self)
+            if isinstance(error, ExternalFileConflict):
+                key = "external_unreadable" if error.status == "unreadable" else "external_retry"
+                detail = self.words[key] + "\n\n" + str(error.path)
+            else:
+                detail = str(error)
+            messagebox.showerror(self.words["error"], detail, parent=self)
             return False
         self._discard_recovery()
         self._update_title()
