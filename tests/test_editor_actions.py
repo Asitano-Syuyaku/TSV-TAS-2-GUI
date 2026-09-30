@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from python_to_exe.app_settings import AppSettings
 from python_to_exe.converter_gui import TASConverterApp
 from python_to_exe.editor.validation import analyze_script
 from python_to_exe.editor.window import EditorWindow
@@ -21,8 +22,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class EditorActionTkTests(unittest.TestCase):
     def make_app(self, folder, language="en"):
+        settings_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(settings_dir.cleanup)
         try:
-            app = TASConverterApp(language)
+            app = TASConverterApp(language, settings=AppSettings(Path(settings_dir.name) / "settings.json"))
         except tk.TclError as error:
             self.skipTest(f"graphical Tk display unavailable: {error}")
         self.addCleanup(app.destroy)

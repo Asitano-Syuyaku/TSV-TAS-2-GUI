@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from python_to_exe.app_settings import AppSettings
 from python_to_exe.converter_gui import TASConverterApp
 from python_to_exe.editor.debug_csv import DebugFrames
 from python_to_exe.editor.frame_inspector import HEADER_HEIGHT, ROW_HEIGHT
@@ -17,9 +18,14 @@ from python_to_exe.editor.window import EditorWindow
 
 
 class RealTkSmokeTests(unittest.TestCase):
+    def setUp(self):
+        settings_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(settings_dir.cleanup)
+        self.app_settings = AppSettings(Path(settings_dir.name) / "settings.json")
+
     def test_multirow_frame_position_uses_selection_not_active_row(self):
         try:
-            app = TASConverterApp("en")
+            app = TASConverterApp("en", settings=self.app_settings)
         except tk.TclError as error:
             self.skipTest(f"graphical Tk display unavailable: {error}")
         self.addCleanup(app.destroy)
@@ -59,7 +65,7 @@ class RealTkSmokeTests(unittest.TestCase):
 
     def test_selected_line_frame_position_refresh_and_stale_result(self):
         try:
-            app = TASConverterApp("en")
+            app = TASConverterApp("en", settings=self.app_settings)
         except tk.TclError as error:
             self.skipTest(f"graphical Tk display unavailable: {error}")
         self.addCleanup(app.destroy)
@@ -178,7 +184,7 @@ class RealTkSmokeTests(unittest.TestCase):
 
     def test_analyze_frames_inspector_and_problems(self):
         try:
-            app = TASConverterApp("en")
+            app = TASConverterApp("en", settings=self.app_settings)
         except tk.TclError as error:
             self.skipTest(f"graphical Tk display unavailable: {error}")
         self.addCleanup(app.destroy)
@@ -268,7 +274,7 @@ class RealTkSmokeTests(unittest.TestCase):
 
     def test_japanese_converter_opens_same_editor_controls(self):
         try:
-            app = TASConverterApp("ja")
+            app = TASConverterApp("ja", settings=self.app_settings)
         except tk.TclError as error:
             self.skipTest(f"graphical Tk display unavailable: {error}")
         self.addCleanup(app.destroy)
@@ -284,7 +290,7 @@ class RealTkSmokeTests(unittest.TestCase):
 
     def test_editor_validation_and_error_jump(self):
         try:
-            app = TASConverterApp("en")
+            app = TASConverterApp("en", settings=self.app_settings)
         except tk.TclError as error:
             self.skipTest(f"graphical Tk display unavailable: {error}")
         self.addCleanup(app.destroy)

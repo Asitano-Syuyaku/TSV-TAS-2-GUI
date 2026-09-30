@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from python_to_exe.app_settings import AppSettings
 from python_to_exe.converter_gui import TASConverterApp
 from python_to_exe.editor.line_positions import analyze_positions
 from python_to_exe.editor.snapshot import ScriptSnapshot, script_workspace
@@ -124,8 +125,10 @@ class SnapshotTests(unittest.TestCase):
 
 class SnapshotTkTests(unittest.TestCase):
     def app_and_editor(self, language="en", path=None):
+        settings_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(settings_dir.cleanup)
         try:
-            app = TASConverterApp(language)
+            app = TASConverterApp(language, settings=AppSettings(Path(settings_dir.name) / "settings.json"))
         except tk.TclError as error:
             self.skipTest(f"graphical Tk display unavailable: {error}")
         self.addCleanup(app.destroy)

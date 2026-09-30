@@ -2,6 +2,7 @@
 
 import threading
 import tkinter as tk
+from pathlib import Path
 import traceback
 from queue import Empty, SimpleQueue
 from tkinter import filedialog, font as tkfont, messagebox
@@ -12,6 +13,11 @@ from .snapshot import ScriptSnapshot
 from .text_ops import (file_kind, find_next as next_match, find_previous as previous_match,
                        line_column, replace_all as replace_every, replace_current as replace_match)
 from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
+
+if __package__ == "editor":
+    from app_settings import AppSettings
+else:
+    from ..app_settings import AppSettings
 
 
 HIGHLIGHT_COLORS = {"comment": "#53805a", "command": "#8741a8",
@@ -25,6 +31,8 @@ LABELS = {
         "new": "New", "open": "Open...", "save": "Save", "save_as": "Save As...",
         "save_convert": "Save & Convert",
         "save_convert_send": "Save, Convert & Send",
+        "recent_files": "Recent Files", "clear_recent": "Clear Recent Files",
+        "no_recent": "(Empty)", "missing_recent": "File no longer exists:",
         "close": "Close", "unsaved": "Save changes before continuing?",
         "error": "Editor error", "edit": "Edit", "undo": "Undo", "redo": "Redo",
         "cut": "Cut", "copy": "Copy", "paste": "Paste", "select_all": "Select All",
@@ -67,6 +75,8 @@ LABELS = {
         "new": "新規", "open": "開く...", "save": "保存", "save_as": "名前を付けて保存...",
         "save_convert": "保存して変換",
         "save_convert_send": "保存・変換してFTP送信",
+        "recent_files": "最近使ったファイル", "clear_recent": "履歴を消去",
+        "no_recent": "（履歴なし）", "missing_recent": "ファイルが見つかりません:",
         "close": "閉じる", "unsaved": "変更を保存してから続行しますか？",
         "error": "エディターのエラー", "edit": "編集", "undo": "元に戻す",
         "redo": "やり直す", "cut": "切り取り", "copy": "コピー",
@@ -111,9 +121,14 @@ LABELS = {
 class EditorWindow(tk.Toplevel):
     def __init__(self, master, language="en", initial_path=None, on_saved=None,
                  on_convert=None, can_convert=None, on_validate=None, can_validate=None,
-                 on_analyze=None, can_analyze=None):
+                 on_analyze=None, can_analyze=None, settings=None):
         super().__init__(master)
         self.words = LABELS[language]
+        self.settings = settings if settings is not None else getattr(master, "settings", None)
+        if self.settings is None:
+            self.settings = getattr(master, "_tas_app_settings", None)
+            if self.settings is None:
+                self.settings = master._tas_app_settings = AppSettings()
         self.document = EditorDocument()
         self.on_saved = on_saved
         self.on_convert = on_convert
@@ -161,6 +176,11 @@ class EditorWindow(tk.Toplevel):
             ("close", self.close_editor, ""),
         ):
             file_menu.add_command(label=self.words[key], command=command, accelerator=shortcut)
+            if key == "open":
+                self._recent_menu = tk.Menu(file_menu, tearoff=False,
+                                            postcommand=self._refresh_recent_menu)
+                file_menu.add_cascade(label=self.words["recent_files"], menu=self._recent_menu)
+                self._refresh_recent_menu()
         menu.add_cascade(label=self.words["file"], menu=file_menu)
         edit_menu = tk.Menu(menu, tearoff=False)
         for key, command, shortcut in (
@@ -951,6 +971,42 @@ class EditorWindow(tk.Toplevel):
         self._show_document()
         return True
 
+    def _refresh_recent_menu(self):
+        if not hasattr(self, "_recent_menu"):
+            return
+        self._recent_menu.delete(0, "end")
+        recent = self.settings.recent_files
+        for index, path in enumerate(recent, start=1):
+            self._recent_menu.add_command(label=f"{index} {path}",
+                                          command=lambda selected=path: self._open_recent(selected))
+        if not recent:
+            self._recent_menu.add_command(label=self.words["no_recent"], state="disabled")
+        self._recent_menu.add_separator()
+        self._recent_menu.add_command(label=self.words["clear_recent"], command=self._clear_recent)
+
+    def _record_recent(self, path):
+        if getattr(self, "settings", None) is not None:
+            self.settings.add_recent(path)
+            self._refresh_recent_menu()
+
+    def _clear_recent(self):
+        self.settings.clear_recent()
+        self._refresh_recent_menu()
+
+    def _open_recent(self, path):
+        try:
+            exists = Path(path).is_file()
+        except OSError as error:
+            messagebox.showerror(self.words["error"], str(error), parent=self)
+            return False
+        if not exists:
+            self.settings.remove_recent(path)
+            self._refresh_recent_menu()
+            messagebox.showerror(self.words["error"], self.words["missing_recent"] + "\n" + path,
+                                 parent=self)
+            return False
+        return self.open_file(path)
+
     def open_file(self, path=None):
         if path is None:
             path = filedialog.askopenfilename(parent=self, filetypes=[("TSV/TXT", "*.tsv *.txt")])
@@ -964,6 +1020,7 @@ class EditorWindow(tk.Toplevel):
             messagebox.showerror(self.words["error"], str(error), parent=self)
             return False
         self._show_document()
+        self._record_recent(self.document.path)
         return True
 
     def save(self):
@@ -982,6 +1039,7 @@ class EditorWindow(tk.Toplevel):
         self._sync_text()
         if (self.document.path is None or self.document.modified) and not self.save():
             return False
+        self._record_recent(self.document.path)
         return bool(self.on_convert(self.document.path, send_ftp=send_ftp))
 
     def save_convert_and_send(self):
@@ -1161,6 +1219,7 @@ class EditorWindow(tk.Toplevel):
         if getattr(self, "_view", "raw") == "table" and saved_path.suffix.lower() != ".tsv":
             self.show_raw()
         self._update_view_button()
+        self._record_recent(saved_path)
         if self.on_saved:
             self.on_saved(saved_path)
         return True

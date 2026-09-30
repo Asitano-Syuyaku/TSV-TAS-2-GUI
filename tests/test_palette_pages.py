@@ -5,6 +5,7 @@ import tkinter as tk
 import unittest
 from pathlib import Path
 
+from python_to_exe.app_settings import AppSettings
 from python_to_exe.editor.tsv_syntax import CANDIDATES, PALETTE_CATEGORIES, PALETTE_PAGES
 from python_to_exe.editor.window import EditorWindow
 
@@ -38,11 +39,14 @@ class PalettePageDefinitionTests(unittest.TestCase):
 
 class PalettePageTkTests(unittest.TestCase):
     def make_root(self):
+        settings_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(settings_dir.cleanup)
         try:
             root = tk.Tk()
         except tk.TclError as error:
             self.skipTest(f"graphical Tk display unavailable: {error}")
         root.withdraw()
+        root._tas_app_settings = AppSettings(Path(settings_dir.name) / "settings.json")
         self.addCleanup(root.destroy)
         return root
 

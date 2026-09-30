@@ -10,8 +10,10 @@ from queue import Empty, SimpleQueue
 from tkinter import filedialog, messagebox
 
 if __package__:
+    from .app_settings import AppSettings
     from .converter_logic import build_commands, load_ftp_config, save_ftp_config, scripts_dir
 else:
+    from app_settings import AppSettings
     from converter_logic import build_commands, load_ftp_config, save_ftp_config, scripts_dir
 
 
@@ -66,10 +68,11 @@ ERROR_JA = {
 
 
 class TASConverterApp(tk.Tk):
-    def __init__(self, language="en"):
+    def __init__(self, language="en", settings=None):
         super().__init__()
         self.language = language
         self.words = TEXT[language]
+        self.settings = settings if settings is not None else AppSettings()
         self.title(self.words["title"])
         self.resizable(False, False)
         self.base_dir = scripts_dir()
@@ -96,20 +99,21 @@ class TASConverterApp(tk.Tk):
         self.outname_entry.grid(row=2, column=1, columnspan=2, padx=5, pady=5)
 
         tk.Label(self, text=self.words["format"]).grid(row=3, column=0, padx=5, pady=5, sticky="e")
-        self.format_var = tk.StringVar(value="binary")
+        self.format_var = tk.StringVar(value=self.settings.get("output_format"))
         format_frame = tk.Frame(self)
         format_frame.grid(row=3, column=1, columnspan=2, sticky="w")
         for key in ("binary", "stas", "nxtas"):
             tk.Radiobutton(format_frame, text=self.words[key], value=key,
-                           variable=self.format_var, command=self.toggle_skip).pack(side="left")
+                           variable=self.format_var, command=self._format_changed).pack(side="left")
 
         self.skip_var = tk.BooleanVar()
         self.skip_check = tk.Checkbutton(self, text=self.words["skip"], variable=self.skip_var)
         self.skip_check.grid(row=4, column=0, columnspan=3, padx=5, sticky="w")
         self.toggle_skip()
 
-        self.debug_var = tk.BooleanVar()
-        tk.Checkbutton(self, text=self.words["debug"], variable=self.debug_var).grid(
+        self.debug_var = tk.BooleanVar(value=self.settings.get("debug_enabled"))
+        tk.Checkbutton(self, text=self.words["debug"], variable=self.debug_var,
+                       command=self._save_preferences).grid(
             row=5, column=0, columnspan=3, padx=5, sticky="w")
 
         self.ftp_var = tk.BooleanVar()
@@ -132,6 +136,21 @@ class TASConverterApp(tk.Tk):
         self.convert_btn.grid(row=8, column=1, padx=5, pady=10)
         self.log_text = tk.Text(self, height=10, width=80, state="disabled")
         self.log_text.grid(row=9, column=0, columnspan=3, padx=5, pady=5)
+        self.protocol("WM_DELETE_WINDOW", self._close_app)
+
+    def _save_preferences(self):
+        self.settings.update(output_format=self.format_var.get(), debug_enabled=self.debug_var.get())
+
+    def _format_changed(self):
+        self.toggle_skip()
+        self._save_preferences()
+
+    def _close_app(self):
+        self._save_preferences()
+        directory = self.output_entry.get().strip()
+        if directory and os.path.isdir(directory):
+            self.settings.update(last_output_directory=os.path.abspath(directory))
+        self.destroy()
 
     def _ftp_field(self, key, row, column, **kwargs):
         tk.Label(self.ftp_frame, text=self.words[key]).grid(row=row, column=column, padx=5, pady=2, sticky="e")
@@ -140,9 +159,11 @@ class TASConverterApp(tk.Tk):
         return entry
 
     def browse_input(self):
-        path = filedialog.askopenfilename(filetypes=[("Script files", "*.txt *.tsv")])
+        path = filedialog.askopenfilename(filetypes=[("Script files", "*.txt *.tsv")],
+                                          **self.settings.dialog_options("last_input_directory"))
         if path:
             self._set_input_path(path)
+            self.settings.add_recent(path)
 
     def _set_input_path(self, path, preserve_output_name=False):
         self.input_entry.delete(0, tk.END)
@@ -156,6 +177,7 @@ class TASConverterApp(tk.Tk):
 
     def _editor_saved(self, path):
         self._set_input_path(path, preserve_output_name=True)
+        self.settings.add_recent(path)
 
     def _convert_editor_file(self, path, send_ftp=False):
         if self._busy():
@@ -245,10 +267,11 @@ class TASConverterApp(tk.Tk):
         return True
 
     def browse_output(self):
-        path = filedialog.askdirectory()
+        path = filedialog.askdirectory(**self.settings.dialog_options("last_output_directory"))
         if path:
             self.output_entry.delete(0, tk.END)
             self.output_entry.insert(0, path)
+            self.settings.update(last_output_directory=os.path.abspath(path))
 
     def toggle_skip(self):
         enabled = self.format_var.get() == "nxtas"

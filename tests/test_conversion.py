@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python_to_exe"))
 
 from converter_logic import build_commands, load_ftp_config, python_command, save_ftp_config, scripts_dir
+from app_settings import AppSettings
 
 
 class ConversionTests(unittest.TestCase):
@@ -166,6 +167,9 @@ class FakeWidget:
     def resizable(self, *args):
         pass
 
+    def protocol(self, *args):
+        pass
+
 
 class FakeVar:
     def __init__(self, value=False):
@@ -180,6 +184,8 @@ class FakeVar:
 
 class GuiStartupTests(unittest.TestCase):
     def test_both_launchers_share_behavior_and_start(self):
+        settings_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(settings_dir.cleanup)
         fake_tk = types.ModuleType("tkinter")
         fake_tk.Tk = fake_tk.Label = fake_tk.Entry = fake_tk.Button = FakeWidget
         fake_tk.Frame = fake_tk.Radiobutton = fake_tk.Checkbutton = fake_tk.Text = FakeWidget
@@ -194,8 +200,8 @@ class GuiStartupTests(unittest.TestCase):
             english = importlib.import_module("main_en")
             japanese = importlib.import_module("main_jp")
             self.assertIs(english.TASConverterApp, japanese.TASConverterApp)
-            en_app = english.TASConverterApp("en")
-            ja_app = japanese.TASConverterApp("ja")
+            en_app = english.TASConverterApp("en", settings=AppSettings(Path(settings_dir.name) / "en.json"))
+            ja_app = japanese.TASConverterApp("ja", settings=AppSettings(Path(settings_dir.name) / "ja.json"))
             self.assertEqual(en_app.format_var.get(), ja_app.format_var.get())
             self.assertEqual(en_app.skip_check.state, "disabled")
             en_app.format_var.set("nxtas")
@@ -299,7 +305,9 @@ class EditorConverterFlowTests(unittest.TestCase):
         self.gui = importlib.import_module("converter_gui")
 
     def app(self, language):
-        app = self.gui.TASConverterApp(language)
+        settings_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(settings_dir.cleanup)
+        app = self.gui.TASConverterApp(language, settings=AppSettings(Path(settings_dir.name) / "settings.json"))
         app.after = lambda delay, callback: None
         app.log = lambda message: None
         return app

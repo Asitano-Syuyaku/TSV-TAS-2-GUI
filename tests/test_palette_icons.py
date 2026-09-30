@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from python_to_exe.app_settings import AppSettings
 from python_to_exe.editor.resources import palette_icon_path
 from python_to_exe.editor.tsv_syntax import CANDIDATES, insert_template
 from python_to_exe.editor.window import EditorWindow
@@ -69,11 +70,14 @@ class PaletteAssetTests(unittest.TestCase):
 
 class PaletteTkTests(unittest.TestCase):
     def make_root(self):
+        settings_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(settings_dir.cleanup)
         try:
             root = tk.Tk()
         except tk.TclError as error:
             self.skipTest(f"graphical Tk display unavailable: {error}")
         root.withdraw()
+        root._tas_app_settings = AppSettings(Path(settings_dir.name) / "settings.json")
         self.addCleanup(root.destroy)
         return root
 
