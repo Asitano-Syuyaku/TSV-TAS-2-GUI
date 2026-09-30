@@ -7,6 +7,7 @@ from ..window import EditorWindow
 from . import theme
 from .effects import CellEffects
 from .motion import Intensity
+from .widgets import DopagakiStickPreview, FrameValues
 
 
 class DopagakiTableGrid(TableGrid):
@@ -17,8 +18,8 @@ class DopagakiTableGrid(TableGrid):
         self.effects = CellEffects(self, self.canvas)
         self.bind("<Unmap>", self._pause_effects)
 
-    def _visible_active_box(self):
-        x1, y1, x2, y2 = self._cell_box(*self.selected)
+    def _visible_active_box(self, cell=None):
+        x1, y1, x2, y2 = self._cell_box(*(self.selected if cell is None else cell))
         x0, y0 = self.canvas.canvasx(0), self.canvas.canvasy(0)
         x1 = max(x1, x0 + self.gutter_width) + 2
         y1 = max(y1, y0 + self.header_height) + 2
@@ -33,6 +34,24 @@ class DopagakiTableGrid(TableGrid):
             # The normal draw/selection path remains authoritative. Only observe
             # its result, including clipping after scroll/column resize.
             effects.sync_cell(self.selected, self._visible_active_box() if self.winfo_ismapped() else None)
+            commit = effects.effect_for("commit")
+            if commit is not None:
+                commit.relocate(self._visible_active_box(commit.cell) if self.winfo_ismapped() else None)
+
+    def _apply_editor_value(self):
+        cell = self.selected
+        previous = self.model.cell(*cell)
+        result = super()._apply_editor_value()
+        effects = getattr(self, "effects", None)
+        if result and self.model.cell(*cell) != previous and effects is not None and self.winfo_ismapped():
+            effects.commit(cell, self._visible_active_box(cell))
+        return result
+
+    def _bind_entry_navigation(self, editor):
+        super()._bind_entry_navigation(editor)
+        # X11/WSLg reports Shift+Tab as ISO_Left_Tab. Reuse the registered
+        # Shift+Tab script so both key names reach the same commit/move path.
+        editor.bind("<ISO_Left_Tab>", editor.bind("<Shift-Tab>"))
 
     def _pause_effects(self, event):
         if event.widget is self and self.effects is not None:
@@ -64,12 +83,19 @@ class DopagakiTableGrid(TableGrid):
 class DopagakiEditorWindow(EditorWindow):
     ui_theme = theme
     table_grid_class = DopagakiTableGrid
+    stick_preview_class = DopagakiStickPreview
 
     def __init__(self, master, language="en", *args, **kwargs):
         super().__init__(master, language, *args, **kwargs)
         self._motion_intensity = tk.StringVar(
             self, value=self.settings.get("dopagaki_intensity", "MID"))
         self.table_grid.effects.motion.set_intensity(self._motion_intensity.get())
+        self.stick_preview.attach_effects(self.table_grid.effects)
+        previous = self.frame_status
+        self.frame_status = FrameValues(previous.master, self._theme_fonts,
+                                        self.table_grid.effects, previous.cget("text"))
+        self.frame_status.pack(before=previous, **previous.pack_info())
+        previous.destroy()
         menu = self.nametowidget(self.cget("menu"))
         motion_menu = tk.Menu(menu, tearoff=False, background=theme.COLORS["panel_background"],
                               foreground=theme.COLORS["text"],
@@ -81,6 +107,37 @@ class DopagakiEditorWindow(EditorWindow):
                                        command=self._intensity_changed)
         label = "演出の強さ" if language == "ja" else "Motion intensity"
         menu.add_cascade(label="Dopagaki: " + label, menu=motion_menu)
+        self.bind("<Unmap>", self._pause_micro)
+
+    def _pause_micro(self, event):
+        if event.widget is self and self.table_grid.effects is not None:
+            self.table_grid.effects.motion.clear()
+
+    def _palette_button(self, parent, candidate):
+        button = super()._palette_button(parent, candidate)
+        original = button.cget("command")
+
+        def insert():
+            # Invoke the exact original insertion callback, including template
+            # text/caret/placeholder selection, before adding presentation only.
+            button.tk.call(original)
+            effects = self.table_grid.effects
+            if effects is not None:
+                effects.pulse_widget("palette", button, "palette")
+                if candidate.category in ("left_stick", "right_stick"):
+                    self.stick_preview.pulse(0 if candidate.category == "left_stick" else 1)
+
+        button.configure(command=insert)
+        return button
+
+    def _show_palette_page(self, number, *, remember=True):
+        previous = getattr(self, "_palette_page", None)
+        result = super()._show_palette_page(number, remember=remember)
+        effects = self.table_grid.effects
+        if previous is not None and previous != self._palette_page and effects is not None:
+            effects.remove("palette")
+            effects.pulse_widget("page", self._palette_page_label, "page", ink=True)
+        return result
 
     def _intensity_changed(self):
         level = Intensity(self._motion_intensity.get())

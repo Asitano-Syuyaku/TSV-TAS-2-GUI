@@ -34,6 +34,22 @@ TABLE_COLORS = {
     "active_cell": "#e8f8fc",
 }
 PULSE_COLORS = (TABLE_COLORS["active_selection_outline"], "#34d6eb")
+COMMIT_COLORS = (TABLE_COLORS["active_selection_outline"], "#df35a0")
+MICRO_COLORS = {"surface": "#28657c", "ink": "#ffdf6a", "ring": "#ff62bf"}
+# LOW / MID / FULL, in seconds. Geometry/fonts stay fixed during pulses.
+MICRO_DURATIONS = {"cell": (0.150, 0.180, 0.200),
+                   "commit": (0.150, 0.180, 0.210),
+                   "palette": (0.120, 0.160, 0.190),
+                   "stick": (0.140, 0.180, 0.210),
+                   "frame": (0.120, 0.170, 0.200),
+                   "page": (0.120, 0.160, 0.190)}
+
+
+def blend_color(first, second, amount):
+    channels = [round(int(first[index:index + 2], 16) * (1 - amount) +
+                      int(second[index:index + 2], 16) * amount)
+                for index in (1, 3, 5)]
+    return "#" + "".join(f"{value:02x}" for value in channels)
 
 # Reuse normal geometry, syntax colors, font copies, and style builders. These
 # partials bind separate dictionaries; no global style/token mutation occurs.

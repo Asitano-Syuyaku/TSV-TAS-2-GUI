@@ -146,6 +146,7 @@ LABELS = {
 class EditorWindow(tk.Toplevel):
     ui_theme = default_theme
     table_grid_class = None  # Normal grid is still imported lazily below.
+    stick_preview_class = None
 
     def __init__(self, master, language="en", initial_path=None, on_saved=None,
                  on_convert=None, can_convert=None, on_validate=None, can_validate=None,
@@ -466,7 +467,8 @@ class EditorWindow(tk.Toplevel):
                         target.itemconfigure(item, width=event.width))
             for category in categories:
                 if category == "stick_preview":
-                    self.stick_preview = StickPreview(content, fonts=fonts,
+                    preview_class = getattr(self, "stick_preview_class", None) or StickPreview
+                    self.stick_preview = preview_class(content, fonts=fonts,
                                                        title=self.words[category], ui_theme=ui_theme)
                     self.stick_preview.pack(fill="x", padx=SPACING["gap"])
                     continue
