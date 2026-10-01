@@ -65,7 +65,7 @@ class FrameValues(tk.Frame):
                 effects.remove("frame")
                 if effects.motion.intensity != Intensity.OFF:
                     effects.play_effect("frame", ValuePulses([
-                        WidgetPulse(self.value_labels[index], effects.motion.intensity.multiplier,
+                        WidgetPulse(self.value_labels[index], effects.micro_strength(),
                                     duration_for(effects.motion.intensity, "frame"), ink=True)
                         for index in changed]))
         if kwargs or cnf:
@@ -81,6 +81,9 @@ class DopagakiStickPreview(StickPreview):
     def attach_effects(self, effects):
         self._effects = weakref.ref(effects)
         self.bind("<Unmap>", self._pause_rings)
+        if effects.particles is not None:
+            for column, canvas in enumerate(self.plots):
+                effects.particles.register(f"stick{column}", canvas)
 
     def _manager(self):
         reference = getattr(self, "_effects", None)
@@ -91,17 +94,29 @@ class DopagakiStickPreview(StickPreview):
         if event.widget is self and effects is not None:
             for column in range(2):
                 effects.remove(f"stick{column}")
+                if effects.particles is not None:
+                    effects.particles.clear_surface(f"stick{column}")
 
     def _draw(self, column):
         effects = self._manager()
         ring = effects.effect_for(f"stick{column}") if effects is not None else None
         if ring is not None:
             ring.invalidate()
+        if effects is not None and effects.particles is not None:
+            effects.particles.invalidate(f"stick{column}")
         super()._draw(column)
         if ring is not None:
             ring.repaint()
+        if effects is not None and effects.particles is not None and effects.particles.particles:
+            effects.particles.render(effects._clock(), only=f"stick{column}")
 
     def pulse(self, column):
         effects = self._manager()
         if effects is not None and self.winfo_ismapped():
+            width = max(self.plots[column].winfo_width(), 160)
+            sign = -1 if column == 0 else 1
+            radius = min(width, PLOT_HEIGHT) / 2 - 10
+            effects.interaction("stick", surface=f"stick{column}",
+                                origin=(width / 2 + sign * radius * 0.70, PLOT_HEIGHT / 2 - radius * 0.65),
+                                direction=(sign, -0.45))
             effects.pulse_ring(column, self.plots[column], PLOT_HEIGHT)

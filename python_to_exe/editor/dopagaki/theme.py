@@ -43,6 +43,9 @@ MICRO_DURATIONS = {"cell": (0.150, 0.180, 0.200),
                    "stick": (0.140, 0.180, 0.210),
                    "frame": (0.120, 0.170, 0.200),
                    "page": (0.120, 0.160, 0.190)}
+PARTICLE_COLORS = {"light": ("#087caa", "#df35a0", "#8f61d8", "#bb7900"),
+                   "dark": ("#34d6eb", "#ff62bf", "#ffdf6a", "#9bef80")}
+HYPE_COLORS = ("#34d6eb", "#ff62bf", "#ffdf6a")
 
 
 def blend_color(first, second, amount):

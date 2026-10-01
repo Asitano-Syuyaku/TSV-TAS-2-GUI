@@ -1,4 +1,4 @@
-"""D1 opt-in real Tk interaction/stress check, JP/EN, temporary files only."""
+"""Opt-in representative D1/D2 real Tk workflow, JP/EN, temporary files only."""
 
 import gc
 import json
@@ -24,13 +24,17 @@ def descendants(widget):
         yield from descendants(child)
 
 
-def exercise(app, editor, capture=None):
+def exercise(app, editor, capture=None, *, cell_moves=100, commits=40,
+             palette_inserts=40, pages=20, stick_inputs=40, progress=False):
     grid, effects = editor.table_grid, editor.table_grid.effects
     errors = []
     effect_refs = []
+    peak_particles = 0
+    palette_delays = []
     app.report_callback_exception = lambda kind, value, _trace: errors.append(f"{kind.__name__}: {value}")
 
     def pump():
+        nonlocal peak_particles
         app.update()
         assert not errors, errors
         jobs = app.tk.call("after", "info")
@@ -41,6 +45,14 @@ def exercise(app, editor, capture=None):
             assert effects.motion._job in motion_jobs
             assert len(effects.motion.effect.tracks) <= 8
             effect_refs.extend(weakref.ref(effect) for effect, _start in effects.motion.effect.tracks.values())
+        pool = getattr(effects, "particles", None)
+        if pool is not None:
+            peak_particles = max(peak_particles, len(pool.particles))
+            assert len(pool.particles) <= {"OFF": 0, "LOW": 30, "MID": 90, "FULL": 180}[effects.motion.intensity.value]
+
+    def note(stage, count):
+        if progress:
+            print(json.dumps(dict(stage=stage, repetitions=count)), flush=True)
 
     def wait_for(condition):
         deadline = time.monotonic() + 8
@@ -75,7 +87,8 @@ def exercise(app, editor, capture=None):
     delays = []
 
     # Real registered keyboard bindings, including fast alternating arrows.
-    for index in range(1000):
+    note("cell", cell_moves)
+    for index in range(cell_moves):
         started = time.monotonic()
         grid.canvas.event_generate("<Right>" if index % 2 == 0 else "<Left>")
         pump()
@@ -102,9 +115,9 @@ def exercise(app, editor, capture=None):
         entry.focus_force()
         pump()
         entry.event_generate(key)
+        assert effects.effect_for("commit") is not None
         pump()
         assert grid._editor is None, (key, app.focus_get(), entry.get())
-        assert effects.effect_for("commit") is not None
         assert editor.document.modified
         assert editor.undo() and editor.document.text == original
         assert editor.redo() and editor.document.modified
@@ -123,18 +136,20 @@ def exercise(app, editor, capture=None):
     x1, y1, x2, y2 = grid._cell_box(1, 3)
     grid.canvas.event_generate("<Button-1>", x=int((x1 + x2) / 2 - grid.canvas.canvasx(0)),
                                y=int((y1 + y2) / 2 - grid.canvas.canvasy(0)))
+    assert effects.effect_for("commit") is not None
     pump()
-    assert grid.selected == (1, 3) and effects.effect_for("commit") is not None
+    assert grid.selected == (1, 3)
     assert editor.undo() and editor.document.text == original
 
-    for index in range(300):
+    note("commit", commits)
+    for index in range(commits):
         grid.jump_to_row(0, 3)
         grid.begin_edit()
         grid._editor.delete(0, "end")
         grid._editor.insert(0, "zl" if index % 2 == 0 else "zr")
         assert grid.commit_edit()
-        pump()
         assert effects.effect_for("commit") is not None
+        pump()
         assert len(grid.canvas.find_withtag("dopagaki_effect")) <= 2
     assert editor.undo()  # Also ensure normal undo still operates after the burst.
     while editor.document.text != original:
@@ -154,27 +169,31 @@ def exercise(app, editor, capture=None):
     button = buttons["a"]
     image = button.cget("image")
     button_commands = tuple(button._tclCommands)
-    for _index in range(300):
+    note("palette", palette_inserts)
+    for _index in range(palette_inserts):
         grid.cancel_edit()
         grid.jump_to_row(0, 3)
+        started = time.monotonic()
         button.invoke()
+        assert effects.effect_for("palette") is not None  # Before a possibly delayed Tk update expires it.
         pump()
+        palette_delays.append((time.monotonic() - started) * 1000)
         assert grid._editor.get() == "a" and button.cget("image") == image
         assert tuple(button._tclCommands) == button_commands
-        assert effects.effect_for("palette") is not None
     grid.cancel_edit()
 
-    for index in range(300):
+    note("stick", stick_inputs)
+    for index in range(stick_inputs):
         column = index % 2
         grid.cancel_edit()
         grid.jump_to_row(0, column + 1)
         buttons["ls(angle)" if column == 0 else "rs(angle)"].invoke()
+        assert effects.effect_for(f"stick{column}") is not None
+        assert len(editor.stick_preview.plots[column].find_withtag("dopagaki_ring")) == 1
         pump()
         entry = grid._editor
         assert entry.get() == ("ls(0)" if column == 0 else "rs(0)")
         assert (entry.index("sel.first"), entry.index("sel.last")) == (3, 4)
-        assert effects.effect_for(f"stick{column}") is not None
-        assert len(editor.stick_preview.plots[column].find_withtag("dopagaki_ring")) == 1
     grid.cancel_edit()
     wait_for(lambda: editor._positions is not None and not editor._position_worker_active)
     assert editor.document.text == original
@@ -184,7 +203,8 @@ def exercise(app, editor, capture=None):
     entry = grid._editor
     entry.select_range(0, 1)
     pending = entry.get(), entry.index("sel.first"), entry.index("sel.last"), history()
-    for index in range(100):
+    note("page", pages)
+    for index in range(pages):
         editor._show_palette_page(2 if index % 2 == 0 else 1)
         pump()
         assert grid._editor is entry
@@ -196,13 +216,13 @@ def exercise(app, editor, capture=None):
     idle()
     total_color = editor.frame_status.value_labels[3].cget("foreground")
     grid.jump_to_row(1, 0)
+    assert effects.effect_for("frame") is not None
     pump()
     position = editor._positions.for_line(2)
     expected = (f"{position.start}f", f"{position.duration}f", f"{position.end}f",
                 f"{editor._positions.total_frames}f")
     assert editor.frame_status._values == expected
     assert editor.frame_status.value_labels[3].cget("foreground") == total_color
-    assert effects.effect_for("frame") is not None
 
     grid.selection.move_to(0, 0)
     grid.selection.move_to(3, 3, extend=True)
@@ -241,11 +261,11 @@ def exercise(app, editor, capture=None):
         buttons["ls(angle)"].invoke()
         grid.cancel_edit()
         editor._show_palette_page(2)
-        pump()
         if level == "OFF":
             assert not effects.motion.pending
         else:
             assert effects.motion.pending
+        pump()
         editor._show_palette_page(1)
         pump()
         if capture is not None and level in ("LOW", "FULL"):
@@ -263,24 +283,31 @@ def exercise(app, editor, capture=None):
     buttons["rs(angle)"].invoke()
     grid._move(0, 1)
     pump()
-    return dict(cell_moves=1000, commits=300, palette_inserts=300, pages=100, stick_inputs=300,
+    return dict(cell_moves=cell_moves, commits=commits, palette_inserts=palette_inserts,
+                pages=pages, stick_inputs=stick_inputs,
                 pulse_start_ms_median=round(statistics.median(delays), 2),
                 pulse_start_ms_max=round(max(delays), 2), callback_cap=1,
+                palette_ms_median=round(statistics.median(palette_delays), 2),
+                palette_ms_max=round(max(palette_delays), 2), peak_particles=peak_particles,
                 focus_and_entry="preserved", idle_callbacks=0)
 
 
-def check_session(folder, capture=None):
+def check_session(folder, capture=None, *, languages=("ja", "en"), initial_intensity=None,
+                  **exercise_options):
     source = folder / "D1 日本語.tsv"
     original = (b"1\tls(0)\trs(90)\ta\r\n2\tls(90)\trs(180)\tb\n"
                 b"3\tls(180)\trs(270)\tx\n4\tls(270)\trs(0)\ty\n") * 30
     source.write_bytes(original)
-    app = DopagakiApp("ja", settings=AppSettings(folder / "settings.json"))
+    settings = AppSettings(folder / "settings.json")
+    if initial_intensity is not None:
+        settings.update(dopagaki_intensity=initial_intensity)
+    app = DopagakiApp("ja", settings=settings)
     app.withdraw()
     reports = {}
     try:
-        for language in ("ja", "en"):
+        for language in languages:
             editor = DopagakiEditorWindow(app, language=language, initial_path=source)
-            reports[language] = exercise(app, editor, capture)
+            reports[language] = exercise(app, editor, capture, **exercise_options)
             refs = [weakref.ref(value) for value in (editor, editor.table_grid, editor.table_grid.effects)]
             controller = editor.table_grid.effects.motion
             job = controller._job

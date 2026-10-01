@@ -8,6 +8,7 @@ from . import theme
 from .effects import CellEffects
 from .motion import Intensity
 from .widgets import DopagakiStickPreview, FrameValues
+from .juice import HypeMeter
 
 
 class DopagakiTableGrid(TableGrid):
@@ -31,6 +32,9 @@ class DopagakiTableGrid(TableGrid):
         super()._draw_visible()
         effects = getattr(self, "effects", None)
         if effects is not None and self.winfo_exists():
+            if effects.particles is not None and effects.particles.particles:
+                effects.particles.sync_viewport("grid")
+                effects.particles.raise_surface("grid")
             # The normal draw/selection path remains authoritative. Only observe
             # its result, including clipping after scroll/column resize.
             effects.sync_cell(self.selected, self._visible_active_box() if self.winfo_ismapped() else None)
@@ -52,6 +56,21 @@ class DopagakiTableGrid(TableGrid):
         # X11/WSLg reports Shift+Tab as ISO_Left_Tab. Reuse the registered
         # Shift+Tab script so both key names reach the same commit/move path.
         editor.bind("<ISO_Left_Tab>", editor.bind("<Shift-Tab>"))
+
+    def _operation_feedback(self, result, previous):
+        if result and self.model.to_text() != previous and self.winfo_ismapped():
+            box = self._visible_active_box()
+            if box is not None and self.effects is not None:
+                self.effects.interaction("operation", origin=(box[2] - 5, box[1] + 5))
+        return result
+
+    def paste_text(self, data):
+        previous = self.model.to_text()
+        return self._operation_feedback(super().paste_text(data), previous)
+
+    def duplicate_row(self):
+        previous = self.model.to_text()
+        return self._operation_feedback(super().duplicate_row(), previous)
 
     def _pause_effects(self, event):
         if event.widget is self and self.effects is not None:
@@ -90,12 +109,17 @@ class DopagakiEditorWindow(EditorWindow):
         self._motion_intensity = tk.StringVar(
             self, value=self.settings.get("dopagaki_intensity", "MID"))
         self.table_grid.effects.motion.set_intensity(self._motion_intensity.get())
-        self.stick_preview.attach_effects(self.table_grid.effects)
         previous = self.frame_status
         self.frame_status = FrameValues(previous.master, self._theme_fonts,
                                         self.table_grid.effects, previous.cget("text"))
         self.frame_status.pack(before=previous, **previous.pack_info())
         previous.destroy()
+        body = self._palette_pages[0][0].master
+        self.hype_meter = HypeMeter(self.input_palette, self._theme_fonts["small"], body)
+        self.table_grid.effects.attach_juice(
+            self.hype_meter, self.input_palette,
+            left=self.table_grid.gutter_width, top=self.table_grid.header_height)
+        self.stick_preview.attach_effects(self.table_grid.effects)
         menu = self.nametowidget(self.cget("menu"))
         motion_menu = tk.Menu(menu, tearoff=False, background=theme.COLORS["panel_background"],
                               foreground=theme.COLORS["text"],
@@ -123,9 +147,15 @@ class DopagakiEditorWindow(EditorWindow):
             button.tk.call(original)
             effects = self.table_grid.effects
             if effects is not None:
-                effects.pulse_widget("palette", button, "palette")
                 if candidate.category in ("left_stick", "right_stick"):
                     self.stick_preview.pulse(0 if candidate.category == "left_stick" else 1)
+                else:
+                    box = self.table_grid._visible_active_box()
+                    # The Entry remains above Canvas items. Emit beside its
+                    # right edge so sparks are visible without covering caret.
+                    effects.interaction("palette", origin=(box[2] + 5, box[1] + 8) if box else None,
+                                        direction=(1.0, 0.25))
+                effects.pulse_widget("palette", button, "palette")
 
         button.configure(command=insert)
         return button
@@ -135,14 +165,27 @@ class DopagakiEditorWindow(EditorWindow):
         result = super()._show_palette_page(number, remember=remember)
         effects = self.table_grid.effects
         if previous is not None and previous != self._palette_page and effects is not None:
+            meter = getattr(self, "hype_meter", None)
+            origin = None
+            if meter is not None and meter.winfo_ismapped():
+                origin = (self._palette_page_label.winfo_rootx() + self._palette_page_label.winfo_width() / 2
+                          - meter.winfo_rootx(), 7)
+            effects.interaction("page", surface="meter", origin=origin, direction=(1, -0.15))
             effects.remove("palette")
             effects.pulse_widget("page", self._palette_page_label, "page", ink=True)
         return result
 
     def _intensity_changed(self):
         level = Intensity(self._motion_intensity.get())
-        self.table_grid.effects.motion.set_intensity(level)
+        self.table_grid.effects.set_intensity(level)
         self.settings.update(dopagaki_intensity=level.value)
+
+    def go_to_frame(self):
+        result = super().go_to_frame()
+        if result and self.table_grid.winfo_ismapped() and self.table_grid.effects is not None:
+            box = self.table_grid._visible_active_box()
+            self.table_grid.effects.interaction("jump", origin=(box[2] - 5, box[1] + 5) if box else None)
+        return result
 
     def destroy(self):
         grid = getattr(self, "table_grid", None)

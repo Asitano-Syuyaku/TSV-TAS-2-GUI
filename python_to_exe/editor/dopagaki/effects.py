@@ -7,6 +7,9 @@ from tkinter import TclError
 from .motion import Intensity, MotionController
 from .theme import PULSE_COLORS, COMMIT_COLORS, blend_color
 from .micro import EffectBatch, RingPulse, WidgetPulse, duration_for
+from .hype import Hype, curve
+from .juice import JuiceEffect
+from .particles import ParticleSystem, spawn_count
 
 
 class ActiveCellPulse:
@@ -60,7 +63,7 @@ class ActiveCellPulse:
 
 
 class CellEffects:
-    """D0 cell observer plus bounded D1 targets sharing its original controller."""
+    """D0/D1 targets and bounded D2 juice sharing the original controller."""
 
     def __init__(self, scheduler, canvas, intensity=Intensity.MID, *, clock=None):
         self.motion = MotionController(scheduler, intensity, clock=clock)
@@ -68,6 +71,60 @@ class CellEffects:
         self._last_cell = None
         self._clock = self.motion._clock
         self._closed = False
+        self.hype = Hype(self._clock)
+        self.particles = None  # D2 surfaces attach only in a full Dopagaki Editor.
+        self._meter = self._border = None
+        self._base_border = "#3b5272"
+        self._reward_until = self._accent_until = 0.0
+
+    def attach_juice(self, meter, border, *, left=0, top=0):
+        if self.particles is not None:
+            self.remove("juice")
+            self.particles.close()
+        self.particles = ParticleSystem()
+        self.particles.register("grid", self._canvas(), left=left, top=top,
+                                background=self._canvas().cget("background"), dark=False)
+        self.particles.register("meter", meter)
+        self._meter, self._border = weakref.ref(meter), weakref.ref(border)
+        self._base_border = border.cget("highlightbackground")
+        self.set_intensity(self.motion.intensity)
+
+    def set_intensity(self, level):
+        if Intensity(level) != self.motion.intensity:
+            self._reward_until = self._accent_until = 0.0
+        self.motion.set_intensity(level)
+        meter = self._meter() if self._meter is not None else None
+        if meter is not None:
+            meter.set_level(self.motion.intensity)
+            meter.paint(self.hype.value(), self.motion.intensity)
+
+    def interaction(self, event, *, origin=None, surface="grid", direction=(0.8, -1.0)):
+        if self._closed or self.particles is None or self.motion.intensity == Intensity.OFF:
+            return
+        now = self._clock()
+        value, rewards, admitted = self.hype.add(event, now)
+        if admitted and origin is not None:
+            self.particles.spawn(surface, origin, spawn_count(event, self.motion.intensity, value),
+                                 self.motion.intensity, value, now, direction=direction)
+        if rewards:
+            self._reward_until = now + 0.320
+        if value >= 0.65 and event != "cell" and admitted:
+            self._accent_until = now + (0.280 if value >= 0.80 else 0.180)
+        if rewards and max(rewards) >= 0.75:
+            self._accent_until = now + 0.280
+        self._refresh_juice(now)
+
+    def _refresh_juice(self, now):
+        old = self.effect_for("juice")
+        if old is not None:
+            old.handoff()
+        self.play_effect("juice", JuiceEffect(
+            self.particles, self.hype, self._meter, self._border, self._base_border,
+            self.motion.intensity, self._clock, now, self._reward_until, self._accent_until))
+
+    def micro_strength(self):
+        boost = 0.16 * curve(self.hype.value()) if self.particles is not None else 0.0
+        return min(1.0, self.motion.intensity.multiplier * (1 + boost))
 
     def effect_for(self, key):
         batch = self.motion.effect
@@ -108,12 +165,12 @@ class CellEffects:
     def pulse_widget(self, key, widget, kind, *, ink=False):
         self.remove(key)  # Restore styles before sampling the replacement's base.
         if not self._closed and self.motion.intensity != Intensity.OFF:
-            self.play_effect(key, WidgetPulse(widget, self.motion.intensity.multiplier,
+            self.play_effect(key, WidgetPulse(widget, self.micro_strength(),
                                              duration_for(self.motion.intensity, kind), ink=ink))
 
     def pulse_ring(self, column, canvas, plot_height):
         if not self._closed and self.motion.intensity != Intensity.OFF:
-            self.play_effect(f"stick{column}", RingPulse(canvas, self.motion.intensity.multiplier,
+            self.play_effect(f"stick{column}", RingPulse(canvas, self.micro_strength(),
                                                         duration_for(self.motion.intensity, "stick"), plot_height))
 
     def commit(self, cell, box):
@@ -121,7 +178,8 @@ class CellEffects:
             return
         canvas = self._canvas()
         if canvas is not None:
-            pulse = ActiveCellPulse(canvas, box, self.motion.intensity.multiplier,
+            self.interaction("commit", origin=(box[2] - 5, box[1] + 5))
+            pulse = ActiveCellPulse(canvas, box, self.micro_strength(),
                                     duration=duration_for(self.motion.intensity, "commit"),
                                     colors=COMMIT_COLORS, amplitude=3.0)
             pulse.cell = cell
@@ -133,8 +191,11 @@ class CellEffects:
         if changed:
             canvas = self._canvas() if self._canvas is not None else None
             if canvas is not None and box is not None and self.motion.intensity != Intensity.OFF:
-                self.play_effect("cell", ActiveCellPulse(canvas, box, self.motion.intensity.multiplier,
-                                                        duration=duration_for(self.motion.intensity, "cell")))
+                self.interaction("cell", origin=(box[2] - 5, box[1] + 5))
+                amplitude = 2.0 + (0.8 * curve(self.hype.value()) if self.particles is not None else 0.0)
+                self.play_effect("cell", ActiveCellPulse(canvas, box, self.micro_strength(),
+                                                        duration=duration_for(self.motion.intensity, "cell"),
+                                                        amplitude=amplitude))
             else:
                 self.remove("cell")
         elif self.effect_for("cell") is not None:
@@ -143,6 +204,11 @@ class CellEffects:
     def close(self):
         self._closed = True
         self.motion.close()
+        if self.particles is not None:
+            self.particles.close()
+        if self.hype is not None:
+            self.hype.close()
+        self.particles = self.hype = self._meter = self._border = None
         self._clock = None
         self._canvas = None
         self._last_cell = None
