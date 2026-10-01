@@ -74,6 +74,7 @@ class CellEffects:
         self.hype = Hype(self._clock)
         self.particles = None  # D2 surfaces attach only in a full Dopagaki Editor.
         self._meter = self._border = None
+        self._ritual = None
         self._base_border = "#3b5272"
         self._reward_until = self._accent_until = 0.0
 
@@ -120,7 +121,24 @@ class CellEffects:
             old.handoff()
         self.play_effect("juice", JuiceEffect(
             self.particles, self.hype, self._meter, self._border, self._base_border,
-            self.motion.intensity, self._clock, now, self._reward_until, self._accent_until))
+            self.motion.intensity, self._clock, now, self._reward_until, self._accent_until,
+            ritual=self._ritual))
+
+    def attach_ritual(self, view):
+        self._ritual = weakref.ref(view)
+
+    def refresh_visual(self):
+        """Share D2's eighth finite slot; static ritual decoration needs no tick."""
+        if self._closed or self.particles is None:
+            return
+        now = self._clock()
+        view = self._ritual() if self._ritual is not None else None
+        if self.particles.deadline > now or view is not None and view.deadline > now:
+            self._refresh_juice(now)
+        else:
+            self.remove("juice")
+            if view is not None:
+                view.repaint()
 
     def micro_strength(self):
         boost = 0.16 * curve(self.hype.value()) if self.particles is not None else 0.0
@@ -208,7 +226,7 @@ class CellEffects:
             self.particles.close()
         if self.hype is not None:
             self.hype.close()
-        self.particles = self.hype = self._meter = self._border = None
+        self.particles = self.hype = self._meter = self._border = self._ritual = None
         self._clock = None
         self._canvas = None
         self._last_cell = None

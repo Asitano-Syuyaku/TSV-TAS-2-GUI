@@ -414,8 +414,10 @@ class TASConverterApp(tk.Tk):
                 self.log("\n".join(logs))
                 logs.clear()
             if kind == "success":
+                self._conversion_result_received(True, message)
                 self._show_conversion_result(message)
             elif kind == "error":
+                self._conversion_result_received(False, message)
                 messagebox.showerror(self.words["error_title"], message)
             elif kind == "validation":
                 callback, result = message
@@ -436,6 +438,10 @@ class TASConverterApp(tk.Tk):
         if logs:
             self.log("\n".join(logs))
         self.after(50, self._drain_events)
+
+    def _conversion_result_received(self, success, payload):
+        """Optional presentation observer; normal conversion behavior is unchanged."""
+        pass
 
     def _show_conversion_result(self, outputs):
         self._last_successful_output = outputs.primary

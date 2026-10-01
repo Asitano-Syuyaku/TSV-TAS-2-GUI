@@ -1,6 +1,7 @@
 """Thin Tk adapters for the existing grid/editor; all editing logic is inherited."""
 
 import tkinter as tk
+from tkinter import filedialog, simpledialog
 
 from ..grid import TableGrid
 from ..window import EditorWindow
@@ -9,6 +10,9 @@ from .effects import CellEffects
 from .motion import Intensity
 from .widgets import DopagakiStickPreview, FrameValues
 from .juice import HypeMeter
+from .audio import AudioSettings, FFplayBackend
+from .ritual import ConvertRitual
+from .ritual_view import RitualView
 
 
 class DopagakiTableGrid(TableGrid):
@@ -41,6 +45,9 @@ class DopagakiTableGrid(TableGrid):
             commit = effects.effect_for("commit")
             if commit is not None:
                 commit.relocate(self._visible_active_box(commit.cell) if self.winfo_ismapped() else None)
+            view = effects._ritual() if effects._ritual is not None else None
+            if view is not None:
+                view.repaint()
 
     def _apply_editor_value(self):
         cell = self.selected
@@ -120,6 +127,19 @@ class DopagakiEditorWindow(EditorWindow):
             self.hype_meter, self.input_palette,
             left=self.table_grid.gutter_width, top=self.table_grid.header_height)
         self.stick_preview.attach_effects(self.table_grid.effects)
+        self._audio_settings = AudioSettings(self.settings.path.with_name("dopagaki_audio.json")
+                                             if self.settings.path is not None else None)
+        banner = tk.Canvas(self.status, highlightthickness=0, borderwidth=0, takefocus=False,
+                           background=theme.COLORS["secondary_background"])
+        self.ritual_view = RitualView(self, banner=banner,
+                                      family=self._theme_fonts["heading"].actual("family"))
+        self.table_grid.effects.attach_ritual(self.ritual_view)
+        config = self._audio_settings.config
+        self.ritual = ConvertRitual(self, self.ritual_view, config=config,
+                                    backend=FFplayBackend(config.player, volume=config.volume))
+        self._normal_convert = self.on_convert
+        if self.on_convert is not None:
+            self.on_convert = self._convert_with_ritual
         menu = self.nametowidget(self.cget("menu"))
         motion_menu = tk.Menu(menu, tearoff=False, background=theme.COLORS["panel_background"],
                               foreground=theme.COLORS["text"],
@@ -130,12 +150,75 @@ class DopagakiEditorWindow(EditorWindow):
                                        variable=self._motion_intensity,
                                        command=self._intensity_changed)
         label = "演出の強さ" if language == "ja" else "Motion intensity"
+        self._audio_enabled = tk.BooleanVar(self, value=config.enabled)
+        audio_menu = tk.Menu(menu, tearoff=False, background=theme.COLORS["panel_background"],
+                             foreground=theme.COLORS["text"])
+        jp = language == "ja"
+        audio_menu.add_checkbutton(label="音楽を有効化" if jp else "Enable audio",
+                                   variable=self._audio_enabled, command=self._audio_changed)
+        audio_menu.add_command(label="音源を選択…" if jp else "Choose local audio…",
+                               command=lambda: self._choose_audio("path"))
+        audio_menu.add_command(label="ffplayを選択…" if jp else "Choose ffplay…",
+                               command=lambda: self._choose_audio("player"))
+        audio_menu.add_command(label="同期補正（ms）…" if jp else "Sync offset (ms)…",
+                               command=self._choose_audio_offset)
+        audio_menu.add_separator()
+        audio_menu.add_command(label="F5演出を停止" if jp else "Cancel F5 effects",
+                               command=self.ritual.cancel)
+        menu.add_cascade(label="Dopagaki: F5 " + ("音楽" if jp else "audio"), menu=audio_menu)
         menu.add_cascade(label="Dopagaki: " + label, menu=motion_menu)
         self.bind("<Unmap>", self._pause_micro)
 
     def _pause_micro(self, event):
         if event.widget is self and self.table_grid.effects is not None:
+            ritual = getattr(self, "ritual", None)
+            if ritual is not None:
+                ritual.cancel()
             self.table_grid.effects.motion.clear()
+
+    def _convert_with_ritual(self, path, send_ftp=False):
+        # Existing commit/save/arguments/worker start run first. No audio path
+        # lookup, process stop/start, or ritual effect can delay the converter.
+        started = self._normal_convert(path, send_ftp=send_ftp)
+        if started and not send_ftp:
+            try:
+                self.ritual.start(self.table_grid.effects.motion.intensity)
+                observe = getattr(self.master, "observe_conversion", None)
+                if observe is not None:
+                    observe(self.ritual.receiver())
+            except Exception:
+                self.ritual.cancel()
+                import traceback
+                traceback.print_exc()
+        return started
+
+    def _audio_changed(self):
+        self._audio_settings.update(enabled=self._audio_enabled.get())
+        self.ritual.config = self._audio_settings.config
+        if not self.ritual.config.enabled:
+            self.ritual.stop_audio()
+
+    def _choose_audio(self, key):
+        selected = filedialog.askopenfilename(parent=self, filetypes=(
+            [("Audio", "*.webm *.opus *.m4a *.mp3 *.wav"), ("All files", "*")]
+            if key == "path" else [("ffplay", "ffplay ffplay.exe"), ("All files", "*")]))
+        if selected:
+            self._audio_settings.update(**{key: selected})
+            self._reset_audio_backend()
+
+    def _choose_audio_offset(self):
+        value = simpledialog.askinteger("Dopagaki", "audio_sync_offset_ms (+ = later visual)",
+                                        parent=self, initialvalue=self._audio_settings.config.sync_offset_ms,
+                                        minvalue=-2000, maxvalue=2000)
+        if value is not None:
+            self._audio_settings.update(sync_offset_ms=value)
+            self._reset_audio_backend()
+
+    def _reset_audio_backend(self):
+        self.ritual.cancel()
+        self.ritual.backend.close()
+        self.ritual.config = self._audio_settings.config
+        self.ritual.backend = FFplayBackend(self.ritual.config.player, volume=self.ritual.config.volume)
 
     def _palette_button(self, parent, candidate):
         button = super()._palette_button(parent, candidate)
@@ -177,8 +260,27 @@ class DopagakiEditorWindow(EditorWindow):
 
     def _intensity_changed(self):
         level = Intensity(self._motion_intensity.get())
+        view = getattr(self, "ritual_view", None)
+        if view is not None:
+            view.level = level
+            if level == Intensity.OFF:
+                self.ritual.cancel()
         self.table_grid.effects.set_intensity(level)
+        if view is not None:
+            view.repaint()
         self.settings.update(dopagaki_intensity=level.value)
+
+    def new_document(self):
+        result = super().new_document()
+        if result and getattr(self, "ritual", None) is not None:
+            self.ritual.cancel()
+        return result
+
+    def open_file(self, path=None):
+        result = super().open_file(path)
+        if result and getattr(self, "ritual", None) is not None:
+            self.ritual.cancel()
+        return result
 
     def go_to_frame(self):
         result = super().go_to_frame()
@@ -188,15 +290,26 @@ class DopagakiEditorWindow(EditorWindow):
         return result
 
     def destroy(self):
+        self._close_ritual()
         grid = getattr(self, "table_grid", None)
         if grid is not None:
             grid.close_effects()
         super().destroy()
 
+    def _close_ritual(self):
+        ritual, self.ritual = getattr(self, "ritual", None), None
+        if ritual is not None:
+            ritual.close()
+        view, self.ritual_view = getattr(self, "ritual_view", None), None
+        if view is not None:
+            view.close()
+
     def _on_destroy(self, event):
         if event.widget is self:
+            self._close_ritual()
             grid = getattr(self, "table_grid", None)
             if grid is not None:
                 grid.close_effects()
             self._motion_intensity = None
+            self._audio_enabled = None
         super()._on_destroy(event)

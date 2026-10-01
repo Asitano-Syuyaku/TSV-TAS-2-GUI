@@ -71,18 +71,24 @@ class JuiceEffect:
     """
 
     def __init__(self, particles, hype, meter, border, base_border, level, clock,
-                 now, reward_until, accent_until):
+                 now, reward_until, accent_until, *, ritual=None):
         self._particles = particles
         self._hype = weakref.ref(hype)
         self._meter, self._border = meter, border
         self._base_border, self._level = base_border, level
         self._clock = clock
+        self._ritual = ritual
         self._reward_until, self._accent_until = reward_until, accent_until
-        self.duration = max(now + 0.220, particles.deadline, reward_until, accent_until) - now
+        view = ritual() if ritual is not None else None
+        self.duration = max(now + 0.220, particles.deadline, reward_until, accent_until,
+                            view.deadline if view is not None else 0.0) - now
 
     def render(self, _progress):
         now = self._clock()
         self._particles.render(now)
+        view = self._ritual() if self._ritual is not None else None
+        if view is not None:
+            view.render(now)
         hype = self._hype()
         value = hype.value(now) if hype is not None else 0.0
         meter = self._meter() if self._meter is not None else None
@@ -97,9 +103,12 @@ class JuiceEffect:
             border.configure(highlightbackground=theme.blend_color(self._base_border, color, amount))
 
     def handoff(self):
-        self._particles = self._hype = self._meter = self._border = self._clock = None
+        self._particles = self._hype = self._meter = self._border = self._clock = self._ritual = None
 
     def finish(self):
+        view = self._ritual() if self._ritual is not None else None
+        if view is not None:
+            view.complete_animation()
         if self._particles is not None:
             self._particles.clear()
         border = self._border() if self._border is not None else None

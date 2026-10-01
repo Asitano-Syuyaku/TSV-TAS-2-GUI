@@ -36,9 +36,9 @@ def spawn_count(event, level, heat):
 class Particle:
     __slots__ = ("x", "y", "origin_x", "origin_y", "vx", "vy", "born_at",
                  "lifetime", "size", "kind", "color", "gravity", "surface",
-                 "item", "shade", "__weakref__")
+                 "item", "shade", "owner", "__weakref__")
 
-    def __init__(self, surface, x, y, vx, vy, born_at, lifetime, size, kind, color):
+    def __init__(self, surface, x, y, vx, vy, born_at, lifetime, size, kind, color, owner=None):
         self.surface = surface
         self.x = self.origin_x = x
         self.y = self.origin_y = y
@@ -47,6 +47,7 @@ class Particle:
         self.size, self.kind, self.color = size, kind, color
         self.gravity = 65.0
         self.item, self.shade = None, -1
+        self.owner = owner
 
 
 class Surface:
@@ -107,7 +108,7 @@ class ParticleSystem:
             except TclError:
                 pass
 
-    def spawn(self, name, origin, count, level, heat, now, *, direction=(0.8, -1.0)):
+    def spawn(self, name, origin, count, level, heat, now, *, direction=(0.8, -1.0), owner=None):
         self.expire(now)
         if name not in self.surfaces or self._viewport(name) is None:
             return 0
@@ -123,7 +124,7 @@ class ParticleSystem:
             self.particles.append(Particle(
                 surface, *origin, math.cos(heading) * speed, math.sin(heading) * speed, now,
                 self.rng.uniform(0.22, 0.40 + 0.12 * intensity),
-                self.rng.uniform(1.0, 1.8 + 1.7 * intensity), self.rng.choice(KINDS), color))
+                self.rng.uniform(1.0, 1.8 + 1.7 * intensity), self.rng.choice(KINDS), color, owner))
         return count
 
     @property
@@ -231,6 +232,15 @@ class ParticleSystem:
             self._delete(particle)
         self.particles.clear()
         self._last_render = -math.inf
+
+    def clear_owner(self, owner):
+        alive = []
+        for particle in self.particles:
+            if particle.owner == owner:
+                self._delete(particle)
+            else:
+                alive.append(particle)
+        self.particles[:] = alive
 
     def close(self):
         self.clear()

@@ -46,6 +46,10 @@ MICRO_DURATIONS = {"cell": (0.150, 0.180, 0.200),
 PARTICLE_COLORS = {"light": ("#087caa", "#df35a0", "#8f61d8", "#bb7900"),
                    "dark": ("#34d6eb", "#ff62bf", "#ffdf6a", "#9bef80")}
 HYPE_COLORS = ("#34d6eb", "#ff62bf", "#ffdf6a")
+RITUAL_COLORS = {"start": "#34d6eb", "build": "#ff62bf", "tension": "#ffdf6a",
+                 "failure": "#ba66e8", "success": "#ffdf6a", "white": "#ffffff"}
+RITUAL_STAMP_SECONDS = {"LOW": 0.350, "MID": 0.550, "FULL": 0.700}
+RITUAL_FONT_SIZES = {"LOW": 24, "MID": 46, "FULL": 70}
 
 
 def blend_color(first, second, amount):
