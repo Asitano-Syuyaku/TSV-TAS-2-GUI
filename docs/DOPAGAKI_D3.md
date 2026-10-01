@@ -7,6 +7,11 @@ The user's current D3 instructions and confirmed trimmed cue supersede the
 older tentative 47.8s/51.45s cue in that specification. D0/D1/D2 remain the
 foundation. No D4 FEVER or F8-specific finale is included.
 
+D3.1 adds local WAV and standard Windows/WSL playback without changing this
+timeline or result latch. See [DOPAGAKI_D3_AUDIO.md](DOPAGAKI_D3_AUDIO.md) for
+the current backend priority and actual process verification; the measurements
+below record the original D3 environment.
+
 ## Existing F5 behavior and result truth
 
 The shared `EditorWindow.save_and_convert` is unchanged: active Table editing

@@ -10,7 +10,7 @@ from .effects import CellEffects
 from .motion import Intensity
 from .widgets import DopagakiStickPreview, FrameValues
 from .juice import HypeMeter
-from .audio import AudioSettings, FFplayBackend
+from .audio import AudioSettings, create_audio_backend
 from .ritual import ConvertRitual
 from .ritual_view import RitualView
 
@@ -136,7 +136,7 @@ class DopagakiEditorWindow(EditorWindow):
         self.table_grid.effects.attach_ritual(self.ritual_view)
         config = self._audio_settings.config
         self.ritual = ConvertRitual(self, self.ritual_view, config=config,
-                                    backend=FFplayBackend(config.player, volume=config.volume))
+                                    backend=create_audio_backend(config))
         self._normal_convert = self.on_convert
         if self.on_convert is not None:
             self.on_convert = self._convert_with_ritual
@@ -218,7 +218,7 @@ class DopagakiEditorWindow(EditorWindow):
         self.ritual.cancel()
         self.ritual.backend.close()
         self.ritual.config = self._audio_settings.config
-        self.ritual.backend = FFplayBackend(self.ritual.config.player, volume=self.ritual.config.volume)
+        self.ritual.backend = create_audio_backend(self.ritual.config)
 
     def _palette_button(self, parent, candidate):
         button = super()._palette_button(parent, candidate)
