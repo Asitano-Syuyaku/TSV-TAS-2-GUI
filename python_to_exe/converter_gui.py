@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox
 if __package__:
     from .app_settings import AppSettings
     from .background import hold_gc, resume_gc, resume_gc_soon
+    from .display import configure_root
     from .editor.theme import (COLORS, button_options, choice_options, entry_options,
                                label_options)
     from .editor.dopa.outcome import FAILED, SEND_UNVERIFIED, classify_conversion
@@ -24,6 +25,7 @@ if __package__:
 else:
     from app_settings import AppSettings
     from background import hold_gc, resume_gc, resume_gc_soon
+    from display import configure_root
     from editor.theme import COLORS, button_options, choice_options, entry_options, label_options
     from editor.dopa.outcome import FAILED, SEND_UNVERIFIED, classify_conversion
     from editor.dopa.words import WORDS as DOPA_WORDS
@@ -108,6 +110,7 @@ ERROR_JA = {
 class TASConverterApp(tk.Tk):
     def __init__(self, language="en", settings=None):
         super().__init__()
+        configure_root(self)  # Windows: readable fonts and DPI scale (no-op elsewhere).
         self.language = language
         self.words = TEXT[language]
         self.settings = settings if settings is not None else AppSettings()

@@ -8,7 +8,7 @@ adds Validate / F5 / F7 / F8 results; Phase 4 adds sound.
 import time
 import tkinter as tk
 
-from ..theme import COLORS, HEAT_RAMP, button_options
+from ..theme import COLORS, HEAT_RAMP, button_options, px
 from .audio import AudioService
 from .choreo import F5Choreography
 from .fonts import FontBook
@@ -105,7 +105,7 @@ class DopaDirector:
         x1, y1, x2, y2 = box
         center = (x1 + x2) / 2, (y1 + y2) / 2
         if heat >= 0.2 and not reduced:
-            self.fx.add(Ring(canvas, center, (8, 46), COLORS["accent"], CELL_GROUND))
+            self.fx.add(Ring(canvas, center, (px(8), px(46)), COLORS["accent"], CELL_GROUND))
         count = self.fx.particle_count(6 + 14 * heat, canvas, TABLE_CAP)
         if count:
             origin = self._edge(box, direction)
@@ -116,7 +116,7 @@ class DopaDirector:
                 self.fx.add(Burst(canvas, (center[0], y1), confetti, CELL_GROUND,
                                   power=0.6, duration=0.8))
         self.fx.add(Pop(canvas, (x2 - 4, y1 + 8), f"+{reward.gain:,}", COLORS["neon_yellow"],
-                        self.fonts.get("meter", 13), CELL_GROUND, rise=0 if reduced else 28))
+                        self.fonts.get("meter", 13), CELL_GROUND, rise=0 if reduced else px(28)))
         self._pip(reward.combo)
         if active is not None and active != tuple(cell) and not reduced:
             self.fx.add(LockOn(canvas, grid._cell_box(*active), COLORS["neon_yellow"]))
@@ -142,7 +142,7 @@ class DopaDirector:
         ax1, ay1, ax2, _ = grid._cell_box(*grid.selected)
         self.fx.add(Pop(canvas, (ax2 - 4, ay1 + 8), f"+{reward.gain:,}", COLORS["neon_yellow"],
                         self.fonts.get("meter", 13), CELL_GROUND,
-                        rise=0 if self.fx.reduced else 28))
+                        rise=0 if self.fx.reduced else px(28)))
         self._pip(reward.combo)
         self._reward_feedback(reward)
 
@@ -423,7 +423,8 @@ class DopaDirector:
 
     def stick_ring(self, canvas, point, color):
         if not self.fx.reduced:
-            self.fx.add(Ring(canvas, point, (7, 16), color, COLORS["preview_background"], width=2))
+            self.fx.add(Ring(canvas, point, (px(7), px(16)), color, COLORS["preview_background"],
+                             width=2))
 
     # Palette (§8.3) --------------------------------------------------------
 

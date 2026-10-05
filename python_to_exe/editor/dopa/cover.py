@@ -11,7 +11,7 @@ tags, and that key continues to its normal bindings (T5).
 import math
 import tkinter as tk
 
-from ..theme import COLORS
+from ..theme import COLORS, px
 from .fx import Ambient, Burst, Later, Shout, Tween, NEON, cycle, ease_out, ease_out_back, mix
 from .outcome import FAILED, SEND_CONFIRMED, SEND_UNVERIFIED
 from .words import COMMON
@@ -40,6 +40,7 @@ class SendCover:
                                          borderwidth=0, takefocus=False)
         inset = int(host.cget("highlightthickness"))
         canvas.place(x=0, y=0, relwidth=1, relheight=1)
+        self.band = px(BAND)
         self.width = max(200, host.winfo_width() - 2 * inset)
         self.height = max(160, host.winfo_height() - 2 * inset)
         # Origin at the canvas center: a resize keeps everything centered by moving
@@ -118,21 +119,22 @@ class SendCover:
     def _build_pre(self):
         """激アツ: stripe bands, one slam, and the factual running caption."""
         canvas, (cx, cy) = self.canvas, self.center
-        half, reach = self.height / 2, self.width + 400  # Wide enough for a later resize.
-        for top, tag in ((-half, "band_top"), (half - BAND, "band_bottom")):
-            canvas.create_rectangle(-reach, top, reach, top + BAND,
+        band, stripe = self.band, px(STRIPE)
+        half, reach = self.height / 2, self.width + px(400)  # Wide enough for a later resize.
+        for top, tag in ((-half, "band_top"), (half - band, "band_bottom")):
+            canvas.create_rectangle(-reach, top, reach, top + band,
                                     fill=STRIPE_RED, outline="", tags=("pre", "band", tag))
-            for x in range(-reach - STRIPE, reach + STRIPE, STRIPE):
-                canvas.create_polygon(x, top + BAND, x + BAND, top, x + BAND + STRIPE / 2, top,
-                                      x + STRIPE / 2, top + BAND, fill=STRIPE_YELLOW, outline="",
+            for x in range(-reach - stripe, reach + stripe, stripe):
+                canvas.create_polygon(x, top + band, x + band, top, x + band + stripe / 2, top,
+                                      x + stripe / 2, top + band, fill=STRIPE_YELLOW, outline="",
                                       tags=("pre", "band", "stripes", tag))
         # 120ms: bands slide in from the edges instead of an (unavailable) alpha fade.
-        canvas.move("band_top", 0, -BAND)
-        canvas.move("band_bottom", 0, BAND)
-        offsets = {"band": float(BAND)}  # Current displacement off-screen.
+        canvas.move("band_top", 0, -band)
+        canvas.move("band_bottom", 0, band)
+        offsets = {"band": float(band)}  # Current displacement off-screen.
 
         def slide(progress):
-            target = BAND * (1 - ease_out(progress))
+            target = band * (1 - ease_out(progress))
             delta = offsets["band"] - target
             canvas.move("band_top", 0, delta)
             canvas.move("band_bottom", 0, -delta)
@@ -140,10 +142,10 @@ class SendCover:
 
         self._add(Tween(0.12, slide))
         self.sfx("alarm")  # Once; then silence is the 溜め (§9.4).
-        self._add(Shout(canvas, (cx, cy - 18), self.words["gekiatsu"], self.fonts, 64,
+        self._add(Shout(canvas, (cx, cy - px(18)), self.words["gekiatsu"], self.fonts, 64,
                         COLORS["text"], COLORS["on_neon"], VOID, angle=-8, hold=0.85,
                         reduced=self.engine.reduced))
-        self.caption = canvas.create_text(cx, cy + 58, text="", tags=("pre",),
+        self.caption = canvas.create_text(cx, cy + px(58), text="", tags=("pre",),
                                           font=self.fonts.get("caps", 14),
                                           fill=COLORS["muted_text"])
         self.orb = None
@@ -153,7 +155,7 @@ class SendCover:
             elapsed = max(0.0, self.clock() - self.started)  # Real seconds since start.
             canvas.itemconfigure(self.caption, text=self.words["sending"].format(s=elapsed))
             if state["phase"] == "bands":
-                offset = (now * 60) % STRIPE
+                offset = (now * px(60)) % stripe
                 canvas.move("stripes", offset - state["stripes"], 0)
                 state["stripes"] = offset
                 if elapsed >= PRE_PHASE:
@@ -173,7 +175,7 @@ class SendCover:
         moved = {"value": 0.0}
 
         def retract(progress):
-            target = (BAND + 4) * ease_out(progress)
+            target = (self.band + px(4)) * ease_out(progress)
             delta = target - moved["value"]
             canvas.move("band_top", 0, -delta)
             canvas.move("band_bottom", 0, delta)
@@ -182,7 +184,7 @@ class SendCover:
         self._add(Tween(0.2, retract))
         glow = canvas.create_oval(cx, cy, cx, cy, outline="#7cff4f", width=3, tags=("pre",))
         core = canvas.create_oval(cx, cy, cx, cy, fill="#bfffd0", outline="", tags=("pre",))
-        self.orb = ((glow, 20), (core, 11))
+        self.orb = ((glow, px(20)), (core, px(11)))
 
     def resolve(self, outcome, output_name, format_label):
         """The parent Converter reported a result; show exactly that result."""
@@ -208,7 +210,7 @@ class SendCover:
         moved = {"value": 0.0}
 
         def squeeze(progress):
-            target = (self.height / 2 - BAND) * ease_out(progress)
+            target = (self.height / 2 - self.band) * ease_out(progress)
             delta = target - moved["value"]
             canvas.move("band_top", 0, delta)
             canvas.move("band_bottom", 0, -delta)
@@ -235,11 +237,11 @@ class SendCover:
                             COLORS["text"], COLORS["on_neon"], VOID, angle=-4, hold=0.7,
                             reduced=self.engine.reduced))
         fill, edge = CARD[outcome]
-        width, height = 340, 196
+        width, height = px(340), px(196)
         top = cy - height / 2
         canvas.create_rectangle(cx - width / 2, top, cx + width / 2, top + height, fill=fill,
                                 outline=edge, width=4, tags=("card",))
-        caps, small = self.fonts.get("caps", 10), self.fonts.get("caps", 11, bold=False)
+        caps, small = self.fonts.get("caps", 11), self.fonts.get("caps", 12, bold=False)
         lines = []
         if not confirmed:
             lines.append((self.words["built"], self.fonts.get("shout", 22), COLORS["neon_orange"]))
@@ -250,17 +252,17 @@ class SendCover:
                    small, COLORS["text"])]
         if not confirmed:
             lines.append((self.words["send_unverified"], small, COLORS["neon_orange"]))
-        y = top + 20
+        y = top + px(20)
         for index, (text, font, color) in enumerate(lines):
             canvas.create_text(cx, y, text=text, font=font, fill=color, tags=("card",))
-            y += 30 if index == 0 and not confirmed else 22 if font is not caps else 16
-        star_y = top + height - 22
+            y += px(30) if index == 0 and not confirmed else px(22) if font is not caps else px(17)
+        star_y = top + height - px(22)
         self.stars = []
         for index, step in enumerate(COMMON["steps"]):
-            x = cx + (index - 1) * 104
-            label = canvas.create_text(x - 8, star_y, text=step, anchor="e", font=caps,
+            x = cx + (index - 1) * px(104)
+            label = canvas.create_text(x - px(8), star_y, text=step, anchor="e", font=caps,
                                        fill=COLORS["muted_text"], tags=("card",))
-            star = canvas.create_text(x - 4, star_y, text=COMMON["star_off"], anchor="w",
+            star = canvas.create_text(x - px(4), star_y, text=COMMON["star_off"], anchor="w",
                                       font=self.fonts.get("shout", 16), fill=COLORS["muted_text"],
                                       tags=("card",))
             self.stars.append((label, star))

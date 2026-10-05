@@ -12,6 +12,8 @@ import random
 import time
 import tkinter as tk
 
+from ..theme import UI_SCALE, px
+
 
 TICK_MS = 16
 AMBIENT_MS = 40
@@ -271,7 +273,7 @@ class LockOn(Effect):
 
     def __init__(self, canvas, box, color, arm=6):
         super().__init__(0.09)
-        self.canvas, self.box, self.color, self.arm = canvas, box, color, arm
+        self.canvas, self.box, self.color, self.arm = canvas, box, color, px(arm)
 
     def setup(self):
         self.lines = [self._item(self.canvas, "line", 0, 0, 0, 0, 0, 0, fill=self.color, width=2)
@@ -307,7 +309,7 @@ class Sparks(Effect):
         self.sparks = []
         for index in range(self.count):
             angle = base + self.random.uniform(-spread, spread)
-            speed = self.random.uniform(180, 420)
+            speed = self.random.uniform(180, 420) * UI_SCALE["value"]
             star = self.stars and index % 3 == 0
             color = self.random.choice(NEON)
             kind = "polygon" if star else "line"
@@ -325,10 +327,10 @@ class Sparks(Effect):
         fade = max(0.0, (progress - 0.4) / 0.6)
         for item, vx, vy, color, star in self.sparks:
             x = x0 + vx * elapsed
-            y = y0 + vy * elapsed + 300 * elapsed ** 2
+            y = y0 + vy * elapsed + 300 * UI_SCALE["value"] * elapsed ** 2
             shade = mix(color, self.ground, fade)
             if star:
-                size = 4
+                size = px(4)
                 points = []
                 for corner in range(10):
                     radius = size if corner % 2 == 0 else size * 0.45
@@ -358,9 +360,9 @@ class Burst(Effect):
         for index in range(self.count):
             kind = self.kinds[index % len(self.kinds)]
             angle = self.random.uniform(-math.pi * 0.85, -math.pi * 0.15)
-            speed = self.random.uniform(220, 520) * self.power
+            speed = self.random.uniform(220, 520) * self.power * UI_SCALE["value"]
             color = "#ffc21a" if kind == "coin" else self.random.choice(self.colors)
-            size = self.random.uniform(4, 7)
+            size = self.random.uniform(4, 7) * UI_SCALE["value"]
             if kind == "coin":
                 item = self._item(self.canvas, "oval", 0, 0, 0, 0, fill=color, outline="#8a5200")
             else:
@@ -375,7 +377,7 @@ class Burst(Effect):
         fade = max(0.0, (progress - 0.75) / 0.25)
         for item, kind, vx, vy, color, size, spin, flip in self.bits:
             x = x0 + vx * elapsed
-            y = y0 + vy * elapsed + 450 * elapsed ** 2
+            y = y0 + vy * elapsed + 450 * UI_SCALE["value"] * elapsed ** 2
             shade = mix(color, self.ground, fade)
             if kind == "coin":
                 width = abs(math.cos(flip * elapsed)) * size + 1
@@ -511,7 +513,7 @@ class Shake(Effect):
         self.offset = (x, y)
 
     def render(self, progress, now):
-        amplitude = 3 * self.power * (1 - progress)
+        amplitude = 3 * UI_SCALE["value"] * self.power * (1 - progress)
         self._move_to(round(self.random.uniform(-amplitude, amplitude)),
                       round(self.random.uniform(-amplitude, amplitude)))
 

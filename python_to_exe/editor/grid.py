@@ -5,7 +5,7 @@ import tkinter as tk
 from .column_layout import ColumnLayout
 from .table_model import CellSelection, TableModel, visible_span
 from .theme import (COLORS, LINE_WIDTHS, LOCKON_ARM, ROW_HINTS, SIZES, SYNTAX_COLORS,
-                    TABLE_COLUMN_WIDTHS, entry_options, listbox_options, menu_options)
+                    TABLE_COLUMN_WIDTHS, entry_options, listbox_options, menu_options, px)
 from .tsv_syntax import (CompletionState, candidates_for, classify_cell, classify_row,
                          completion_span, insert_template)
 
@@ -65,12 +65,13 @@ class TableGrid(tk.Frame):
         self.on_effect = on_effect
         self._fx_commit = None
         self.labels = labels or {}
-        self.row_height = max(font.metrics("linespace") + 8, 24)
+        self.row_height = max(font.metrics("linespace") + px(8), px(24))
         self.column_width = max(font.measure("0" * 18) + 12, 160)
         # A-G guide widths; H and later keep the font-based default.
         # ColumnLayout's saved/manual overrides take precedence over these.
         self._columns = ColumnLayout(
-            self.column_width, default_widths=dict(enumerate(TABLE_COLUMN_WIDTHS)))
+            self.column_width,
+            default_widths={index: px(width) for index, width in enumerate(TABLE_COLUMN_WIDTHS)})
         self.header_height = self.row_height
         self.gutter_width = max(font.measure("00000") + 12, 48)
         self.model = TableModel("")
@@ -387,7 +388,7 @@ class TableGrid(tk.Frame):
         """Yellow lock-on corners on the active cell (§4.3), four polylines per redraw."""
         width = LINE_WIDTHS["lockon"]
         inset = LINE_WIDTHS["active"] / 2 + width / 2  # Just inside the cyan outline.
-        arm = min(LOCKON_ARM, (x2 - x1) / 2, (y2 - y1) / 2) + inset
+        arm = min(px(LOCKON_ARM), (x2 - x1) / 2, (y2 - y1) / 2) + inset
         for x, y, dx, dy in ((x1, y1, 1, 1), (x2, y1, -1, 1),
                              (x1, y2, 1, -1), (x2, y2, -1, -1)):
             corner_x, corner_y = x + dx * inset, y + dy * inset

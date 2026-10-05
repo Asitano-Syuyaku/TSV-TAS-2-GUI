@@ -8,15 +8,16 @@ REWARD canvas ever shakes or gets background motion.
 
 import math
 
-from ..theme import COLORS, HEAT_RAMP
+from ..theme import COLORS, HEAT_RAMP, px
 from .fx import Ambient, Pop, Shake, Shout, Tween, NEON, ease_out, mix, ramp
 from .heat import format_dopa, frames_as_time
 from .words import COMMON, WORDS
 
 
 GROUND = COLORS["panel_background"]
-METER_HEIGHT = 54
+METER_HEIGHT = 58
 METER_MIN_WIDTH = 470
+CAPS = 11  # Smallest HUD text in 96-DPI pixels (was 9-10: too small to read).
 LAMPS = {"confirmed": ("●", COLORS["neon_green"], "meter_locked"),
          "pending": ("◐", COLORS["neon_yellow"], "meter_pending"),
          "unavailable": ("○", COLORS["neon_orange"], "meter_unavailable"),
@@ -52,21 +53,21 @@ class FeverHUD:
     # FRAME METER ---------------------------------------------------------
 
     def _build_meter(self):
-        meter, caps = self.meter, self.fonts.get("caps", 10)
-        self.lamp = meter.create_text(10, 8, anchor="w", font=caps)
-        self.state = meter.create_text(24, 8, anchor="w", font=caps)
+        meter, caps = self.meter, self.fonts.get("caps", CAPS)
+        self.lamp = meter.create_text(px(10), px(9), anchor="w", font=caps)
+        self.state = meter.create_text(px(24), px(9), anchor="w", font=caps)
         self.labels, self.values, self.units = [], [], []
         for name in COMMON["fields"]:
-            self.labels.append(meter.create_text(0, 23, anchor="w", text=name, font=self.fonts.get(
-                "caps", 9), fill=COLORS["muted_text"]))
-            self.values.append(meter.create_text(0, 41, anchor="w", fill=COLORS["neon_yellow"],
+            self.labels.append(meter.create_text(0, px(25), anchor="w", text=name, font=self.fonts.get(
+                "caps", CAPS), fill=COLORS["muted_text"]))
+            self.values.append(meter.create_text(0, px(44), anchor="w", fill=COLORS["neon_yellow"],
                                                  font=self.fonts.get("meter", 22)))
-            self.units.append(meter.create_text(0, 44, anchor="w", text="f", fill=COLORS["muted_text"],
-                                                font=self.fonts.get("meter", 12, bold=False)))
-        self.note = meter.create_text(0, 44, anchor="w", fill=COLORS["muted_text"],
-                                      font=self.fonts.get("caps", 10, bold=False))
+            self.units.append(meter.create_text(0, px(47), anchor="w", text="f", fill=COLORS["muted_text"],
+                                                font=self.fonts.get("meter", 13, bold=False)))
+        self.note = meter.create_text(0, px(47), anchor="w", fill=COLORS["muted_text"],
+                                      font=self.fonts.get("caps", CAPS, bold=False))
         # Process slot beside the lamp (§9.2/§9.3): a real wait, never a percentage.
-        self.process_text = meter.create_text(0, 8, anchor="w", text="", font=caps,
+        self.process_text = meter.create_text(0, px(9), anchor="w", text="", font=caps,
                                               fill=COLORS["neon_yellow"])
         self.process_bar = meter.create_rectangle(0, 0, 0, 0, outline="", fill="")
         self.process_block = meter.create_rectangle(0, 0, 0, 0, outline="", fill="")
@@ -106,25 +107,25 @@ class FeverHUD:
     def _layout_meter(self, pixels):
         meter = self.meter
         font = self.fonts.get("meter", pixels)
-        x = 12
+        x = px(12)
         for label, value, unit in zip(self.labels, self.values, self.units):
-            meter.coords(label, x, 23)
-            meter.coords(value, x, 41)
+            meter.coords(label, x, px(25))
+            meter.coords(value, x, px(44))
             meter.itemconfigure(value, font=font)
             right = (meter.bbox(value) or (x, 0, x, 0))[2]
-            meter.coords(unit, right + 1, 44)
+            meter.coords(unit, right + 1, px(47))
             unit_right = (meter.bbox(unit) or (right, 0, right, 0))[2]
             label_right = (meter.bbox(label) or (x, 0, x, 0))[2]
-            x = max(x + 80, unit_right, label_right) + 16
-        meter.coords(self.note, x - 8, 44)
+            x = max(x + px(80), unit_right, label_right) + px(16)
+        meter.coords(self.note, x - px(8), px(47))
         note_right = (meter.bbox(self.note) or (x, 0, x, 0))[2]
-        needed = max(METER_MIN_WIDTH, note_right + 10)
+        needed = max(px(METER_MIN_WIDTH), note_right + px(10))
         if pixels == 22 and needed > int(meter.cget("width")):
             meter.configure(width=needed)  # Only grows for very long scripts.
 
     def total_anchor(self):
         box = self.meter.bbox(self.units[3]) or self.meter.bbox(self.values[3]) or (0, 0, 0, 0)
-        return box[2] + 4, 26
+        return box[2] + px(4), px(28)
 
     def delta(self, frames):
         if not frames:
@@ -133,7 +134,7 @@ class FeverHUD:
         color = COLORS["neon_green"] if frames > 0 else COLORS["accent"]
         self.engine.add(Pop(self.meter, self.total_anchor(), text, color,
                             self.fonts.get("meter", 13), GROUND, anchor="w",
-                            rise=0 if self.engine.reduced else 16, duration=0.7, delay=0))
+                            rise=0 if self.engine.reduced else px(16), duration=0.7, delay=0))
 
     def process(self, label):
         """Show (label) or clear (None) a running Validate / F7 / conversion."""
@@ -147,20 +148,20 @@ class FeverHUD:
             meter.itemconfigure(self.process_block, fill="")
             return
         right = (meter.bbox(self.state) or (0, 0, 60, 0))[2]
-        meter.coords(self.process_text, right + 14, 8)
+        meter.coords(self.process_text, right + px(14), px(9))
         meter.itemconfigure(self.process_text, text=label, fill=COLORS["neon_yellow"])
-        start = (meter.bbox(self.process_text) or (0, 0, right + 60, 0))[2] + 6
-        meter.coords(self.process_bar, start, 5, start + 40, 11)
+        start = (meter.bbox(self.process_text) or (0, 0, right + 60, 0))[2] + px(6)
+        meter.coords(self.process_bar, start, px(5), start + px(40), px(12))
         meter.itemconfigure(self.process_bar, fill=COLORS["subtle_border"])
         meter.itemconfigure(self.process_block, fill=COLORS["neon_yellow"])
 
         def bounce(now):
             phase = abs((now / 0.9) % 2 - 1)  # Back and forth: activity, not progress.
-            x = start + 2 + phase * 26
-            meter.coords(self.process_block, x, 6, x + 10, 10)
+            x = start + px(2) + phase * px(26)
+            meter.coords(self.process_block, x, px(6), x + px(10), px(11))
 
         if self.engine.reduced:
-            meter.coords(self.process_block, start + 2, 6, start + 38, 10)
+            meter.coords(self.process_block, start + px(2), px(6), start + px(38), px(11))
         else:
             self._process = self.engine.add(Ambient(bounce))
 
@@ -171,7 +172,7 @@ class FeverHUD:
         color = (COLORS["neon_orange"] if outcome in (FAILED, SEND_UNVERIFIED)
                  else COLORS["neon_green"])
         right = (self.meter.bbox(self.state) or (0, 0, 60, 0))[2]
-        self.meter.coords(self.process_text, right + 14, 8)
+        self.meter.coords(self.process_text, right + px(14), px(9))
         self.meter.itemconfigure(self.process_text, text=text, fill=color)
 
     def shake(self, power=1.0):
@@ -199,9 +200,9 @@ class FeverHUD:
         if bonus is None:
             return
         x, y = self.dopa_anchor()
-        self.engine.add(Pop(self.reward, (x, y - 18), COMMON["round_bonus"].format(n=f"{bonus:,}"),
-                            COLORS["neon_yellow"], self.fonts.get("caps", 11), GROUND,
-                            rise=0 if self.engine.reduced else 12, duration=1.1, delay=0.1))
+        self.engine.add(Pop(self.reward, (x, y - px(18)), COMMON["round_bonus"].format(n=f"{bonus:,}"),
+                            COLORS["neon_yellow"], self.fonts.get("caps", 12), GROUND,
+                            rise=0 if self.engine.reduced else px(12), duration=1.1, delay=0.1))
         if self.engine.reduced:
             return
         lit = [self.reward.itemcget(segment, "fill") for segment in self.segments]
@@ -238,46 +239,50 @@ class FeverHUD:
         reward = self.reward
         self.brackets = [reward.create_line(0, 0, 0, 0, 0, 0, fill=COLORS["neon_yellow"], width=2,
                                             tags=("frame",)) for _ in range(4)]
-        self.heat_label = reward.create_text(0, 12, anchor="w", text=COMMON["heat"],
-                                             font=self.fonts.get("caps", 9), fill=COLORS["muted_text"])
+        self.heat_label = reward.create_text(0, px(13), anchor="w", text=COMMON["heat"],
+                                             font=self.fonts.get("caps", CAPS), fill=COLORS["muted_text"])
         self.segments = [reward.create_rectangle(0, 0, 0, 0, outline="", fill=COLORS["subtle_border"])
                          for _ in range(10)]
-        self.round_text = reward.create_text(0, 12, anchor="e", font=self.fonts.get("caps", 10),
+        self.round_text = reward.create_text(0, px(13), anchor="e", font=self.fonts.get("caps", CAPS),
                                              fill=COLORS["muted_text"])
-        self.combo = reward.create_text(0, 31, anchor="e", text="", fill=COLORS["neon_magenta"],
+        self.combo = reward.create_text(0, px(33), anchor="e", text="", fill=COLORS["neon_magenta"],
                                         font=self.fonts.get("shout", 15))
-        self.dopa_label = reward.create_text(0, 54, anchor="e", text=COMMON["dopa"],
-                                             font=self.fonts.get("caps", 10), fill=COLORS["muted_text"])
-        self.dopa = reward.create_text(0, 52, anchor="e", text="0", fill=COLORS["neon_yellow"],
+        self.dopa_label = reward.create_text(0, px(55), anchor="e", text=COMMON["dopa"],
+                                             font=self.fonts.get("caps", CAPS), fill=COLORS["muted_text"])
+        self.dopa = reward.create_text(0, px(53), anchor="e", text="0", fill=COLORS["neon_yellow"],
                                        font=self.fonts.get("meter", 22))
         self._layout_reward()
 
     def _layout_reward(self):
         reward = self.reward
-        width = max(int(reward.winfo_width()), int(reward.cget("width")), 120)
-        height = max(int(reward.winfo_height()), int(reward.cget("height")), METER_HEIGHT)
-        arm, inset = 10, 3
+        # The real size once mapped: the configured default ("10c") grows with DPI
+        # and is wider than the canvas actually gets (it clipped the REWARD block).
+        mapped = reward.winfo_width() > 1
+        width = max(int(reward.winfo_width() if mapped else reward.cget("width")), 120)
+        height = max(int(reward.winfo_height() if mapped else reward.cget("height")),
+                     px(METER_HEIGHT))
+        arm, inset = px(10), px(3)
         for line, (x, y, sx, sy) in zip(self.brackets, ((inset, inset, 1, 1),
                                                         (width - inset, inset, -1, 1),
                                                         (inset, height - inset, 1, -1),
                                                         (width - inset, height - inset, -1, -1))):
             reward.coords(line, x + sx * arm, y, x, y, x, y + sy * arm)
-        right = width - 14
-        block = min(300, width - 24)
-        step = max(8, min(17, (block - 92) / 10))
+        right = width - px(14)
+        block = min(px(310), width - px(24))
+        step = max(px(8), min(px(17), (block - px(100)) / 10))
         left = right - block
-        reward.coords(self.heat_label, left, 12)
+        reward.coords(self.heat_label, left, px(13))
         for index, segment in enumerate(self.segments):
-            x = left + 40 + index * step
-            reward.coords(segment, x, 8, x + step - 4, 16)
-        reward.coords(self.round_text, right, 12)
-        reward.coords(self.combo, right, 31)
-        reward.coords(self.dopa_label, right, 54)
-        label_width = self.fonts.get("caps", 10).measure(COMMON["dopa"])
-        reward.coords(self.dopa, right - label_width - 6, 52)
-        zone_right = left - 16
-        self.shout_center = ((12 + zone_right) / 2 if zone_right - 12 >= 160 else width / 2,
-                             height / 2)
+            x = left + px(44) + index * step
+            reward.coords(segment, x, px(9), x + step - px(4), px(17))
+        reward.coords(self.round_text, right, px(13))
+        reward.coords(self.combo, right, px(33))
+        reward.coords(self.dopa_label, right, px(55))
+        label_width = self.fonts.get("caps", CAPS).measure(COMMON["dopa"])
+        reward.coords(self.dopa, right - label_width - px(6), px(53))
+        zone_right = left - px(16)
+        self.shout_center = ((px(12) + zone_right) / 2 if zone_right - px(12) >= px(160)
+                             else width / 2, height / 2)
         self._size = width, height
         self._redraw_background()
 
@@ -346,11 +351,12 @@ class FeverHUD:
         if tier >= 4 and not self.engine.reduced:
             self.engine.add(Shake(self.reward, 0.6 + 0.2 * (tier - 4)))
 
-    def caption(self, text, offset=24):
+    def caption(self, text, offset=None):
         """Small note under the shout (e.g. "@60fps" on time milestones)."""
         x, y = self.shout_center
+        offset = px(24) if offset is None else offset
         self.engine.add(Pop(self.reward, (x, y + offset), text, COLORS["muted_text"],
-                            self.fonts.get("caps", 10), GROUND, rise=0, duration=1.0,
+                            self.fonts.get("caps", CAPS), GROUND, rise=0, duration=1.0,
                             delay=0.1, anchor="center"))
 
     def rewind(self):
@@ -407,22 +413,25 @@ class FeverHUD:
 
     def _tape_painter(self, heat, fever, extra):
         reward, (width, height) = self.reward, self._size
-        bottom = 12 if fever else 5
-        for top, size in ((0, 5), (height - bottom, bottom)):
-            reward.create_rectangle(-24, top, width + 24, top + size, fill=COLORS["on_neon"],
+        thin, stripe, edge = px(5), px(12), px(24)
+        bottom = px(12) if fever else thin
+        for top, size in ((0, thin), (height - bottom, bottom)):
+            reward.create_rectangle(-edge, top, width + edge, top + size, fill=COLORS["on_neon"],
                                     outline="", tags=("tape",))
-        for x in range(-24, width + 24, 12):
-            reward.create_polygon(x, 5, x + 6, 0, x + 12, 0, x + 6, 5, fill=COLORS["neon_yellow"],
-                                  outline="", tags=("tape", "stripes"))
+        half = stripe / 2
+        for x in range(-edge, width + edge, stripe):
+            reward.create_polygon(x, thin, x + half, 0, x + stripe, 0, x + half, thin,
+                                  fill=COLORS["neon_yellow"], outline="", tags=("tape", "stripes"))
             if not fever:
-                reward.create_polygon(x, height, x + 6, height - 5, x + 12, height - 5, x + 6, height,
-                                      fill=COLORS["neon_yellow"], outline="", tags=("tape", "stripes"))
-        period = 12
+                reward.create_polygon(x, height, x + half, height - thin, x + stripe, height - thin,
+                                      x + half, height, fill=COLORS["neon_yellow"], outline="",
+                                      tags=("tape", "stripes"))
+        period = stripe
         if fever:
-            reward.create_rectangle(-24, height - bottom, width + 24, height,
+            reward.create_rectangle(-edge, height - bottom, width + edge, height,
                                     fill=COLORS["neon_yellow"], outline="", tags=("tape",))
             unit = (COMMON["tape_extra"].format(n=extra) if extra else COMMON["tape"])
-            font = self.fonts.get("caps", 9)
+            font = self.fonts.get("caps", 9)  # Decoration only; no information in it.
             period = max(1, font.measure(unit))
             copies = int((width + 2 * period) / period) + 1
             reward.create_text(-period, height - bottom / 2, anchor="w", text=unit * copies,
@@ -431,7 +440,7 @@ class FeverHUD:
         state = {"stripes": 0.0, "words": 0.0}
 
         def paint(now):
-            for tag, length in (("stripes", 12), ("words", period)):
+            for tag, length in (("stripes", stripe), ("words", period)):
                 offset = (now * speed) % length
                 reward.move(tag, offset - state[tag], 0)
                 state[tag] = offset

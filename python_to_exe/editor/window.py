@@ -1,5 +1,6 @@
 """Text editor with a literal TSV table view, shared by both GUI languages."""
 
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -15,15 +16,15 @@ from .snapshot import ScriptSnapshot
 from .text_ops import (file_kind, find_next as next_match, find_previous as previous_match,
                        line_column, replace_all as replace_every, replace_current as replace_match)
 from .theme import (CATEGORY_COLORS, COLORS, FONTS, HEAT_RAMP, SIZES, SPACING, SYNTAX_COLORS,
-                    button_options, editor_fonts, entry_options, label_options, menu_options)
+                    button_options, editor_fonts, entry_options, label_options, menu_options, px)
 from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
 from .dopa.words import MOTION_LEVELS, WORDS as DOPA_WORDS
 
 if __package__ == "editor":
-    from app_settings import AppSettings, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
+    from app_settings import AppSettings, EDITOR_SIZE_DEFAULT, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
     from background import hold_gc, resume_gc, resume_gc_soon
 else:
-    from ..app_settings import AppSettings, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
+    from ..app_settings import AppSettings, EDITOR_SIZE_DEFAULT, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
     from ..background import hold_gc, resume_gc, resume_gc_soon
 
 
@@ -212,8 +213,8 @@ class EditorWindow(tk.Toplevel):
         self._workspace_job = None
         self._workspace_size = (self.settings.get("editor_width"),
                                 self.settings.get("editor_height"))
-        self.geometry(f"{self._workspace_size[0]}x{self._workspace_size[1]}")
-        self.minsize(*EDITOR_SIZE_MIN)
+        self.geometry("{}x{}".format(*self._fitted_size(*self._workspace_size)))
+        self.minsize(*self._fitted_size(px(EDITOR_SIZE_MIN[0]), px(EDITOR_SIZE_MIN[1])))
         self.configure(background=COLORS["app_background"])
         self._theme_fonts = editor_fonts(self)
 
@@ -284,7 +285,7 @@ class EditorWindow(tk.Toplevel):
         self.hud_row = hud
         meter_column = tk.Frame(hud, background=COLORS["panel_background"])
         meter_column.pack(side="left", fill="y")
-        self.meter_canvas = tk.Canvas(meter_column, width=470, height=54, highlightthickness=0,
+        self.meter_canvas = tk.Canvas(meter_column, width=px(470), height=px(58), highlightthickness=0,
                                       background=COLORS["panel_background"], takefocus=False)
         self.meter_canvas.pack(side="top", anchor="w")
         readout = tk.Frame(meter_column, background=COLORS["panel_background"])
@@ -308,7 +309,7 @@ class EditorWindow(tk.Toplevel):
         self._frame_jump_feedback.configure(foreground=COLORS["warning"])
         self.frame_entry.bind("<Return>", lambda event: self._shortcut(self.go_to_frame))
         self.frame_entry.bind("<Escape>", lambda event: self._shortcut(self._focus_editor))
-        self.reward_canvas = tk.Canvas(hud, height=76, highlightthickness=0, takefocus=False,
+        self.reward_canvas = tk.Canvas(hud, height=px(76), highlightthickness=0, takefocus=False,
                                        background=COLORS["panel_background"])
         self.reward_canvas.pack(side="left", fill="both", expand=True)
 
@@ -360,7 +361,9 @@ class EditorWindow(tk.Toplevel):
         self._build_input_palette()
         self.table_grid.pack(side="left", fill="both", expand=True)
         status_row = tk.Frame(self, background=COLORS["panel_background"])
-        status_row.pack(fill="x", pady=(SPACING["gap"], 0))
+        # Reserved from the bottom before the expanding work area: a short window
+        # shrinks the Table, never the status row (mute / effects chips).
+        status_row.pack(side="bottom", fill="x", pady=(SPACING["gap"], 0), before=self._rim)
         self._status_row = status_row
         # Separate widget: the status text itself stays exactly as before.
         self._modified_dot = tk.Label(status_row, text="", width=2, anchor="e",
@@ -476,6 +479,31 @@ class EditorWindow(tk.Toplevel):
         else:
             self._position_document_changed()
             self._restore_editor_view()
+
+    def _fit_density(self, height):
+        """Short windows trade duplicates and spare lines for Table rows, never font size."""
+        compact = height / px(100) * 100 < 600  # Logical (96-DPI) pixels.
+        if compact == getattr(self, "_compact_height", None):
+            return
+        self._compact_height = compact
+        # The caption repeats the FRAME METER's values: optional when space is short.
+        if compact:
+            self.frame_status.pack_forget()
+        else:
+            self.frame_status.pack(side="left", before=self.frame_entry.master)
+        self._problems_text.configure(height=2 if compact else 4)
+
+    def _fitted_size(self, width, height):
+        """Scale the never-saved default with the display, and always fit the screen."""
+        if (width, height) == EDITOR_SIZE_DEFAULT:
+            width, height = px(width), px(height)
+        if not sys.platform.startswith("win"):
+            return width, height  # X11 window managers place and constrain on their own.
+        try:
+            screen_w, screen_h = self.winfo_screenwidth(), self.winfo_screenheight()
+        except tk.TclError:
+            return width, height
+        return min(width, max(640, screen_w - 40)), min(height, max(400, screen_h - 80))
 
     def _build_command_deck(self):
         """COMMAND DECK (§5.1): entry points that call the existing commands."""
@@ -705,7 +733,7 @@ class EditorWindow(tk.Toplevel):
         from .stick_preview import StickPreview
 
         fonts = getattr(self, "_theme_fonts", FONTS)
-        self.input_palette = tk.Frame(self.table_area, width=SIZES["palette_width"],
+        self.input_palette = tk.Frame(self.table_area, width=px(SIZES["palette_width"]),
                                       background=COLORS["panel_background"],
                                       highlightthickness=1, highlightbackground=COLORS["subtle_border"])
         self.input_palette.pack_propagate(False)
@@ -770,7 +798,7 @@ class EditorWindow(tk.Toplevel):
                     if span == 2 and slot % 2:
                         slot += 1
                     row, column = divmod(slot, 2)
-                    group.grid_rowconfigure(row, minsize=SIZES["palette_row"])
+                    group.grid_rowconfigure(row, minsize=px(SIZES["palette_row"]))
                     self._palette_button(group, candidate).grid(
                         row=row, column=column, columnspan=span,
                         sticky="ew", padx=SPACING["button_gap"], pady=SPACING["palette_grid_y"])
@@ -827,6 +855,7 @@ class EditorWindow(tk.Toplevel):
     def _workspace_resized(self, event):
         if event.widget is not self or self._closed:
             return
+        self._fit_density(event.height)
         size = event.width, event.height
         if (size == self._workspace_size or
                 not all(low <= value <= high for value, low, high in
@@ -1873,7 +1902,11 @@ class EditorWindow(tk.Toplevel):
     def _show_problem_title(self, title, badge=None):
         self._problems_title.config(text=title)
         self._set_problem_badge(badge)
-        self._problems_panel.pack(fill="x", before=getattr(self, "_status_row", self.status))
+        rim = getattr(self, "_rim", None)
+        if rim is not None:  # Above the status row, also reserved before the work area.
+            self._problems_panel.pack(side="bottom", fill="x", before=rim)
+        else:
+            self._problems_panel.pack(fill="x", before=getattr(self, "_status_row", self.status))
 
     def _show_stale_result(self, title):
         self._problem_rows = {}

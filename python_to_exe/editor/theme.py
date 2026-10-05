@@ -85,13 +85,29 @@ CATEGORY_COLORS = {"buttons": "#ffe600", "left_stick": "#19d3f0",
                    "notation": "#9a92bf", "stick_preview": "#9a92bf"}
 
 
+# Display scale for pixel-defined geometry (HUD, palette, table defaults, FX).
+# 1.0 except on DPI-aware Windows, where it is DPI / 96 (display.configure_root).
+UI_SCALE = {"value": 1.0}
+MIN_TEXT_POINTS = 9  # Small text never shrinks below this (readability, not density).
+
+
+def set_ui_scale(value):
+    UI_SCALE["value"] = max(1.0, float(value))
+
+
+def px(value):
+    """Scale a pixel length defined at 96 DPI to the current display."""
+    return int(round(value * UI_SCALE["value"]))
+
+
 def editor_fonts(master):
     """Per-Editor font copies; importing the theme itself requires no Tk/display."""
     from tkinter import font
 
     small = font.Font(root=master, font=FONTS["small"])
     size = small.actual("size")
-    small.configure(size=(1 if size >= 0 else -1) * max(8, abs(size) - SMALL_FONT_STEP))
+    small.configure(size=(1 if size >= 0 else -1) *
+                    max(MIN_TEXT_POINTS, abs(size) - SMALL_FONT_STEP))
     heading = font.Font(root=master, font=FONTS["heading"])
     # Tkinter ignores constructor style options when a source font is supplied.
     heading.configure(weight="bold")

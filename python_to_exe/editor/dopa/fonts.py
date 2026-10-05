@@ -2,11 +2,15 @@
 
 from tkinter import font as tkfont
 
+from ..theme import UI_SCALE
+
 
 ROLES = {
     "meter": ("Bahnschrift", "Consolas", "DejaVu Sans Mono"),
-    "shout": ("Yu Gothic UI", "Meiryo", "Noto Sans CJK JP", "IPAGothic"),
-    "caps": ("Bahnschrift", "Segoe UI", "DejaVu Sans"),
+    # Meiryo UI renders Japanese and Latin evenly on Windows; Latin-only faces
+    # make Tk fall back to a heavy Japanese font for state words (readability fix).
+    "shout": ("Meiryo UI", "Yu Gothic UI", "Noto Sans CJK JP", "IPAGothic"),
+    "caps": ("Meiryo UI", "Segoe UI", "DejaVu Sans"),
 }
 FALLBACK = {"meter": "TkFixedFont", "shout": "TkDefaultFont", "caps": "TkDefaultFont"}
 
@@ -26,7 +30,7 @@ class FontBook:
         self._cache = {}
 
     def get(self, role, pixels, bold=True):
-        pixels = max(6, int(round(pixels)))
+        pixels = max(6, int(round(pixels * UI_SCALE["value"])))  # Sizes are 96-DPI pixels.
         key = role, pixels, bold
         found = self._cache.get(key)
         if found is None:

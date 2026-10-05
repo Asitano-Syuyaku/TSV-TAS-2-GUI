@@ -163,6 +163,16 @@ Tkでは外部fontを読み込まない（同梱もしない）。起動時に`t
 | `shout` | `Yu Gothic UI` → `Meiryo` → `Noto Sans CJK JP` → `IPAGothic` → `TkDefaultFont` | 叫び文字。Bold |
 | `caps` | `Bahnschrift` → `Segoe UI` → `DejaVu Sans` | `START` `HEAT`などの小さな英字ラベル。8px、字間は空白で広げる |
 
+**Windowsでの読みやすさ（Final Acceptance前のbugfix）**
+
+- **原因**：python.exe（およびPyInstaller exe）はDPI unawareで、125%表示ではWindowsが画面全体をbitmap拡大していた（ぼやけ）。TSVの文字は`TkFixedFont`＝ＭＳ ゴシック 10pt、UIはYu Gothic UI 9pt（小さい文字は8pt）で、どちらも小さいサイズでは細く読みにくい。HUDの文字はpixel指定で、DPIに追従しなかった。
+- **対策**：
+  - Tk root作成前に**System DPI aware**を宣言する（`python_to_exe/display.py`）。Per-Monitor V2は、Tk 8.6が`WM_DPICHANGED`に応じないため、DPIの違う2枚目のmonitorで大きさが狂うので採らない。
+  - Windowsのfont：UIもTSVも**Meiryo UI**（日本語と英数字を均一に描ける。英数字専用fontではTkが重い日本語fontに置き換えて潰れる）。UI 9pt、TSV 10pt（従来の大きさを維持）、小さい文字も**9pt未満にしない**。HUDの見出し・状態語もMeiryo UI、大きい数字だけBahnschrift。
+  - pixelで決めている部分（HUD、パレット幅、表の初期列幅・行の最小高、Inspectorの行、FX）は`px()`でDPI/96倍する。HUDの最小の文字は11 px（96 DPI換算）に上げた。
+  - Editorの既定の大きさはDPIに合わせて拡大し、Windowsでは画面に収める。
+- **低解像度・短いwindowでの密度（fontは縮めない）**：高さが論理600 px未満では、FRAME METERと同じ内容の説明行を省き、Problemsを2行にする。status行とProblemsは下から先に確保し、短いwindowでは表が縮む（status行のmute／演出チップは消えない）。幅が足りない時はF5/F8のcompact表記（§5.1）と、表の横scrollを使う。
+
 **縁取り文字**：Tkのcanvas textにはstrokeがないため、輪郭色（`#0B0A12`）の文字を8方向へ±2pxずらして描き、その上に本体を重ね、さらに右下(+3,+3)にずれた影を置く（skill §5の「太い縁取り＋ずらした影」）。1文字列あたり10 item。canvas textの`angle`（Tk 8.6）で−4〜−10°傾ける。
 
 叫び文字のサイズは事前に作ったfont（6段）から選ぶ。animationの途中でfontを作らない。
