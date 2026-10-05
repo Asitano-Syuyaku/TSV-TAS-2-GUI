@@ -12,13 +12,13 @@ from tkinter import filedialog, messagebox
 
 if __package__:
     from .app_settings import AppSettings
-    from .background import hold_gc, resume_gc
+    from .background import hold_gc, resume_gc, resume_gc_soon
     from .converter_logic import (build_commands, conversion_outputs, load_ftp_config,
                                   open_output_folder, save_ftp_config, scripts_dir,
                                   utf8_subprocess_kwargs)
 else:
     from app_settings import AppSettings
-    from background import hold_gc, resume_gc
+    from background import hold_gc, resume_gc, resume_gc_soon
     from converter_logic import (build_commands, conversion_outputs, load_ftp_config,
                                  open_output_folder, save_ftp_config, scripts_dir,
                                  utf8_subprocess_kwargs)
@@ -430,17 +430,20 @@ class TASConverterApp(tk.Tk):
                 callback, result = message
                 self._validation_running = False
                 self.convert_btn.config(state="normal")
+                resume_gc_soon(self)  # The worker may still be releasing its hold.
                 callback(result)
                 return
             elif kind == "analysis":
                 callback, result = message
                 self._analysis_running = False
                 self.convert_btn.config(state="normal")
+                resume_gc_soon(self)
                 callback(result)
                 return
             elif kind == "done":
                 self._conversion_running = False
                 self.convert_btn.config(state="normal")
+                resume_gc_soon(self)
                 return
         if logs:
             self.log("\n".join(logs))
