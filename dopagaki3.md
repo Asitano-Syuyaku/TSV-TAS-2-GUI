@@ -529,10 +529,22 @@ comboの節目でだけ出す。毎回は出さない。
 - **結果が来る前にCOVERを閉じた**：実行は続く。結果が出た時、HUDだけで上の分岐の小さな版（スタンプと叫び文字）を出す。
 - **実行が8秒を超えた**：字幕の経過秒は回り続ける（事実）。光の玉は脈打ち続ける。演出の言葉は増やさない。
 
+### 9.5 P3で確定した実装上の判断
+
+- **SAVE ★**：Ctrl+Sを含む、`_save_to`が成功したすべての保存で出す。F5/F8のdeckボタンの光は、`can_convert`が通った時だけ（busyで何も起きない時は光らない）。
+- **実行中の表示**：METERのlampの右に`SCAN`（Validate / F7）・`CONVERTING`（F5/F8）と、左右に往復する小さなblockを出す。進捗率ではなく「動いている」ことだけを示す。結果・stale・開始失敗で必ず消す。
+- **F7**：成功かつcurrentなら、Debug CSVの実際の総frame数で`{n}F 全解析!!` / `{n}F SCANNED!!`（tier 2）。失敗は`おしい!`とCOMBOのリセット（Validateと同じ）。
+- **ROUND BONUS**：`round(このラウンドで得たDOPA × (0.5 + E))`。精算するのは`SUCCESS`（F5）と`SEND_CONFIRMED`だけ。`SEND_UNVERIFIED`は送信が事実ではないので精算しない。productive actionが0のラウンドは精算しない。
+- **演出の強さ0%**：COVERを出さず、結果はHUDの叫び文字（fadeのみ）とcaptionで出す。
+- **COVERの座標**：canvasの原点を中心に置き（scrollregion）、resizeではviewだけを動かす。上下の帯だけが新しい高さに追従する。カードは常に粒子より前面（事実が読める）。
+- **COVERの開閉**：fade inの代わりに帯が120msで滑り込む（Tkはalphaを持たない）。時間での終了は260msの虹彩wipe、入力での終了は即時。失敗時は`おしい!`（hold 0.3s）を出し、500ms後にwipeを始める。
+- **形式の表示**：カードの形式は、出力ファイルの拡張子から推測せず、Converterがその実行で使った出力形式を受け取る。
+
 **COVERの技術条件**（T5）
 
 - 本体（RIMの内側）に`place`で重ねる`tk.Canvas`。`takefocus=False`。`focus_set`しない。
-- 閉じる操作：COVERへのクリック、またはEditor Toplevelに`add="+"`で付けた`<KeyPress>`。どちらも`"break"`を返さない。focusは元のwidget（`tk.Text`かTable canvas）に残ったままなので、押したkeyは本来どおり処理される。
+- 閉じる操作：COVERへのクリック、または**専用bindtag**の`<KeyPress>`。Toplevelのbindtagに`<KeyPress>`を足すと、同じtagの`<F5>`などのより具体的なbindingが優先されて発火しないため、COVERの間だけfocus中のwidget（と`tk.Text`・Table canvas・セルEntry・Go欄）のbindtagsの先頭に専用tagを入れる。`"break"`は返さず、閉じる処理は`after_idle`で行う。focusは元のwidgetに残ったままなので、押したkeyは本来どおり処理される。
+- Python 3.12の`bind_class`はrootにcallbackを登録するため、削除もrootで行う（`root.deletecommand`）。
 - 親のmessageboxが出ている間も、COVERのanimationは`after`で動き続ける。
 
 ---
@@ -553,8 +565,8 @@ Editor側の真のイベントを、1つのdispatcher（`DopaDirector`、Editor�
 | `validation_result(success, current)` | `window.py` `validate.receive` | — |
 | `analysis_result(success, current, total)` | `window.py` `analyze_frames.receive` | — |
 | `conversion_started(send)` | `window.py` `save_and_convert` | `on_convert`がTrueを返した時 |
-| `conversion_result(report)` | `converter_gui.py` | `_convert_editor_file`で要求元のEditorを`self._conversion_listener`に記録する。`_drain_events`の`success`/`error`/`done`で、**既存のdialogを出す処理と同じ位置**から通知する。listenerが既に閉じていれば無視する |
-| `ConversionReport` | `converter_gui.py` `convert()` | 各commandのstdoutを連結して保持し、`success`イベントのpayloadを`(outputs, stdout)`にする。log・messageboxの内容は変えない |
+| `conversion_result(report)` | `converter_gui.py` | `_create_editor`がEditorごとのclosureを`on_convert`に渡し、`_convert_editor_file(..., requester=editor)`で要求元を`weakref`として記録する（Editorからの`on_convert(path, send_ftp=...)`の呼び方は変えない）。`_drain_events`の`success`/`error`では**既存のdialogの直前**に通知し、`done`で消す。listenerが閉じている・例外を出す場合も、dialogとlogは必ず出す |
+| `ConversionReport` | `converter_gui.py` `convert()` | 各commandのstdoutを連結し、`success`の直前に**別のqueue event**（`("stdout", text)`）として送る。既存の`("success", outputs)`のpayload、log、messageboxは変えない（既存testの契約） |
 | `classify_conversion(report, send)` | 新規・pure | `SUCCESS` / `SEND_CONFIRMED` / `SEND_UNVERIFIED` / `FAILED`を返す。§9.1の判定をここに集約する |
 
 ### 10.1 新規module（`python_to_exe/editor/dopa/`）
@@ -727,7 +739,7 @@ skillのreduced-motionの扱いに合わせる。
 |---|---|---|
 | **P1 Neon skin**（実装済み） | `theme.py`のtoken、Table / Raw / パレット / Stick Preview / STATUS / Problems / ttk scrollbar / `png/neon/`アイコン、COMMAND DECKの再配置、Tk threadでのGC（§11.3）。motionなし | 全画面がネオン地で読める。既存の操作が全て同じに動く |
 | **P2 FX engine＋HUD**（実装済み） | `dopa/heat.py`・`fx.py`・`hud.py`・`fonts.py`・`words.py`・`director.py`、FRAME METER、REWARD、セル確定のカスケード、叫び文字、ドパmenu／チップ／settings（音関係はP4、§12.1） | §7のタイムラインがコマ送りで確認できる。IME・補完・Undoへの影響が無い |
-| **P3 真の山** | §10のhook、`outcome.py`、Validate / F5 / F7 / F8、COVER | §9の全分岐を、成功・送信未確認・失敗のfixtureで確認できる |
+| **P3 真の山**（実装済み） | §10のhook、`outcome.py`、Validate / F5 / F7 / F8、COVER（§9.5） | §9の全分岐を、成功・送信未確認・失敗のfixtureで確認できる |
 | **P4 音** | `sound.py`、合成、override、再生 | Windows / Linux / 無音環境でエラーにならない |
 | **P5 周辺＋計測** | Frame Inspector / 検索 / Converter画面のskin、性能の計測（`docs/EDITOR_PERFORMANCE.md`の方法で、FX有り／無しのredraw・選択・scroll・typing） | FX有りでも、選択とscrollの中央値の悪化が2ms以内 |
 

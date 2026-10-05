@@ -10,8 +10,11 @@ import tkinter as tk
 
 from ..theme import COLORS, HEAT_RAMP, button_options
 from .fonts import FontBook
-from .fx import Burst, FxEngine, LockOn, Pop, Punch, Ring, Sparks, Tween, Ambient, NEON, cycle, mix, ramp
+from .cover import SendCover
+from .fx import (Ambient, Burst, FxEngine, Later, LockOn, Pop, Punch, Ring, Sparks, Tween, NEON,
+                 cycle, mix, ramp)
 from .heat import COMBO_WINDOW, HeatState
+from .outcome import FAILED, SEND_CONFIRMED, SEND_UNVERIFIED, SUCCESS, round_settles
 from .hud import FeverHUD
 from .words import COMMON, WORDS
 
@@ -35,6 +38,8 @@ class DopaDirector:
         self._combo_job = None
         self._rim_cycle = None
         self._closed = False
+        self.cover = None
+        self._converting = None  # None, or whether the running conversion sends.
         self._apply_rim()
 
     # Settings (§12) -------------------------------------------------------
@@ -121,6 +126,145 @@ class DopaDirector:
     def history(self):
         """Undo/Redo: a small REWIND only. Not productive; HEAT never drops."""
         self.hud.rewind()
+
+    # Saves and checks (§9.1-§9.2) ----------------------------------------
+
+    def saved(self):
+        """_save_to really wrote the file."""
+        self.hud.stamp(COMMON["save_stamp"])
+
+    def deck_pressed(self, button):
+        """F5/F8 accepted: the deck button flashes once (§9.3 stage 0)."""
+        if self.fx.reduced:
+            return
+        normal = button.cget("background")
+
+        def flash(progress):
+            button.configure(background=mix("#ffffff", normal, progress),
+                             activebackground=mix("#ffffff", normal, progress))
+
+        self.fx.add(Tween(0.2, flash))
+
+    def check_started(self):
+        """Validate / F7 really running: SCAN beside the lamp, for that time only."""
+        self.hud.process(COMMON["scan"])
+
+    def validation_result(self, success, current):
+        self.hud.process(None)
+        if not current:
+            return  # Stale: the factual message only (§9.2).
+        if success:
+            self.hud.shout(self.words["no_errors"], 3)
+            self._confetti(("#39ff14", "#7cff4f", "#bfffd0"))
+        else:
+            self._oshii()
+
+    def analysis_result(self, success, current, total=None):
+        self.hud.process(None)
+        if not current:
+            return
+        if success:
+            self.hud.shout(self.words["scanned"].format(n=f"{total:,}"), 2)
+        else:
+            self._oshii()
+
+    # Conversion (§9.3-§9.4) ----------------------------------------------
+
+    def conversion_started(self, send):
+        """on_convert returned True: the run is real from here on."""
+        self._converting = send
+        self.hud.process(COMMON["converting"])
+        if not send:
+            self.hud.process_rays(True)
+        elif not self.fx.reduced:
+            self._close_cover()
+            self.cover = SendCover(self.editor, self.fonts, self.fx, self.words,
+                                   started=self.clock(), clock=self.clock,
+                                   on_closed=self._cover_closed)
+
+    def conversion_result(self, outcome, output_name=None, output_format=None):
+        """The parent Converter's own result event, classified by outcome.py."""
+        self._converting = None
+        self.hud.process(None)
+        self.hud.process_rays(False)
+        cover = self.cover
+        if outcome == FAILED:
+            if cover is not None:
+                cover.resolve(FAILED, None, None)
+                self.heat.reset_combo()
+                self.hud.fade_combo()
+            else:
+                self._oshii()
+            return
+        format_label = self.words["formats"].get(output_format, output_format or "")
+        if cover is not None and outcome in (SEND_CONFIRMED, SEND_UNVERIFIED):
+            cover.resolve(outcome, output_name, format_label)
+            if outcome == SEND_CONFIRMED:  # 決着 after the card and its stars.
+                self.fx.add(Later(1.0, self._settle_with_flash))
+            return
+        # F5, or F8 whose COVER is closed / not shown (Effects 0%): HUD only.
+        steps = COMMON["steps"]
+        if outcome == SUCCESS:
+            self.hud.shout(self.words["converted"], 4)
+            self.hud.caption(f"{steps[0]} ★  {steps[1]} ★")
+            self._coins()
+        elif outcome == SEND_CONFIRMED:
+            self.hud.shout(self.words["sent"], 4)
+            self.hud.caption(f"{steps[0]} ★  {steps[1]} ★  {steps[2]} ★")
+            self._coins()
+        elif outcome == SEND_UNVERIFIED:
+            self.hud.shout(self.words["built"], 1, color=COLORS["neon_orange"])
+            self.hud.caption(self.words["send_unverified"])
+        if round_settles(outcome):
+            self._settle_with_flash()
+
+    def _settle_with_flash(self):
+        if self._closed:
+            return
+        if self.fx.flash_allowed():
+            self._flash_rim()
+        bonus = self.heat.settle()
+        self.hud.settle(bonus)
+        self._show_heat(animate=True)
+
+    def _cover_closed(self, cover):
+        if self.cover is cover:
+            self.cover = None
+
+    def _close_cover(self):
+        if self.cover is not None:
+            self.cover.close(immediate=True)
+            self.cover = None
+
+    def _oshii(self):
+        """Failure keeps HEAT and DOPA; only the combo resets (§7.3)."""
+        self.heat.reset_combo()
+        self.hud.shout(self.words["oshii"], 1, color=COLORS["neon_orange"])
+        self.hud.fade_combo()
+
+    def _target_canvas(self):
+        editor = self.editor
+        if getattr(editor, "_view", "raw") == "table":
+            editor.table_grid.fx_layer = True
+            canvas = editor.table_grid.canvas
+            origin = (canvas.canvasx(canvas.winfo_width() / 2),
+                      canvas.canvasy(editor.table_grid.header_height))
+            return canvas, origin, CELL_GROUND, TABLE_CAP
+        return editor.reward_canvas, self.hud.shout_center, COLORS["panel_background"], HUD_CAP
+
+    def _confetti(self, colors):
+        canvas, origin, ground, cap = self._target_canvas()
+        count = self.fx.particle_count(36, canvas, cap)
+        if count:
+            self.fx.add(Burst(canvas, origin, count, ground, kinds=("confetti",), power=0.9,
+                              duration=1.1, colors=colors))
+
+    def _coins(self):
+        canvas, origin, ground, cap = self._target_canvas()
+        count = self.fx.particle_count(50, canvas, cap)
+        if count:
+            self.fx.add(Burst(canvas, origin, count, ground, kinds=("coin", "confetti", "coin"),
+                              power=1.0, duration=1.2))
 
     # Frame data (§6.1) ---------------------------------------------------
 
@@ -228,17 +372,7 @@ class DopaDirector:
         self.hud.shout(text, 3)
         if mark in (3600, 18000):
             self.hud.caption(COMMON["fps_tag"])
-        editor = self.editor
-        if getattr(editor, "_view", "raw") == "table":
-            editor.table_grid.fx_layer = True
-            canvas = editor.table_grid.canvas
-            origin = (canvas.canvasx(canvas.winfo_width() / 2),
-                      canvas.canvasy(editor.table_grid.header_height))
-            ground, cap = CELL_GROUND, TABLE_CAP
-        else:
-            canvas = editor.reward_canvas
-            origin = self.hud.shout_center
-            ground, cap = COLORS["panel_background"], HUD_CAP
+        canvas, origin, ground, cap = self._target_canvas()
         count = self.fx.particle_count(30, canvas, cap)
         if count:
             self.fx.add(Burst(canvas, origin, count, ground, kinds=("coin", "star", "coin"),
@@ -262,6 +396,9 @@ class DopaDirector:
         if self._closed:
             return
         self._closed = True
+        if self.cover is not None:
+            self.cover.close(immediate=True)
+            self.cover = None
         # Runs inside the Editor's <Destroy>: canvases may already be gone, and
         # nothing here may stop the Editor's own cleanup that follows.
         if self._combo_job is not None:

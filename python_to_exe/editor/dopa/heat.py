@@ -72,6 +72,7 @@ class HeatState:
         self._last = None
         self._baseline = None
         self._milestones = set()
+        self._round_gain = 0
 
     @property
     def intensity(self):
@@ -102,6 +103,7 @@ class HeatState:
         heat, extra = self.intensity, self.extra
         gain = round(10 * self.multiplier * (1 + 2 * heat) * (1 + 0.5 * extra))
         self.dopa += gain
+        self._round_gain += gain
         return Reward(gain, self.dopa, self.combo, self.multiplier, heat, extra,
                       shout_tier(self.combo), self.segments, self.segments > before)
 
@@ -119,6 +121,23 @@ class HeatState:
         self.combo = 0
         self._last = None
         self._baseline = None
+        self._round_gain = 0
+
+    def settle(self):
+        """F5/F8 success (§7.3): cash the round in and start the next one quietly.
+
+        Returns the bonus, or None for a round without any productive action.
+        """
+        if not self.actions:
+            return None
+        bonus = round(self._round_gain * (0.5 + self.intensity))
+        self.dopa += bonus
+        self.round += 1
+        self.actions = 0
+        self.combo = 0
+        self._last = None
+        self._round_gain = 0
+        return bonus
 
     def confirmed_total(self, total):
         """Delta and milestone only against a previous confirmed total.

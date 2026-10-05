@@ -65,6 +65,13 @@ class FeverHUD:
                                                 font=self.fonts.get("meter", 12, bold=False)))
         self.note = meter.create_text(0, 44, anchor="w", fill=COLORS["muted_text"],
                                       font=self.fonts.get("caps", 10, bold=False))
+        # Process slot beside the lamp (§9.2/§9.3): a real wait, never a percentage.
+        self.process_text = meter.create_text(0, 8, anchor="w", text="", font=caps,
+                                              fill=COLORS["neon_yellow"])
+        self.process_bar = meter.create_rectangle(0, 0, 0, 0, outline="", fill="")
+        self.process_block = meter.create_rectangle(0, 0, 0, 0, outline="", fill="")
+        self._process = None
+        self._process_rays = None
 
     def set_meter(self, model, punch=False):
         """model: (state, start, duration, end, total); numbers only when confirmed."""
@@ -127,6 +134,76 @@ class FeverHUD:
         self.engine.add(Pop(self.meter, self.total_anchor(), text, color,
                             self.fonts.get("meter", 13), GROUND, anchor="w",
                             rise=0 if self.engine.reduced else 16, duration=0.7, delay=0))
+
+    def process(self, label):
+        """Show (label) or clear (None) a running Validate / F7 / conversion."""
+        meter = self.meter
+        if self._process is not None:
+            self.engine.stop(self._process)
+            self._process = None
+        if label is None:
+            meter.itemconfigure(self.process_text, text="")
+            meter.itemconfigure(self.process_bar, fill="")
+            meter.itemconfigure(self.process_block, fill="")
+            return
+        right = (meter.bbox(self.state) or (0, 0, 60, 0))[2]
+        meter.coords(self.process_text, right + 14, 8)
+        meter.itemconfigure(self.process_text, text=label)
+        start = (meter.bbox(self.process_text) or (0, 0, right + 60, 0))[2] + 6
+        meter.coords(self.process_bar, start, 5, start + 40, 11)
+        meter.itemconfigure(self.process_bar, fill=COLORS["subtle_border"])
+        meter.itemconfigure(self.process_block, fill=COLORS["neon_yellow"])
+
+        def bounce(now):
+            phase = abs((now / 0.9) % 2 - 1)  # Back and forth: activity, not progress.
+            x = start + 2 + phase * 26
+            meter.coords(self.process_block, x, 6, x + 10, 10)
+
+        if self.engine.reduced:
+            meter.coords(self.process_block, start + 2, 6, start + 38, 10)
+        else:
+            self._process = self.engine.add(Ambient(bounce))
+
+    def process_rays(self, on):
+        """F5: rays turn while the conversion really runs (§9.3)."""
+        if self._process_rays is not None:
+            self.engine.stop(self._process_rays)
+            self._process_rays = None
+        self.reward.delete("process_rays")
+        if on and not self.engine.reduced:
+            painter = self._ray_painter(*RAYS[2][:2], 6.0, tag="process_rays")
+            self._process_rays = self.engine.add(Ambient(painter))
+            self.reward.tag_lower("process_rays")
+            self.reward.tag_lower("bg")
+
+    def stamp(self, text, color=None):
+        """Small factual stamp in the SHOUT ZONE, e.g. SAVE ★ after a real save."""
+        self.shout(text, 0, color=color or COLORS["neon_yellow"], hold=0.45, pixels=17, angle=-4)
+
+    def settle(self, bonus):
+        """Round settlement (§7.3): segments drain to the center, then the bonus pops."""
+        if bonus is None:
+            return
+        x, y = self.dopa_anchor()
+        self.engine.add(Pop(self.reward, (x, y - 18), COMMON["round_bonus"].format(n=f"{bonus:,}"),
+                            COLORS["neon_yellow"], self.fonts.get("caps", 11), GROUND,
+                            rise=0 if self.engine.reduced else 12, duration=1.1, delay=0.1))
+        if self.engine.reduced:
+            return
+        lit = [self.reward.itemcget(segment, "fill") for segment in self.segments]
+
+        def drain(progress):
+            reach = (1 - progress) * 5
+            for index, segment in enumerate(self.segments):
+                inside = abs(index - 4.5) <= reach
+                self.reward.itemconfigure(segment, fill=lit[index] if inside and progress < 1
+                                          else COLORS["subtle_border"])
+
+        self.engine.add(Tween(0.35, drain))
+
+    def dopa_anchor(self):
+        box = self.reward.bbox(self.dopa) or (0, 0, 0, 40)
+        return box[2], box[1]
 
     def _pulse_lamp(self, on):
         if on and self._lamp_pulse is None and not self.engine.reduced:
@@ -297,12 +374,12 @@ class FeverHUD:
         self.reward.tag_lower("tape")
         self.reward.tag_lower("bg")
 
-    def _ray_painter(self, first, second, period):
+    def _ray_painter(self, first, second, period, tag="bg"):
         width, height = self._size
         cx, cy = self.shout_center
         radius = math.hypot(width, height)
         rays = [self.reward.create_polygon(cx, cy, cx, cy, cx, cy, outline="",
-                                           fill=first if index % 2 == 0 else second, tags=("bg",))
+                                           fill=first if index % 2 == 0 else second, tags=(tag,))
                 for index in range(24)]
 
         def paint(now):
@@ -348,6 +425,9 @@ class FeverHUD:
         return paint
 
     def destroy(self):
+        for effect in (self._process, self._process_rays):
+            if effect is not None:
+                self.engine.stop(effect)
         for effect in self._background.values():
             self.engine.stop(effect)
         self._background.clear()  # Items died with the canvas; never touch it here.

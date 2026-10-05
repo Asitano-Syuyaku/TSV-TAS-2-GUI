@@ -1640,6 +1640,10 @@ class EditorWindow(tk.Toplevel):
             return False
         if self.can_convert is not None and not self.can_convert():
             return False
+        director = getattr(self, "_dopa", None)
+        button = getattr(self, "_send_button" if send_ftp else "_convert_button", None)
+        if director is not None and button is not None:
+            director.deck_pressed(button)
         self._sync_text()
         # Table may contain a pending Entry value not yet in document.text.
         if (self.document.path is None or self.document.modified or
@@ -1647,7 +1651,23 @@ class EditorWindow(tk.Toplevel):
                 self.document.external_status() != "unchanged") and not self.save():
             return False
         self._record_recent(self.document.path)
-        return bool(self.on_convert(self.document.path, send_ftp=send_ftp))
+        started = bool(self.on_convert(self.document.path, send_ftp=send_ftp))
+        if started and director is not None:
+            self._conversion_send = send_ftp
+            director.conversion_started(send_ftp)
+        return started
+
+    def conversion_finished(self, succeeded, outputs=None, stdout="", output_format=None):
+        """The parent Converter's own result for this Editor's F5/F8 (display only, §10)."""
+        director = getattr(self, "_dopa", None)
+        if director is None or self._closed:
+            return
+        from .dopa.outcome import classify_conversion
+        send = (outputs.ftp_requested if outputs is not None
+                else bool(getattr(self, "_conversion_send", False)))
+        director.conversion_result(classify_conversion(succeeded, send, stdout),
+                                   outputs.primary.name if outputs is not None else None,
+                                   output_format)
 
     def save_convert_and_send(self):
         return self.save_and_convert(send_ftp=True)
@@ -1668,10 +1688,14 @@ class EditorWindow(tk.Toplevel):
                 return
             self._validation_pending = False
             self._sync_text()
-            if self._inspection_is_current(identity):
+            current = self._inspection_is_current(identity)
+            if current:
                 self._show_validation_result(result)
             else:
                 self._show_stale_result(self.words["stale_validation"])
+            director = getattr(self, "_dopa", None)
+            if director is not None:
+                director.validation_result(result.success, current)
 
         try:
             started = self.on_validate(snapshot, receive)
@@ -1682,6 +1706,8 @@ class EditorWindow(tk.Toplevel):
         if not started:
             self._validation_pending = False
             self._problems_panel.pack_forget()
+        elif self._validation_pending and getattr(self, "_dopa", None) is not None:
+            self._dopa.check_started()
         return bool(started)
 
     def analyze_frames(self):
@@ -1703,7 +1729,12 @@ class EditorWindow(tk.Toplevel):
                 return
             self._analysis_pending = False
             self._sync_text()
-            if not self._inspection_is_current(identity):
+            current = self._inspection_is_current(identity)
+            director = getattr(self, "_dopa", None)
+            if director is not None:
+                director.analysis_result(result.success, current,
+                                         result.frames.total_frames if result.success else None)
+            if not current:
                 self._show_stale_result(self.words["stale_analysis"])
             elif result.success:
                 self._problems_panel.pack_forget()
@@ -1737,6 +1768,8 @@ class EditorWindow(tk.Toplevel):
         if not started:
             self._analysis_pending = False
             self._problems_panel.pack_forget()
+        elif self._analysis_pending and getattr(self, "_dopa", None) is not None:
+            self._dopa.check_started()
         return bool(started)
 
     def _frame_inspector_closed(self, inspector):
@@ -1853,6 +1886,9 @@ class EditorWindow(tk.Toplevel):
         self._record_recent(saved_path)
         if self.on_saved:
             self.on_saved(saved_path)
+        director = getattr(self, "_dopa", None)
+        if director is not None:
+            director.saved()
         return True
 
     def close_editor(self):

@@ -346,10 +346,10 @@ class Burst(Effect):
     """Confetti / coins / stars flung upward, then falling (§11.4)."""
 
     def __init__(self, canvas, origin, count, ground, kinds=("confetti", "star"),
-                 power=1.0, duration=1.0, seed=None):
+                 power=1.0, duration=1.0, seed=None, colors=NEON):
         super().__init__(duration)
         self.canvas, self.origin, self.count, self.ground = canvas, origin, count, ground
-        self.kinds, self.power = kinds, power
+        self.kinds, self.power, self.colors = kinds, power, colors
         self.particles = count
         self.random = random.Random(seed)
 
@@ -359,7 +359,7 @@ class Burst(Effect):
             kind = self.kinds[index % len(self.kinds)]
             angle = self.random.uniform(-math.pi * 0.85, -math.pi * 0.15)
             speed = self.random.uniform(220, 520) * self.power
-            color = "#ffc21a" if kind == "coin" else self.random.choice(NEON)
+            color = "#ffc21a" if kind == "coin" else self.random.choice(self.colors)
             size = self.random.uniform(4, 7)
             if kind == "coin":
                 item = self._item(self.canvas, "oval", 0, 0, 0, 0, fill=color, outline="#8a5200")
@@ -521,3 +521,16 @@ class Shake(Effect):
         except tk.TclError:
             pass
         super().finish()
+
+
+class Later(Effect):
+    """Run a callback once after `delay`, on the shared ticker (no extra timers)."""
+
+    def __init__(self, delay, callback):
+        super().__init__(0.0001, delay)
+        self.callback = callback
+
+    def setup(self):
+        callback, self.callback = self.callback, None
+        if callback is not None:
+            callback()

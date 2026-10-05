@@ -6,6 +6,7 @@ import subprocess
 import threading
 import tkinter as tk
 import traceback
+import weakref
 from datetime import datetime
 from queue import Empty, SimpleQueue
 from tkinter import filedialog, messagebox
@@ -111,6 +112,10 @@ class TASConverterApp(tk.Tk):
         self._last_successful_output = None
         self._validation_running = False
         self._analysis_running = False
+        # The Editor whose F5/F8 started the running conversion (display only).
+        self._conversion_listener = None
+        self._conversion_stdout = ""
+        self._conversion_format = None
 
         tk.Label(self, text=self.words["input"]).grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.input_entry = tk.Entry(self, width=50)
@@ -252,12 +257,17 @@ class TASConverterApp(tk.Tk):
         self._set_input_path(path, preserve_output_name=True)
         self.settings.add_recent(path)
 
-    def _convert_editor_file(self, path, send_ftp=False):
+    def _convert_editor_file(self, path, send_ftp=False, requester=None):
         if self._busy():
             return False
         # Re-select the requesting editor's file; another editor may have saved since.
         self._editor_saved(path)
-        return self.start_conversion(ftp_override=send_ftp)
+        started = self.start_conversion(ftp_override=send_ftp)
+        if started and requester is not None:
+            self._conversion_listener = weakref.ref(requester)
+            self._conversion_stdout = ""
+            self._conversion_format = self.format_var.get()
+        return started
 
     def open_editor(self):
         return self._create_editor(initial_path=self.input_entry.get().strip() or None)
@@ -268,14 +278,40 @@ class TASConverterApp(tk.Tk):
             from .editor.window import EditorWindow
         else:
             from editor.window import EditorWindow
-        return EditorWindow(self, language=self.language,
+        requester = []
+
+        def convert(path, send_ftp=False):
+            # Remember which Editor asked, so only it shows the real result.
+            return self._convert_editor_file(path, send_ftp=send_ftp,
+                                             requester=requester[0] if requester else None)
+
+        editor = EditorWindow(self, language=self.language,
                      initial_path=initial_path, recovery=recovery,
-                     on_saved=self._editor_saved, on_convert=self._convert_editor_file,
+                     on_saved=self._editor_saved, on_convert=convert,
                      can_convert=lambda: not self._busy(),
                      on_validate=self._validate_editor_snapshot,
                      can_validate=lambda: not self._busy(),
                      on_analyze=self._analyze_editor_snapshot,
                      can_analyze=lambda: not self._busy())
+        requester.append(editor)
+        return editor
+
+    def _notify_editor_result(self, succeeded, outputs=None):
+        """Tell the requesting Editor first; the existing dialog follows unchanged (T9)."""
+        # Instance state only: Tk.__getattr__ would forward misses to the interpreter.
+        state = self.__dict__
+        listener = state.get("_conversion_listener")
+        self._conversion_listener = None
+        editor = listener() if listener is not None else None
+        if editor is None:
+            return
+        try:
+            if editor.winfo_exists():
+                editor.conversion_finished(succeeded, outputs, state.get("_conversion_stdout", ""),
+                                           state.get("_conversion_format"))
+        except Exception:
+            # Display effects must never block the real result dialog or log.
+            traceback.print_exc()
 
     def _busy(self):
         return self._conversion_running or self._validation_running or self._analysis_running
@@ -419,12 +455,17 @@ class TASConverterApp(tk.Tk):
             if kind == "log":
                 logs.append(message)
                 continue
+            if kind == "stdout":
+                self._conversion_stdout = message
+                continue
             if logs:
                 self.log("\n".join(logs))
                 logs.clear()
             if kind == "success":
+                self._notify_editor_result(True, message)
                 self._show_conversion_result(message)
             elif kind == "error":
+                self._notify_editor_result(False)
                 messagebox.showerror(self.words["error_title"], message)
             elif kind == "validation":
                 callback, result = message
@@ -442,6 +483,8 @@ class TASConverterApp(tk.Tk):
                 return
             elif kind == "done":
                 self._conversion_running = False
+                self._conversion_listener = None
+                self._conversion_stdout = ""
                 self.convert_btn.config(state="normal")
                 resume_gc_soon(self)
                 return
@@ -469,6 +512,7 @@ class TASConverterApp(tk.Tk):
 
     def _convert(self, values, ftp_values):
         started = False
+        stdout = []
         try:
             commands = build_commands(*values, base_dir=self.base_dir)
             outputs = conversion_outputs(*values[:4], debug=values[5], ftp=values[6])
@@ -482,6 +526,7 @@ class TASConverterApp(tk.Tk):
                                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                                         **utf8_subprocess_kwargs())
                 if result.stdout:
+                    stdout.append(result.stdout)
                     self._events.put(("log", result.stdout.rstrip()))
                 if result.stderr:
                     self._events.put(("log", result.stderr.rstrip()))
@@ -495,6 +540,8 @@ class TASConverterApp(tk.Tk):
                     raise RuntimeError(self.words["output_missing"].format(path=expected))
             if outputs.debug_csv is not None and not outputs.debug_csv.is_file():
                 raise RuntimeError(self.words["output_missing"].format(path=outputs.debug_csv))
+            # Read-only copy for the Editor's send check (§9.1); log text is unchanged.
+            self._events.put(("stdout", "".join(stdout)))
             self._events.put(("success", outputs))
         except Exception as error:
             if not started:
