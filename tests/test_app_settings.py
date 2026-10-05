@@ -139,7 +139,7 @@ class SettingsTests(unittest.TestCase):
                                       "editor_width", "editor_height", "editor_view",
                                       "editor_palette_page", "editor_column_widths",
                                       # Dopagaki3 effect preferences only (no game numbers).
-                                      "dopa_motion", "dopa_flash"})
+                                      "dopa_motion", "dopa_flash", "dopa_sound", "dopa_volume"})
         self.assertEqual(saved["version"], 1)
         self.assertNotIn("not stored", self.path.read_text(encoding="utf-8"))
 

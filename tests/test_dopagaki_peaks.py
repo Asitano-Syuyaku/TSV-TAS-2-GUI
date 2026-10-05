@@ -75,7 +75,7 @@ class ConverterPlumbingTests(unittest.TestCase):
     def test_requester_hears_the_result_before_the_unchanged_dialog(self):
         order = []
         editor = SimpleNamespace(winfo_exists=lambda: True,
-                                 conversion_finished=lambda *args: order.append(("editor", args)))
+                                 conversion_finished=lambda *args, **kw: order.append(("editor", args)))
         outputs = ConversionOutputs(self.folder / "route.stas", ftp_requested=True)
         self.app._conversion_listener = lambda: editor
         self.app._conversion_format = "stas"
@@ -107,7 +107,8 @@ class ConverterPlumbingTests(unittest.TestCase):
                  patch("python_to_exe.converter_gui.traceback.print_exc"):
                 self.app._drain_events()
         self.assertEqual(len(calls), 3)
-        broken.conversion_finished.assert_called_once_with(False, None, "", None)
+        broken.conversion_finished.assert_called_once_with(False, None, "", None, error="boom",
+                                                           stderr="", started=True)
 
     def test_real_f5_reaches_only_the_requesting_editor(self):
         class ImmediateThread:
@@ -125,9 +126,10 @@ class ConverterPlumbingTests(unittest.TestCase):
         editor.show_table()
         self.app.update()
         received = []
-        other.conversion_finished = lambda *args: received.append(("other", args))
+        other.conversion_finished = lambda *args, **kw: received.append(("other", args))
         original = editor.conversion_finished
-        editor.conversion_finished = lambda *args: (received.append(("editor", args)), original(*args))
+        editor.conversion_finished = lambda *args, **kw: (received.append(("editor", args)),
+                                                          original(*args, **kw))[1]
         self.app.output_entry.insert(0, str(self.folder))
         with patch("python_to_exe.converter_gui.threading.Thread", ImmediateThread), \
              patch("python_to_exe.converter_gui.messagebox.showinfo") as dialog:
@@ -136,7 +138,7 @@ class ConverterPlumbingTests(unittest.TestCase):
             editor.table_grid.commit_edit()
             self.assertTrue(editor.save_and_convert())
             self.app._drain_events()
-        dialog.assert_called_once()
+        dialog.assert_not_called()  # P4: the requesting Editor presents it (non-modal).
         self.assertEqual([who for who, _ in received], ["editor"])
         self.assertIs(received[0][1][0], True)
         self.assertEqual(received[0][1][1].primary, self.folder / "route")

@@ -148,7 +148,7 @@ class FeverHUD:
             return
         right = (meter.bbox(self.state) or (0, 0, 60, 0))[2]
         meter.coords(self.process_text, right + 14, 8)
-        meter.itemconfigure(self.process_text, text=label)
+        meter.itemconfigure(self.process_text, text=label, fill=COLORS["neon_yellow"])
         start = (meter.bbox(self.process_text) or (0, 0, right + 60, 0))[2] + 6
         meter.coords(self.process_bar, start, 5, start + 40, 11)
         meter.itemconfigure(self.process_bar, fill=COLORS["subtle_border"])
@@ -163,6 +163,20 @@ class FeverHUD:
             meter.coords(self.process_block, start + 2, 6, start + 38, 10)
         else:
             self._process = self.engine.add(Ambient(bounce))
+
+    def fact(self, text, outcome):
+        """The factual result line beside the lamp, shown the moment it is known."""
+        from .outcome import FAILED, SEND_UNVERIFIED
+        self.process(None)
+        color = (COLORS["neon_orange"] if outcome in (FAILED, SEND_UNVERIFIED)
+                 else COLORS["neon_green"])
+        right = (self.meter.bbox(self.state) or (0, 0, 60, 0))[2]
+        self.meter.coords(self.process_text, right + 14, 8)
+        self.meter.itemconfigure(self.process_text, text=text, fill=color)
+
+    def shake(self, power=1.0):
+        if not self.engine.reduced:
+            self.engine.add(Shake(self.reward, power))
 
     def process_rays(self, on):
         """F5: rays turn while the conversion really runs (§9.3)."""

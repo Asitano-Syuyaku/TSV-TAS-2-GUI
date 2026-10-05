@@ -266,6 +266,7 @@ class TASConverterApp(tk.Tk):
         if started and requester is not None:
             self._conversion_listener = weakref.ref(requester)
             self._conversion_stdout = ""
+            self._conversion_report = None
             self._conversion_format = self.format_var.get()
         return started
 
@@ -296,22 +297,30 @@ class TASConverterApp(tk.Tk):
         requester.append(editor)
         return editor
 
-    def _notify_editor_result(self, succeeded, outputs=None):
-        """Tell the requesting Editor first; the existing dialog follows unchanged (T9)."""
+    def _notify_editor_result(self, succeeded, outputs=None, error=None):
+        """Tell the requesting Editor first. True: it presented the result itself.
+
+        Dopagaki3 Editors show F5/F8 results without a modal dialog (HUD, COVER,
+        Problems, log). Without such an Editor the dialog appears as before.
+        """
         # Instance state only: Tk.__getattr__ would forward misses to the interpreter.
         state = self.__dict__
         listener = state.get("_conversion_listener")
         self._conversion_listener = None
         editor = listener() if listener is not None else None
         if editor is None:
-            return
+            return False
+        stdout, stderr, started = state.get("_conversion_report") or ("", "", True)
         try:
             if editor.winfo_exists():
-                editor.conversion_finished(succeeded, outputs, state.get("_conversion_stdout", ""),
-                                           state.get("_conversion_format"))
+                return bool(editor.conversion_finished(
+                    succeeded, outputs, state.get("_conversion_stdout", "") or stdout,
+                    state.get("_conversion_format"), error=error, stderr=stderr,
+                    started=started))
         except Exception:
-            # Display effects must never block the real result dialog or log.
+            # A display failure must never hide the result: fall back to the dialog.
             traceback.print_exc()
+        return False
 
     def _busy(self):
         return self._conversion_running or self._validation_running or self._analysis_running
@@ -458,15 +467,18 @@ class TASConverterApp(tk.Tk):
             if kind == "stdout":
                 self._conversion_stdout = message
                 continue
+            if kind == "report":
+                self._conversion_report = message
+                continue
             if logs:
                 self.log("\n".join(logs))
                 logs.clear()
             if kind == "success":
-                self._notify_editor_result(True, message)
-                self._show_conversion_result(message)
+                presented = self._notify_editor_result(True, message)
+                self._show_conversion_result(message, dialog=not presented)
             elif kind == "error":
-                self._notify_editor_result(False)
-                messagebox.showerror(self.words["error_title"], message)
+                if not self._notify_editor_result(False, error=message):
+                    messagebox.showerror(self.words["error_title"], message)
             elif kind == "validation":
                 callback, result = message
                 self._validation_running = False
@@ -485,6 +497,7 @@ class TASConverterApp(tk.Tk):
                 self._conversion_running = False
                 self._conversion_listener = None
                 self._conversion_stdout = ""
+                self._conversion_report = None
                 self.convert_btn.config(state="normal")
                 resume_gc_soon(self)
                 return
@@ -492,7 +505,7 @@ class TASConverterApp(tk.Tk):
             self.log("\n".join(logs))
         self.after(50, self._drain_events)
 
-    def _show_conversion_result(self, outputs):
+    def _show_conversion_result(self, outputs, dialog=True):
         self._last_successful_output = outputs.primary
         lines = [self.words["success"], f"{self.words['result_output']}: {outputs.primary}"]
         for key, path in (("result_debug", outputs.debug_csv),
@@ -504,7 +517,8 @@ class TASConverterApp(tk.Tk):
             lines.append(self.words["result_ftp"])
             message += "\n\n" + self.words["result_ftp"]
         self.log("\n".join(lines))
-        messagebox.showinfo(self.words["success_title"], message)
+        if dialog:
+            messagebox.showinfo(self.words["success_title"], message)
 
     def convert(self, values, ftp_values, gc_hold=None):
         with gc_hold if gc_hold is not None else hold_gc():
@@ -512,7 +526,7 @@ class TASConverterApp(tk.Tk):
 
     def _convert(self, values, ftp_values):
         started = False
-        stdout = []
+        stdout, stderr = [], []
         try:
             commands = build_commands(*values, base_dir=self.base_dir)
             outputs = conversion_outputs(*values[:4], debug=values[5], ftp=values[6])
@@ -529,6 +543,7 @@ class TASConverterApp(tk.Tk):
                     stdout.append(result.stdout)
                     self._events.put(("log", result.stdout.rstrip()))
                 if result.stderr:
+                    stderr.append(result.stderr)
                     self._events.put(("log", result.stderr.rstrip()))
                 if result.returncode:
                     script = next((os.path.basename(part) for part in command if part.endswith(".py")), command[0])
@@ -546,6 +561,8 @@ class TASConverterApp(tk.Tk):
         except Exception as error:
             if not started:
                 self._events.put(("log", self.words["preflight_failed"]))
+            # Read-only copy of the converter's own text for the Editor's Problems.
+            self._events.put(("report", ("".join(stdout), "".join(stderr), started)))
             detail = ERROR_JA.get(str(error), str(error)) if self.language == "ja" else str(error)
             self._events.put(("error", detail))
         finally:

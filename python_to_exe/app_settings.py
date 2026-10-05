@@ -53,7 +53,7 @@ def _clean(values):
                     debug_enabled=False, last_input_directory="", last_output_directory="",
                     editor_width=EDITOR_SIZE_DEFAULT[0], editor_height=EDITOR_SIZE_DEFAULT[1],
                     editor_view="raw", editor_palette_page=0, editor_column_widths={},
-                    dopa_motion=100, dopa_flash=True)
+                    dopa_motion=100, dopa_flash=True, dopa_sound=True, dopa_volume=2)
     if (not isinstance(values, dict) or type(values.get("version")) is not int
             or values["version"] != VERSION):
         return defaults
@@ -80,6 +80,11 @@ def _clean(values):
         defaults["dopa_motion"] = motion
     if type(values.get("dopa_flash")) is bool:
         defaults["dopa_flash"] = values["dopa_flash"]
+    if type(values.get("dopa_sound")) is bool:
+        defaults["dopa_sound"] = values["dopa_sound"]
+    volume = values.get("dopa_volume")
+    if type(volume) is int and volume in (1, 2, 3):
+        defaults["dopa_volume"] = volume
     recent = values.get("recent_files")
     if isinstance(recent, list):
         seen = set()

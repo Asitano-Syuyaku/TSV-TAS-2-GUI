@@ -138,8 +138,12 @@ class EditorActionTkTests(unittest.TestCase):
                     self.assertTrue(app.ftp_var.get())
                     primary = work / "chosen result.txt"
                     self.assertEqual(app._last_successful_output, primary)
-                    self.assertIn(str(primary), success.call_args.args[1])
-                    self.assertNotIn(app.words["result_ftp"], success.call_args.args[1])
+                    # Dopagaki3: F5/F8 results are presented in the Editor without a modal
+                    # dialog; the Converter log keeps the same result lines.
+                    success.assert_not_called()
+                    self.assertIn(str(primary), app.log_text.get("1.0", "end"))
+                    self.assertIn(primary.name, editor.meter_canvas.itemcget(
+                        editor._dopa.hud.process_text, "text"))
                     # Saving retains the shared Raw/Table Undo and Redo history.
                     editor.undo()
                     self.assertEqual(editor.document.text, "1\ta\n")
@@ -170,8 +174,8 @@ class EditorActionTkTests(unittest.TestCase):
                     self.assertIn(app.words["editor_local"], log)
                     self.assertIn(app.words["editor_send"], log)
                     self.assertEqual(len(calls), 2)
-                    self.assertEqual(success.call_count, 2)
-                    self.assertIn(app.words["result_ftp"], success.call_args.args[1])
+                    success.assert_not_called()  # Dopagaki3: non-modal F5/F8 results.
+                    self.assertIn(app.words["result_ftp"], log)
                     self.assertIn(f"{app.words['result_output']}: {primary}", log)
                     self.assertIn(f"{app.words['result_debug']}: {primary}-debug.csv", log)
                 self.doCleanups()
@@ -275,7 +279,7 @@ class EditorActionTkTests(unittest.TestCase):
                         self.assertFalse(editor.document.modified)
                         self.assertIn("-sd" if key == "F5" else "-fsd", calls[-1])
                         self.assertTrue(app._last_successful_output.read_bytes().startswith(b"STAS"))
-                    self.assertEqual(success.call_count, 2)
+                    success.assert_not_called()  # Dopagaki3: non-modal F5/F8 results.
                     ftp_config.assert_called_once_with(ROOT, "example.invalid", "5000",
                                                        "tester", "test password")
 
@@ -300,7 +304,8 @@ class EditorActionTkTests(unittest.TestCase):
                     self.assertEqual(Path(calls[count][1]).name, "nx-tas-to-tsv-tas.py")
                     self.assertEqual(Path(calls[count + 1][1]).name, "tsv-tas.py")
                     self.assertTrue((destination / (nx_source.stem + ".tsv")).is_file())
-                    self.assertEqual(success.call_count, 3)
+                    # The Converter's own Start Conversion keeps its dialog.
+                    self.assertEqual(success.call_count, 1)
                     failure.assert_not_called()
                     self.assertEqual(dict(os.environ), before)
                 self.doCleanups()

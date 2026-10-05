@@ -9,6 +9,8 @@ import time
 import tkinter as tk
 
 from ..theme import COLORS, HEAT_RAMP, button_options
+from .audio import AudioService
+from .choreo import F5Choreography
 from .fonts import FontBook
 from .cover import SendCover
 from .fx import (Ambient, Burst, FxEngine, Later, LockOn, Pop, Punch, Ring, Sparks, Tween, NEON,
@@ -25,7 +27,8 @@ CELL_GROUND = COLORS["cell_background"]
 
 
 class DopaDirector:
-    def __init__(self, editor, language, motion=100, flashes=True, clock=time.monotonic):
+    def __init__(self, editor, language, motion=100, flashes=True, clock=time.monotonic,
+                 sound=True, volume=2, audio=None):
         self.editor = editor
         self.words = WORDS[language]
         self.clock = clock
@@ -40,14 +43,52 @@ class DopaDirector:
         self._closed = False
         self.cover = None
         self._converting = None  # None, or whether the running conversion sends.
+        # Audio (§13): decoration only; silence never changes any result.
+        if audio is None:
+            path = getattr(getattr(editor, "settings", None), "path", None)
+            audio = AudioService.for_root(editor._root(), path.parent if path else None)
+        self.audio = audio
+        self.sound, self.volume = sound, volume
+        self.choreo = None
+        self._choreo_effect = None
+        self._last_pip = -1.0
+        if sound:
+            self.audio.prepare()
         self._apply_rim()
 
     # Settings (§12) -------------------------------------------------------
 
-    def set_settings(self, motion, flashes):
+    def set_settings(self, motion, flashes, sound=None, volume=None):
         self.fx.motion, self.fx.flashes = motion / 100, flashes
         self.hud.set_level(self.heat.intensity, self.heat.extra)
         self._apply_rim()
+        if volume is not None and volume != self.volume:
+            self.volume = volume
+            self.audio.set_level(self, volume)
+        if sound is not None and sound != self.sound:
+            self.sound = sound
+            if sound:
+                self.audio.prepare()
+            else:  # Muted mid-sting: nothing waits for a track that stopped.
+                self._end_choreo(fade=0.15)
+                self.audio.stop(self, fade=0.15)
+
+    # Sound effects -----------------------------------------------------------
+
+    def sfx(self, name, delay=0.0):
+        """Play a synthesized effect; silent when muted or unavailable."""
+        if not self.sound or self._closed or not self.audio.available:
+            return
+        if delay > 0:
+            self.fx.add(Later(delay, lambda: self.sfx(name)))
+            return
+        self.audio.effect(name, self, self.volume)
+
+    def _pip(self, combo):
+        now = self.clock()
+        if now - self._last_pip >= 0.06:  # Rapid commits must not smear (§13).
+            self._last_pip = now
+            self.sfx(f"pip{min(7, max(0, combo - 1))}")
 
     # Core action (§7) ------------------------------------------------------
 
@@ -76,6 +117,7 @@ class DopaDirector:
                                   power=0.6, duration=0.8))
         self.fx.add(Pop(canvas, (x2 - 4, y1 + 8), f"+{reward.gain:,}", COLORS["neon_yellow"],
                         self.fonts.get("meter", 13), CELL_GROUND, rise=0 if reduced else 28))
+        self._pip(reward.combo)
         if active is not None and active != tuple(cell) and not reduced:
             self.fx.add(LockOn(canvas, grid._cell_box(*active), COLORS["neon_yellow"]))
         self._reward_feedback(reward)
@@ -101,6 +143,7 @@ class DopaDirector:
         self.fx.add(Pop(canvas, (ax2 - 4, ay1 + 8), f"+{reward.gain:,}", COLORS["neon_yellow"],
                         self.fonts.get("meter", 13), CELL_GROUND,
                         rise=0 if self.fx.reduced else 28))
+        self._pip(reward.combo)
         self._reward_feedback(reward)
 
     def raw_line_committed(self, line):
@@ -121,17 +164,20 @@ class DopaDirector:
             if count:
                 self.fx.add(Sparks(gutter, (box[2], (box[1] + box[3]) / 2), None, count,
                                    COLORS["panel_background"]))
+        self._pip(reward.combo)
         self._reward_feedback(reward)
 
     def history(self):
         """Undo/Redo: a small REWIND only. Not productive; HEAT never drops."""
         self.hud.rewind()
+        self.sfx("rewind")
 
     # Saves and checks (§9.1-§9.2) ----------------------------------------
 
     def saved(self):
         """_save_to really wrote the file."""
         self.hud.stamp(COMMON["save_stamp"])
+        self.sfx("save")
 
     def deck_pressed(self, button):
         """F5/F8 accepted: the deck button flashes once (§9.3 stage 0)."""
@@ -156,6 +202,7 @@ class DopaDirector:
         if success:
             self.hud.shout(self.words["no_errors"], 3)
             self._confetti(("#39ff14", "#7cff4f", "#bfffd0"))
+            self.sfx("clear")
         else:
             self._oshii()
 
@@ -165,29 +212,41 @@ class DopaDirector:
             return
         if success:
             self.hud.shout(self.words["scanned"].format(n=f"{total:,}"), 2)
+            self.sfx("clear")
         else:
             self._oshii()
 
     # Conversion (§9.3-§9.4) ----------------------------------------------
 
     def conversion_started(self, send):
-        """on_convert returned True: the run is real from here on."""
+        """on_convert returned True: the run is real from here on (never delayed)."""
         self._converting = send
+        self._end_choreo(fade=0.08)  # A second F5 replaces the previous sting.
         self.hud.process(COMMON["converting"])
         if not send:
             self.hud.process_rays(True)
+            self._start_choreo()
         elif not self.fx.reduced:
             self._close_cover()
             self.cover = SendCover(self.editor, self.fonts, self.fx, self.words,
                                    started=self.clock(), clock=self.clock,
-                                   on_closed=self._cover_closed)
+                                   on_closed=self._cover_closed, sfx=self.sfx)
 
-    def conversion_result(self, outcome, output_name=None, output_format=None):
-        """The parent Converter's own result event, classified by outcome.py."""
+    def conversion_result(self, outcome, output_name=None, output_format=None, started=True):
+        """The parent Converter's own result event, classified by outcome.py.
+
+        Facts first, at this moment: the HUD result line (and the Editor's
+        Problems panel for failures). Celebrations may follow the music.
+        """
+        send = bool(self._converting)
         self._converting = None
         self.hud.process(None)
         self.hud.process_rays(False)
+        self.hud.fact(self._fact_text(outcome, output_name, started), outcome)
         cover = self.cover
+        choreo = self.choreo if not send else None
+        if choreo is not None:
+            choreo.result(outcome, self.clock())
         if outcome == FAILED:
             if cover is not None:
                 cover.resolve(FAILED, None, None)
@@ -196,11 +255,15 @@ class DopaDirector:
             else:
                 self._oshii()
             return
+        if choreo is not None:
+            return  # The climax lands with the music (choreo_climax).
         format_label = self.words["formats"].get(output_format, output_format or "")
         if cover is not None and outcome in (SEND_CONFIRMED, SEND_UNVERIFIED):
             cover.resolve(outcome, output_name, format_label)
             if outcome == SEND_CONFIRMED:  # 決着 after the card and its stars.
                 self.fx.add(Later(1.0, self._settle_with_flash))
+                self.sfx("fanfare", delay=1.0)
+                self.sfx("coins", delay=1.1)
             return
         # F5, or F8 whose COVER is closed / not shown (Effects 0%): HUD only.
         steps = COMMON["steps"]
@@ -208,15 +271,83 @@ class DopaDirector:
             self.hud.shout(self.words["converted"], 4)
             self.hud.caption(f"{steps[0]} ★  {steps[1]} ★")
             self._coins()
+            self.sfx("fanfare_s")
         elif outcome == SEND_CONFIRMED:
             self.hud.shout(self.words["sent"], 4)
             self.hud.caption(f"{steps[0]} ★  {steps[1]} ★  {steps[2]} ★")
             self._coins()
+            self.sfx("fanfare")
         elif outcome == SEND_UNVERIFIED:
             self.hud.shout(self.words["built"], 1, color=COLORS["neon_orange"])
             self.hud.caption(self.words["send_unverified"])
+            self.sfx("chime")
         if round_settles(outcome):
             self._settle_with_flash()
+
+    def _fact_text(self, outcome, output_name, started):
+        words = self.words
+        if outcome == FAILED:
+            return words["fact_failed" if started else "fact_not_started"]
+        if outcome == SEND_UNVERIFIED:
+            return words["fact_unverified"]
+        key = "fact_sent" if outcome == SEND_CONFIRMED else "fact_output"
+        return words[key].format(name=output_name or "")
+
+    # F5 x Let's Go (§13.3) ------------------------------------------------------
+
+    def _start_choreo(self):
+        if not self.sound or not self.audio.available or not self.audio.music_ready:
+            return  # No track: P3's immediate peak, with synthesized effects.
+        voice = self.audio.track(self, self.volume)
+        if voice is None:
+            return
+        self.choreo = F5Choreography(voice, self.clock(), self, hold_visuals=not self.fx.reduced)
+        ticker = Ambient(lambda now: self._tick_choreo())
+        ticker.ambient = False  # Full frame rate while a sting plays: the drop lands within ~16 ms.
+        self._choreo_effect = self.fx.add(ticker)
+
+    def _tick_choreo(self):
+        choreo = self.choreo
+        if choreo is None or not choreo.tick(self.clock()):
+            if self._choreo_effect is not None:
+                effect, self._choreo_effect = self._choreo_effect, None
+                self.fx.stop(effect)
+            if choreo is not None and (choreo.ended or choreo.outcome is not None):
+                self.choreo = None
+
+    def _end_choreo(self, fade=0.08, celebrate=True):
+        choreo, self.choreo = self.choreo, None
+        if choreo is not None:
+            choreo.cancel(self.clock(), fade, celebrate)
+        if self._choreo_effect is not None:
+            effect, self._choreo_effect = self._choreo_effect, None
+            self.fx.stop(effect)
+
+    def choreo_beat(self, remaining):
+        """Build-up: the RIM breathes on every beat. Music only, never progress."""
+        rim, color = self.editor._rim, self._rim_color()
+        lift = 0.5 if remaining <= 4 else 0.3
+        self.fx.add(Tween(0.14, lambda progress: rim.configure(
+            highlightbackground=mix(mix(color, "#ffffff", lift), color, progress))))
+
+    def choreo_hold(self):
+        """The track's own breath before the drop: the rays stop for one beat."""
+        self.hud.process_rays(False)
+
+    def choreo_drop(self):
+        """Drop with the run still going: energy, but no success words (Truth)."""
+        if self._converting is False:
+            self.hud.process_rays(True)
+        self.hud.shake(1.0)
+
+    def choreo_climax(self, on_drop=False):
+        """F5 success, landed with the music. The facts were shown already."""
+        steps = COMMON["steps"]
+        self.hud.shout(self.words["converted"], 4)
+        self.hud.caption(f"{steps[0]} ★  {steps[1]} ★")
+        self._coins()
+        self.sfx("coins", delay=0.1)  # The track's own drop carries the hit.
+        self._settle_with_flash()
 
     def _settle_with_flash(self):
         if self._closed:
@@ -241,6 +372,7 @@ class DopaDirector:
         self.heat.reset_combo()
         self.hud.shout(self.words["oshii"], 1, color=COLORS["neon_orange"])
         self.hud.fade_combo()
+        self.sfx("oshii")
 
     def _target_canvas(self):
         editor = self.editor
@@ -270,6 +402,7 @@ class DopaDirector:
 
     def positions_confirmed(self, total):
         confirmation = self.heat.confirmed_total(total)
+        self.sfx("lock")
         self._punch_meter = True
         self._pending_delta = confirmation.delta or None
         if confirmation.milestone is not None:
@@ -327,6 +460,8 @@ class DopaDirector:
         self._show_heat(animate=True, level_up=reward.level_up)
         if reward.shout is not None:
             self.hud.shout(self.words["ladder"][reward.shout], reward.shout)
+            if reward.shout >= 2:
+                self.sfx(f"shout{reward.shout}")
             if reward.shout >= 6 and self.fx.flash_allowed():
                 self._flash_rim()
         if self._combo_job is not None:
@@ -370,6 +505,8 @@ class DopaDirector:
     def _milestone(self, mark):
         text = self.words["milestones"][mark]
         self.hud.shout(text, 3)
+        self.sfx("stamp")
+        self.sfx("coins", delay=0.12)
         if mark in (3600, 18000):
             self.hud.caption(COMMON["fps_tag"])
         canvas, origin, ground, cap = self._target_canvas()
@@ -395,6 +532,8 @@ class DopaDirector:
     def destroy(self):
         if self._closed:
             return
+        self._end_choreo(fade=0.0, celebrate=False)
+        self.audio.stop(self)
         self._closed = True
         if self.cover is not None:
             self.cover.close(immediate=True)

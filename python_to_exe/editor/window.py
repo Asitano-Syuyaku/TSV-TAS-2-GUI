@@ -376,6 +376,11 @@ class EditorWindow(tk.Toplevel):
                                    **label_options("secondary_background", "small", self._theme_fonts))
         self._dopa_chip.pack(side="right", padx=SPACING["gap"], pady=1)
         self._dopa_chip.bind("<Button-1>", lambda event: self._cycle_dopa_motion())
+        # Mute is always one click (or Ctrl+Shift+M) away (§12.1).
+        self._sound_chip = tk.Label(status_row, cursor="hand2", padx=SPACING["section"],
+                                    **label_options("secondary_background", "small", self._theme_fonts))
+        self._sound_chip.pack(side="right", padx=(SPACING["gap"], 0), pady=1)
+        self._sound_chip.bind("<Button-1>", lambda event: self._toggle_sound())
         self._problems_panel = tk.Frame(self, background=COLORS["panel_background"],
                                         highlightthickness=1, highlightbackground=COLORS["border"])
         # Hazard tape (§8.6): shown only above a failed result.
@@ -422,6 +427,8 @@ class EditorWindow(tk.Toplevel):
             ("<F3>", self.find_next), ("<Shift-F3>", self.find_previous),
             ("<Control-Shift-D>", self._cycle_dopa_motion),
             ("<Control-Shift-d>", self._cycle_dopa_motion),
+            ("<Control-Shift-M>", self._toggle_sound),
+            ("<Control-Shift-m>", self._toggle_sound),
         ):
             self.text.bind(sequence, lambda event, action=command: self._shortcut(action))
         for sequence, command in (
@@ -441,6 +448,8 @@ class EditorWindow(tk.Toplevel):
             ("<Shift-F3>", self.find_previous),
             ("<Control-Shift-D>", self._cycle_dopa_motion),
             ("<Control-Shift-d>", self._cycle_dopa_motion),
+            ("<Control-Shift-M>", self._toggle_sound),
+            ("<Control-Shift-m>", self._toggle_sound),
         ):
             self.bind(sequence, lambda event, action=command: self._shortcut(action))
         self.protocol("WM_DELETE_WINDOW", self.close_editor)
@@ -448,7 +457,10 @@ class EditorWindow(tk.Toplevel):
         self.bind("<Configure>", self._workspace_resized)
         from .dopa.director import DopaDirector
         self._dopa = DopaDirector(self, self._language, motion=self.settings.get("dopa_motion"),
-                                  flashes=self.settings.get("dopa_flash"))
+                                  flashes=self.settings.get("dopa_flash"),
+                                  sound=self.settings.get("dopa_sound"),
+                                  volume=self.settings.get("dopa_volume"),
+                                  audio=self._audio_service())
         self.stick_preview.effects = self._dopa
         self._update_dopa_chip()
         self._update_title()
@@ -550,20 +562,47 @@ class EditorWindow(tk.Toplevel):
         menu.add_cascade(label=words["effects"], menu=levels, accelerator="Ctrl+Shift+D")
         menu.add_checkbutton(label=words["flashes"], variable=self._dopa_flash_var,
                              command=lambda: self._set_dopa(flash=self._dopa_flash_var.get()))
+        # Sound items exist because sound exists (P4); disabled where it cannot play.
+        audible = "normal" if self._audio_service().available else "disabled"
+        self._dopa_sound_var = tk.BooleanVar(self, value=self.settings.get("dopa_sound"))
+        self._dopa_volume_var = tk.IntVar(self, value=self.settings.get("dopa_volume"))
+        menu.add_separator()
+        menu.add_checkbutton(label=words["sound"], variable=self._dopa_sound_var,
+                             accelerator="Ctrl+Shift+M", state=audible,
+                             command=lambda: self._set_dopa(sound=self._dopa_sound_var.get()))
+        volumes = tk.Menu(menu, tearoff=False)
+        for level in (3, 2, 1):
+            volumes.add_radiobutton(label=words["volume_levels"][level], value=level,
+                                    variable=self._dopa_volume_var,
+                                    command=lambda: self._set_dopa(volume=self._dopa_volume_var.get()))
+        menu.add_cascade(label=words["volume"], menu=volumes, state=audible)
         menubar.add_cascade(label=words["menu"], menu=menu)
-        return menu, levels
+        return menu, levels, volumes
+
+    def _audio_service(self):
+        from .dopa.audio import AudioService
+        path = getattr(self.settings, "path", None)
+        return AudioService.for_root(self._root(), path.parent if path else None)
+
+    def _toggle_sound(self):
+        if self._audio_service().available:
+            self._set_dopa(sound=not self.settings.get("dopa_sound"))
 
     def _cycle_dopa_motion(self):
         current = self.settings.get("dopa_motion")
         index = MOTION_LEVELS.index(current) if current in MOTION_LEVELS else 0
         self._set_dopa(motion=MOTION_LEVELS[(index + 1) % len(MOTION_LEVELS)])
 
-    def _set_dopa(self, motion=None, flash=None):
+    def _set_dopa(self, motion=None, flash=None, sound=None, volume=None):
         values = {}
         if motion is not None:
             values["dopa_motion"] = motion
         if flash is not None:
             values["dopa_flash"] = bool(flash)
+        if sound is not None:
+            values["dopa_sound"] = bool(sound)
+        if volume is not None:
+            values["dopa_volume"] = volume
         self._remember_workspace(**values)
         # Every open Editor shares these effect preferences.
         for widget in self.master.winfo_children():
@@ -572,10 +611,14 @@ class EditorWindow(tk.Toplevel):
                 apply()
 
     def _apply_dopa_settings(self):
-        motion, flash = self.settings.get("dopa_motion"), self.settings.get("dopa_flash")
+        settings = self.settings
+        motion, flash = settings.get("dopa_motion"), settings.get("dopa_flash")
+        sound, volume = settings.get("dopa_sound"), settings.get("dopa_volume")
         self._dopa_motion_var.set(motion)
         self._dopa_flash_var.set(flash)
-        self._dopa.set_settings(motion, flash)
+        self._dopa_sound_var.set(sound)
+        self._dopa_volume_var.set(volume)
+        self._dopa.set_settings(motion, flash, sound=sound, volume=volume)
         self._update_dopa_chip()
 
     def _update_dopa_chip(self):
@@ -584,6 +627,16 @@ class EditorWindow(tk.Toplevel):
             motion = self.settings.get("dopa_motion")
             chip.configure(text=DOPA_WORDS[self._language]["chip"].format(n=motion),
                            foreground=COLORS["neon_yellow"] if motion else COLORS["muted_text"])
+        sound_chip = getattr(self, "_sound_chip", None)
+        if sound_chip is not None:
+            words = DOPA_WORDS[self._language]
+            if not self._audio_service().available:
+                text, color = words["chip_none"], COLORS["muted_text"]
+            elif self.settings.get("dopa_sound"):
+                text, color = words["chip_on"], COLORS["neon_magenta"]
+            else:
+                text, color = words["chip_off"], COLORS["muted_text"]
+            sound_chip.configure(text=text, foreground=color)
 
     def _table_effect(self, kind, info):
         director = getattr(self, "_dopa", None)
@@ -1657,17 +1710,36 @@ class EditorWindow(tk.Toplevel):
             director.conversion_started(send_ftp)
         return started
 
-    def conversion_finished(self, succeeded, outputs=None, stdout="", output_format=None):
-        """The parent Converter's own result for this Editor's F5/F8 (display only, §10)."""
+    def conversion_finished(self, succeeded, outputs=None, stdout="", output_format=None,
+                            error=None, stderr="", started=True):
+        """The parent Converter's own result for this Editor's F5/F8 (§10, §9.6).
+
+        Returns True when the result is presented here without a modal dialog:
+        the HUD/COVER, the factual result line, and Problems for anything that
+        needs checking. The Converter log keeps every line as before.
+        """
         director = getattr(self, "_dopa", None)
         if director is None or self._closed:
-            return
-        from .dopa.outcome import classify_conversion
+            return False
+        from .dopa.outcome import FAILED, SEND_UNVERIFIED, classify_conversion
         send = (outputs.ftp_requested if outputs is not None
                 else bool(getattr(self, "_conversion_send", False)))
-        director.conversion_result(classify_conversion(succeeded, send, stdout),
+        outcome = classify_conversion(succeeded, send, stdout)
+        director.conversion_result(outcome,
                                    outputs.primary.name if outputs is not None else None,
-                                   output_format)
+                                   output_format, started=started)
+        if outcome in (FAILED, SEND_UNVERIFIED):
+            # Exact converter / Converter text; nothing rewritten (T4).
+            lines = [error] if error else []
+            if not started:
+                lines.append(self.master.words["preflight_failed"]
+                             if hasattr(self.master, "words") else "")
+            if stderr:
+                lines.append(stderr.rstrip())
+            from .validation import ValidationResult
+            self._show_validation_result(ValidationResult(
+                False, stdout=stdout or "", stderr="\n".join(line for line in lines if line)))
+        return True
 
     def save_convert_and_send(self):
         return self.save_and_convert(send_ftp=True)

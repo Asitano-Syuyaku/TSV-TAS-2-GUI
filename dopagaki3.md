@@ -57,7 +57,7 @@ hard constraintsを、実装者が迷わない規則に落とす。**この章�
 | T6 | **ゲームの数字は文書の外。** DOPA・HEAT・COMBO・ROUNDはsession内のメモリだけに置く。文書・Undo・Recovery・settingsには入れない（settingsには演出の好みだけを保存する） | — |
 | T7 | **失敗は隠さない。** 失敗時に成功演出を出さない。既存のエラーダイアログ・log・Problemsは現行どおり、同じタイミングで出す | — |
 | T8 | **converter/parser/document semanticsに触れない。** `tsv-tas.py`、`nx-tas-to-tsv-tas.py`、command builder、`EditorDocument`、`TableModel`の意味は変えない | stdoutは**読むだけ** |
-| T9 | **結果の表示を演出で遅らせない。** 真の結果が出たら、その瞬間に事実（ダイアログ・log・結果カードの文言）を出す。演出はその周りで並行して流す | 親の`messagebox`は今と同じタイミング。FXはその背後で動く（Tkのnested event loop中も`after`は動く） |
+| T9 | **結果の表示を演出で遅らせない。** 真の結果が出たら、その瞬間に事実（HUDの結果行・Problems・log、カードの文言、dialogを使う経路ではdialog）を出す。演出はその周りで並行して流す。待たせてよいのは祝いの叩きつけだけ（§13.3） | Editorからの F5/F8 は non-modal（§9.6）。Converter画面の`変換実行`は従来どおりdialog |
 
 ---
 
@@ -529,6 +529,23 @@ comboの節目でだけ出す。毎回は出さない。
 - **結果が来る前にCOVERを閉じた**：実行は続く。結果が出た時、HUDだけで上の分岐の小さな版（スタンプと叫び文字）を出す。
 - **実行が8秒を超えた**：字幕の経過秒は回り続ける（事実）。光の玉は脈打ち続ける。演出の言葉は増やさない。
 
+### 9.6 F5/F8の結果をnon-modalにする（P4で追加）
+
+Dopagaki3のEditorから実行したF5/F8では、結果のmessagebox（成功・送信結果・通常の変換失敗）を出さない。結果は次へ一本化する。毎回OKを押させない。
+
+| 結果 | HUDの結果行（即時） | COVER／演出 | Problems | log |
+|---|---|---|---|---|
+| F5成功 | `✔ 出力 <name>`（緑） | §13.3 | — | 従来どおり |
+| F8送信確定 | `✔ 送信 <name>`（緑） | 確定カード | — | 従来どおり |
+| F8送信未確認 | `⚠ 送信未確認（問題を参照）`（橙） | 琥珀カード（成功と別の見た目） | converterの出力（`FTP error`など）をそのまま | 従来どおり |
+| 失敗 | `✖ 失敗（問題を参照）`（橙） | `おしい!` | 要約＋converterのstderr／stdoutをそのまま（行番号へjump可） | 従来どおり |
+| 開始前の失敗 | `✖ 未実行（問題を参照）`（橙） | `おしい!` | 要約＋「変換は開始されていません。新しい出力は生成されていません。」 | 従来どおり |
+
+- **開始前の失敗（出力先が無い、Pythonが無い、FTP portが不正など）もmodalにしない。** F5を押したEditor自身のProblemsに残り（文書を編集するまで消えない）、HUDにも出るので見落とさない。どれも設定を直せば済むもので、その場で選択を求めるものではないため。
+- 仕組み：Converterは結果を要求元のEditorへ先に渡す。Editorが自分で表示した時だけ（`conversion_finished`がTrueを返す）dialogを省く。Editorが閉じている・表示に失敗した時は、従来のdialogが出る。**Converter画面自身の`変換実行`は従来どおりdialogを出す。**
+- 残すdialog：保存先の選択（Save As）、上書き確認、Editor外の変更の確認、Recovery、保存しないで閉じる確認など、ユーザーが選ばないと続けられないもの。
+- converter・parser・exit codeは変えない。stdout／stderrは読むだけ。
+
 ### 9.5 P3で確定した実装上の判断
 
 - **SAVE ★**：Ctrl+Sを含む、`_save_to`が成功したすべての保存で出す。F5/F8のdeckボタンの光は、`can_convert`が通った時だけ（busyで何も起きない時は光らない）。
@@ -642,6 +659,7 @@ FXを足すとallocationの量とタイミングが変わる。`main`には、�
 - STATUSのチップからも同じ切替ができる（§8.5）。設定の変更は、開いている全Editorへ即座に反映する。
 - `settings.json`に`dopa_motion`（0/25/50/75/100）、`dopa_sound`（bool）、`dopa_volume`（1〜3）、`dopa_flash`（bool）を追加する。`_clean`で厳密に検証し、不正な値は既定値に戻す。
 - **P2の範囲**：`演出の強さ`・`フラッシュ`・`[演出 n%]`チップ・`Ctrl+Shift+D`・`dopa_motion`/`dopa_flash`だけを実装する。**音が存在しないうちに`♪ ON`や音量を出すと嘘のUIになる**ため、`音`・`音量`・`[♪ ON]`チップ・`Ctrl+Shift+M`・`dopa_sound`/`dopa_volume`はP4で音と同時に追加する。
+- **P4で追加済み**：`音`（`Ctrl+Shift+M`）・`音量`（大／中／小）・STATUSの`[♪ ON]`／`[♪ OFF]`チップ（クリックでmute切替）・`dopa_sound`/`dopa_volume`。出力deviceが無い環境では、menuの`音`・`音量`を無効にし、チップは`♪ —`にする（存在しない機能を有効に見せない）。
 
 ### 12.2 演出の強さ0%（作業集中）
 
@@ -660,35 +678,76 @@ skillのreduced-motionの扱いに合わせる。
 
 ---
 
-## 13. 音
+## 13. 音（P4で再設計。dopagaki-music skillをauthorityとする）
 
-**commercial audio assetは使わない。repositoryに音声ファイルをcommitしない。** 音は`sound.py`がPython標準の`wave`と`math`で合成し、user configのcacheへWAVとして書き出す。
+**commercial audio assetはrepositoryに入れない。** repositoryにあるのは、再生code・合成code・設定・testだけ。音は**飾り**であり、無音・失敗・未対応は保存・変換・送信の結果を一切変えない。
 
-- cache：`<config>/TSV-TAS-2-GUI/sound-cache/v1/<event>-<volume>.wav`（初回使用時に生成。合計数百KB以内）
-- **user override**：`<config>/TSV-TAS-2-GUI/sounds/<event>.wav`があれば、それを優先する。ユーザーが自分で用意した音を使えるが、repositoryには入らない。
-- 再生：
-  - Windows：`winsound.PlaySound(path, SND_FILENAME | SND_ASYNC | SND_NODEFAULT)`。同時発音は1つなので、優先度が高い音が低い音を上書きし、低い音は高い音が鳴っている間は捨てる。
-  - Linux/WSL：`paplay`、無ければ`aplay`を非同期の`Popen`で起動する。どちらも無ければ無音。
-  - 失敗しても例外を表に出さない。
-- `pip`は60ms以上の間隔に制限する（連打で濁らせない）。
+### 13.1 構成
 
-| event | 長さ | 設計 |
+| module | 役割 |
+|---|---|
+| `dopa/sound.py` | 効果音の合成（純Python、24 kHzで合成→48 kHzへ線形補間、peak正規化）。`SoundBank`がuser override → cache → 合成の順に引く |
+| `dopa/mixer.py` | **process全体で1本の出力stream**（48 kHz・stereo・16-bit）に曲と効果音を混ぜる。曲と効果音が同じ時計に乗る |
+| `dopa/music.py` | F5の曲の場所・decode・cue（拍・drop） |
+| `dopa/audio.py` | `AudioService`（Tk rootごとに1つ＝appでは1 process 1つ）。準備（効果音の生成・曲のdecode）はbackground thread |
+| `dopa/choreo.py` | F5 × Let's Goの振付（時刻を入れて出来事を出すだけの純粋なstate machine） |
+
+- **backend**（新しいdependencyなし）：Windowsは`winmm`の`waveOut`を`ctypes`で直接（buffer 4枚のring）。Linux/WSLgは`pw-play` → `pacat` → `aplay`の順に、raw PCMをpipeで流す。どれも無ければ`AudioService.available = False`（無音、UIも「♪ —」）。
+- **mixer threadは鳴っている間だけ存在する**：全voiceが終わって0.3秒で出力を閉じてthreadを終える。idle時にthread・process・timerを残さない。mixer threadはTkに触れず、走っている間は`hold_gc()`で自動GCを止める（§11.3と同じ規則）。
+- `audioop`があれば使い（Python 3.12まで）、無ければ純Pythonで混ぜる（3.13以降、Windowsの最終対象もこちら）。純Pythonでも1 chunk（25 ms）あたり約1.2 ms。
+- **自動test中は出力deviceを開かない**（`unittest`が読み込まれている時は既定でoff。`TSV_TAS_2_GUI_AUDIO=on`で明示的に許可）。
+
+### 13.2 置き場所
+
+- user config：`<config>/TSV-TAS-2-GUI/`
+  - `sound-cache/v1/<effect>.wav`：合成した効果音（初回に生成、約1 MB）
+  - `sound-cache/v1/lets_go_dopagaki.wav`：曲のdecode結果（約19 MB）
+  - `sounds/<effect>.wav`：**user override**。48 kHz・16-bit PCMのWAVだけを使い、それ以外は無視して合成音に戻す
+- 曲（ユーザー所有のlocal file）：
+  - Linux/WSL：`$XDG_DATA_HOME/tsv-tas-2-gui/dopagaki/`（既定`~/.local/share/tsv-tas-2-gui/dopagaki/`）
+  - Windows：`%LOCALAPPDATA%\tsv-tas-2-gui\dopagaki\`
+  - `lets_go_dopagaki.wav`（48 kHz・stereo・16-bit）があればそのまま使う。無ければ`lets_go_dopagaki.webm`を`ffmpeg`（PATH上にある場合だけ）で一度だけcacheへdecodeする。どちらも無い・decodeできない場合、F5は**曲なし**（合成音のfanfareとP3の即時演出）。
+
+### 13.3 F5 × JAXSON GAMBLE「Let's Go」
+
+trim済みfileを`analyze_audio.py`とbeat trackingで測った事実：**180.00 BPM**（1拍1/3秒、1小節4/3秒、全区間で一定）。0:10.8から8小節のbuild-up（低域がほぼ消える）、**0:21.25で一瞬息を止め（−18 dB）、0:21.506でdrop**（低域16%、−6 dB）。曲は0 dBFSまでmasterされているので、曲は効果音より下げて鳴らす（曲0.55、効果音0.85に音量段を掛ける）。
+
+| 段 | 内容 |
+|---|---|
+| 開始 | F5で変換を**即座に**開始（演出のために待たない）。同時に曲を**dropの2小節前（18.839 s）**から再生する。build-upの最後の2小節が「溜め」になる。**数字のcountdownは出さない**（converterの完了予告に見えるため） |
+| build | 拍ごとにRIMが息をする（最後の1小節は強く）。HUDは`CONVERTING`と回る放射線。どちらも「動いている」ことの表現で、進捗ではない |
+| 息 | dropの1拍前（曲自身の止め）で放射線が止まる |
+| drop・成功済み | **dropちょうどに**`変換成功!!`の叩きつけ、コイン、RIMのフラッシュ、ラウンド精算。曲のdropが打撃を担うので、効果音は0.1秒後のコインだけ |
+| drop・結果待ち | 曲のエネルギーだけ（HUDの揺れ、放射線）。**成功の言葉は出さない** |
+| drop後の成功 | 次の拍で叩きつける（待ちは最大1拍＝0.33秒） |
+| 余韻 | 叩きつけの後、dropを2小節鳴らし、1小節でfade out（早い成功なら合計約6.7秒） |
+| 失敗 | 曲を0.5秒でfade out（dropは来ない）、`おしい!`と`oshii`（ポヨン、短調にしない） |
+
+- **事実は待たない**：Converterの結果が届いた瞬間に、HUDの結果行（`✔ 出力 route.stas`など）、Problems、logが出る。待たせてよいのは**祝いの叩きつけ**だけ（成功がdrop前なら最大2小節、drop後なら最大1拍）。
+- **待たない場合**：音OFF、曲が無い・準備中、出力deviceが無い、曲が0.6秒以内に鳴り始めない、再生が途中で失敗、演出の強さ0%。いずれもP3と同じく結果の瞬間に演出する（0%でも曲自体は鳴る）。
+- **2回目のF5**：前の曲を80 msで消して新しく始める。前の成功の叩きつけが残っていれば、その場で済ませる。
+- **mute（途中）**：曲を0.15秒で消し、待っていた叩きつけはその場で出す。**Editorを閉じた**：曲を即停止し、叩きつけは出さない。
+- 振付は共通tickerの1つのeffectで動き、曲が鳴っている間だけ16 ms周期にする（dropの位置ずれ1 frame以内）。別のschedulerは作らない。
+- **最終的な同期の評価は、ユーザーが耳で行う。** 試聴ポイント：0:18.84（F5、曲の入り）、0:21.25（息）、0:21.506（drop＝叩きつけ）、drop＋2小節（fadeの開始）。
+
+### 13.4 合成音（D中心。曲がD系なので、曲と重なる音は5度だけの和音にして長短を決めない）
+
+| event | いつ | 音 |
 |---|---|---|
-| `pip` | 45ms | 矩形波＋短いdecay。E majorのペンタトニック（E5 F#5 G#5 B5 C#6 E6…）をcomboに応じて1段ずつ上がる。HEATが上がると1オクターブ上の倍音を足す |
-| `lock` | 90ms | 2音「チャキッ」（B5→E6、間20ms）。解析確定の音 |
-| `save` | 120ms | 下から上へのnoise sweep（シャキン） |
-| `clear` | 300ms | 長三和音のarpeggio（E→G#→B→E） |
-| `fanfare_s` | 450ms | `clear`＋上のE、最後にsquareの和音 |
-| `alarm` | 400ms | 2音の交互（パトランプ風）、音量は控えめ |
-| `kyuin` | 500ms | 400Hz→3.2kHzの指数sweep＋vibrato（キュイーン） |
-| `fanfare` | 800ms | 主和音→IV→V→I、最後に高いE |
-| `coins` | 250ms | 高音のpingを不規則に5つ |
-| `stamp` | 200ms | 低いthump＋高いclick（ドンッ） |
-| `oshii` | 220ms | 音程が下がってから上がる（ポヨン）。**長調の音で、短調の失敗音にはしない** |
-| `rewind` | 150ms | 下降sweep（Undo） |
-| `chime` | 300ms | 単音のベル（送信未確認） |
-
-本章は、dopagaki-music skillが無い状態で設計した。**その後`.claude/skills/`にdopagaki-music skillが追加された**ため、P4の開始時にそのskillを読み、本章（event・音色・長さ・調）をskillに沿って見直してから実装する。commercial audio assetを使わない・repositoryへ音声ファイルを入れない、という制約は変えない。
+| `pip0`〜`pip7` | 文書を実際に変えた操作（60 ms以上の間隔） | Dの長五音音階をcomboで1段ずつ上がる短いpulse |
+| `lock` | 位置解析の確定 | 2音のチャキッ（A5→D6） |
+| `save` | 保存の成功 | 上昇noise＋高いping |
+| `clear` | Validate／F7の成功 | D–F#–A–Dのグロッケン |
+| `oshii` | 失敗（Validate／F7／F5／F8） | skillの`wrong`：下降グライド→立ち直り |
+| `rewind` | Undo／Redo | 下降sweep |
+| `shout2`〜`shout6` | 叫び文字（tier 2以上） | 吸い込み→キック、tier 3以上でD5度のstab、5以上でクラッシュ |
+| `stamp`＋`coins` | 節目 | ドンッ→チャリン |
+| `fanfare_s` | F5成功で**曲が無い**時 | D5度の金管2連打＋キック |
+| `alarm` | F8 COVERの激アツ（1回だけ。その後の無音が溜め） | 880/660 Hzの交互＋太鼓 |
+| `kyuin` | F8の送信確定 | 380→2350 Hzを0.42秒で上がる鋸波2本＋vibrato |
+| `star0`〜`star2` | ★が灯るたび | 1段ずつ上がるグロッケン |
+| `fanfare`＋`coins` | F8の決着 | D主和音の全音域＋太鼓のroll |
+| `chime` | F8の送信未確認 | 落ち着いた単音のベル（祝わない） |
 
 ---
 
@@ -740,7 +799,7 @@ skillのreduced-motionの扱いに合わせる。
 | **P1 Neon skin**（実装済み） | `theme.py`のtoken、Table / Raw / パレット / Stick Preview / STATUS / Problems / ttk scrollbar / `png/neon/`アイコン、COMMAND DECKの再配置、Tk threadでのGC（§11.3）。motionなし | 全画面がネオン地で読める。既存の操作が全て同じに動く |
 | **P2 FX engine＋HUD**（実装済み） | `dopa/heat.py`・`fx.py`・`hud.py`・`fonts.py`・`words.py`・`director.py`、FRAME METER、REWARD、セル確定のカスケード、叫び文字、ドパmenu／チップ／settings（音関係はP4、§12.1） | §7のタイムラインがコマ送りで確認できる。IME・補完・Undoへの影響が無い |
 | **P3 真の山**（実装済み） | §10のhook、`outcome.py`、Validate / F5 / F7 / F8、COVER（§9.5） | §9の全分岐を、成功・送信未確認・失敗のfixtureで確認できる |
-| **P4 音** | `sound.py`、合成、override、再生 | Windows / Linux / 無音環境でエラーにならない |
+| **P4 音**（実装済み） | `sound.py`・`mixer.py`・`music.py`・`audio.py`・`choreo.py`、F5 × Let's Go（§13.3）、合成音（§13.4）、音の設定、F5/F8結果のnon-modal化（§9.6） | Windows / Linux / 無音環境でエラーにならない |
 | **P5 周辺＋計測** | Frame Inspector / 検索 / Converter画面のskin、性能の計測（`docs/EDITOR_PERFORMANCE.md`の方法で、FX有り／無しのredraw・選択・scroll・typing） | FX有りでも、選択とscrollの中央値の悪化が2ms以内 |
 
 ### 15.1 追加するテスト

@@ -16,6 +16,11 @@ WORDS = {
         "send_unverified": "送信: 未確認（ログを確認）", "scanned": "{n}F 全解析!!",
         "output": "出力", "destination": "送信先",
         "formats": {"binary": "LunaKit バイナリ", "stas": "STAS", "nxtas": "nx-TAS"},
+        "fact_output": "✔ 出力 {name}", "fact_sent": "✔ 送信 {name}",
+        "fact_unverified": "⚠ 送信未確認（問題を参照）", "fact_failed": "✖ 失敗（問題を参照）",
+        "fact_not_started": "✖ 未実行（問題を参照）",
+        "sound": "音", "volume": "音量", "volume_levels": {3: "大", 2: "中", 1: "小"},
+        "chip_on": "♪ ON", "chip_off": "♪ OFF", "chip_none": "♪ —",
     },
     "en": {
         "meter_locked": "LOCKED", "meter_pending": "ANALYZING", "meter_unavailable": "UNAVAILABLE",
@@ -32,6 +37,11 @@ WORDS = {
         "send_unverified": "SEND: UNVERIFIED (see log)", "scanned": "{n}F SCANNED!!",
         "output": "OUTPUT", "destination": "TO",
         "formats": {"binary": "LunaKit binary", "stas": "STAS", "nxtas": "nx-TAS"},
+        "fact_output": "✔ OUTPUT {name}", "fact_sent": "✔ SENT {name}",
+        "fact_unverified": "⚠ SEND UNVERIFIED (see Problems)", "fact_failed": "✖ FAILED (see Problems)",
+        "fact_not_started": "✖ NOT STARTED (see Problems)",
+        "sound": "Sound", "volume": "Volume", "volume_levels": {3: "High", 2: "Medium", 1: "Low"},
+        "chip_on": "♪ ON", "chip_off": "♪ OFF", "chip_none": "♪ —",
     },
 }
 # Shared instrument and game labels (§6, §14), identical in both languages.

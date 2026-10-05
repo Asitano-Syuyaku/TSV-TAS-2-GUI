@@ -28,8 +28,9 @@ RAYS = ("#ff2d8a", "#111111", "#ffd400", "#111111", "#19d3f0", "#111111", "#a35b
 
 
 class SendCover:
-    def __init__(self, editor, fonts, engine, words, started, clock, on_closed):
+    def __init__(self, editor, fonts, engine, words, started, clock, on_closed, sfx=None):
         self.editor, self.fonts, self.engine, self.words = editor, fonts, engine, words
+        self.sfx = sfx or (lambda name, delay=0.0: None)
         self.started, self.clock, self.on_closed = started, clock, on_closed
         self.outcome = None
         self.closed = False
@@ -138,6 +139,7 @@ class SendCover:
             offsets["band"] = target
 
         self._add(Tween(0.12, slide))
+        self.sfx("alarm")  # Once; then silence is the 溜め (§9.4).
         self._add(Shout(canvas, (cx, cy - 18), self.words["gekiatsu"], self.fonts, 64,
                         COLORS["text"], COLORS["on_neon"], VOID, angle=-8, hold=0.85,
                         reduced=self.engine.reduced))
@@ -213,6 +215,7 @@ class SendCover:
             moved["value"] = target
 
         self._add(Tween(0.3, squeeze))
+        self.sfx("oshii")
         self._add(Shout(canvas, (cx, cy), self.words["oshii"], self.fonts, 48,
                         COLORS["neon_orange"], COLORS["on_neon"], VOID, angle=-6, hold=0.3,
                         reduced=self.engine.reduced))
@@ -222,6 +225,9 @@ class SendCover:
         confirmed = outcome == SEND_CONFIRMED
         if confirmed:
             self._add(Later(0.08, self._explode))
+            self.sfx("kyuin", delay=0.08)
+        else:
+            self.sfx("chime")
             self._add(Shout(canvas, (cx, -self.height * 0.37), self.words["sent"], self.fonts, 54,
                             COLORS["text"], COLORS["on_neon"], VOID, angle=-6, hold=1.3,
                             rainbow=True, reduced=self.engine.reduced))
@@ -275,6 +281,7 @@ class SendCover:
 
     def _light(self, item):
         label, star = item
+        self.sfx(f"star{self.stars.index(item)}")
         self.canvas.itemconfigure(label, fill=COLORS["text"])
         self.canvas.itemconfigure(star, text=COMMON["star"], fill="#ffd400")
         if not self.engine.reduced:
