@@ -59,7 +59,8 @@ SPACING = {"outer": 8, "section": 6, "gap": 4, "button_gap": 2,
            "palette_grid_y": 0, "deck_y": 5, "deck_group": 12, "rim": 2,
            "category_bar": 3}
 # Keep the 24px icons and plots full size; trim button chrome for numeric space.
-SIZES = {"palette_width": 400, "palette_row": 26, "plot_width": 160, "plot_height": 126,
+SIZES = {"palette_width": 400, "palette_row": 26, "palette_key_row": 36,
+         "plot_width": 160, "plot_height": 126,
          "initial_columns": 8}
 TABLE_COLUMN_WIDTHS = (112, 178, 178, 99, 99, 99, 99)
 LINE_WIDTHS = {"grid": 1, "header": 1, "selection": 2, "active": 2,

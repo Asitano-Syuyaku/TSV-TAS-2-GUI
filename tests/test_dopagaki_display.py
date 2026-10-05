@@ -95,29 +95,37 @@ class TkDisplayTests(unittest.TestCase):
         root, editor = self.make_editor("1200x1000")
         preview, canvas = editor.stick_preview, editor.palette_canvas
         page = preview.master
-        group, buttons = editor._palette_fold
+        (keys, key_buttons), (sticks, stick_buttons), _ = editor._palette_folds
         size = preview.plots[0].winfo_height()
+        wide_key = key_buttons[0][0].winfo_height()
 
-        def check(columns):
+        def check(folded):
             root.update()
-            self.assertEqual(editor._palette_fold_columns, columns)
-            self.assertEqual({int(button.grid_info()["column"]) for button, _ in buttons},
-                             set(range(columns)))
+            self.assertEqual(editor._palette_folded, folded)
+            places = {item.text: (int(button.grid_info()["row"]), int(button.grid_info()["column"]))
+                      for button, item in key_buttons}
+            self.assertEqual(max(column for _, column in places.values()), 3 if folded else 1)
+            if folded:  # The whole D-pad shares one row; each stick set is one row.
+                self.assertEqual({places[key][0] for key in ("dp-u", "dp-d", "dp-l", "dp-r")}, {2})
+                self.assertEqual({int(button.grid_info()["row"]) for button, _ in stick_buttons}, {0})
+                self.assertGreater(key_buttons[0][0].winfo_height(), wide_key)
+            for button, _ in key_buttons + stick_buttons:
+                self.assertLessEqual(button.winfo_reqwidth(), button.winfo_width())
             self.assertLessEqual(preview.winfo_y() + preview.winfo_height(), page.winfo_height())
             self.assertEqual(preview.plots[0].winfo_height(), size)  # Never a smaller plot.
 
-        check(2)
+        check(False)
         self.assertEqual(canvas.yview(), (0.0, 1.0))  # Everything fits: nothing scrolls.
         for geometry in ("1200x700", "1280x650", "800x500"):
             editor.geometry(geometry)
-            check(4)
+            check(True)
         editor._show_palette_page(2)
         editor.geometry("1200x1000")
         root.update()
         editor._show_palette_page(1)
-        check(2)
+        check(False)
         editor.geometry("1280x650")
-        check(4)
+        check(True)
 
     def test_reward_block_stays_inside_a_narrow_canvas(self):
         root, editor = self.make_editor("800x500")

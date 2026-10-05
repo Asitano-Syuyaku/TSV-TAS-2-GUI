@@ -29,6 +29,10 @@ else:
 
 
 HIGHLIGHT_COLORS = SYNTAX_COLORS
+# Folded Basic page (dopagaki3.md §8.3): face, shoulders, the whole D-pad, then
+# system buttons and stick clicks; each row is one physical group.
+FOLDED_BUTTONS = ("a", "b", "x", "y", "l", "r", "zl", "zr",
+                  "dp-u", "dp-d", "dp-l", "dp-r", "plus", "minus", "ls", "rs")
 
 
 LABELS = {
@@ -755,6 +759,7 @@ class EditorWindow(tk.Toplevel):
         body = tk.Frame(self.input_palette, background=COLORS["panel_background"])
         body.pack(fill="both", expand=True)
         self._palette_pages = []
+        self._palette_folds, self._palette_folded, self._palette_wide_height = [], False, 0
         for categories in PALETTE_PAGES:
             page = tk.Frame(body, background=COLORS["panel_background"])
             docked = "stick_preview" in categories
@@ -795,11 +800,11 @@ class EditorWindow(tk.Toplevel):
                 rules.append(rule)
                 group = tk.Frame(content, background=COLORS["panel_background"])
                 group.pack(fill="x", padx=SPACING["gap"])
-                buttons = [(self._palette_button(group, candidate), self._palette_span(candidate))
+                buttons = [(self._palette_button(group, candidate), candidate)
                            for candidate in CANDIDATES if candidate.category == category]
-                self._grid_palette_group(group, buttons, 2)
-                if category == "buttons":
-                    self._palette_fold, self._palette_fold_columns = (group, buttons), 2
+                self._grid_palette_group(group, buttons, folded=False)
+                if docked:
+                    self._palette_folds.append((group, buttons))
             if docked:
                 page.bind("<Configure>", lambda event, parts=(page, canvas, content):
                           self._fit_docked_page(*parts))
@@ -810,22 +815,41 @@ class EditorWindow(tk.Toplevel):
         self._show_palette_page(settings.get("editor_palette_page", 0) + 1 if settings else 1,
                                 remember=False)
 
-    def _grid_palette_group(self, group, buttons, columns, previous=None):
-        """Lay buttons out in `columns`; `previous` clears a former layout's extra tracks."""
-        for column in range(max(columns, previous or 0)):
+    def _palette_placements(self, buttons, folded):
+        """(button, row, column, span): wide 2 columns, or folded 4 columns (§8.3)."""
+        if folded and buttons[0][1].category == "buttons":
+            order = {text: index for index, text in enumerate(FOLDED_BUTTONS)}
+            return [(button, *divmod(order[item.text], 4), 1) for button, item in buttons]
+        columns, placements, slot = (4 if folded else 2), [], 0
+        for button, item in buttons:
+            if folded:  # One row per stick: angle | radius; angle (2) | x; y.
+                span = 2 if "radius" in item.label else 1
+            else:
+                span = self._palette_span(item)
+                if span == 2 and slot % 2:
+                    slot += 1
+            placements.append((button, *divmod(slot, columns), span))
+            slot += span
+        return placements
+
+    def _grid_palette_group(self, group, buttons, folded, previous=None):
+        """Lay out one category; `previous` clears a former layout's extra tracks."""
+        placements = self._palette_placements(buttons, folded)
+        columns = 4 if folded else 2
+        for column in range(4 if previous is not None else columns):
             used = column < columns
             group.grid_columnconfigure(column, weight=int(used), uniform="palette" if used else "")
-        slot = 0
-        for button, span in buttons:
-            if span == 2 and slot % 2:
-                slot += 1
-            row, column = divmod(slot, columns)
-            button.grid(row=row, column=column, columnspan=span,
-                        sticky="ew", padx=SPACING["button_gap"], pady=SPACING["palette_grid_y"])
-            slot += span
-        rows = (slot + columns - 1) // columns
-        for row in range(len(buttons) if previous else rows):
-            group.grid_rowconfigure(row, minsize=px(SIZES["palette_row"]) if row < rows else 0)
+        # Folded icon buttons use the height the fold freed: keys, not flat bars.
+        keys = folded and buttons[0][1].category == "buttons"
+        size = px(SIZES["palette_key_row" if keys else "palette_row"])
+        rows = 1 + max(row for _, row, _, _ in placements)
+        for row in range(len(buttons) if previous is not None else rows):
+            group.grid_rowconfigure(row, minsize=size if row < rows else 0)
+        for button, row, column, span in placements:
+            # Keys get the same gap between rows as between columns (separate keys).
+            button.grid(row=row, column=column, columnspan=span, sticky="nsew" if keys else "ew",
+                        padx=SPACING["button_gap"],
+                        pady=SPACING["button_gap"] if keys else SPACING["palette_grid_y"])
 
     def _palette_content_changed(self, page, canvas, content, docked):
         canvas.configure(scrollregion=canvas.bbox("all"))
@@ -836,22 +860,19 @@ class EditorWindow(tk.Toplevel):
         """Responsive density for the Basic page (§8.3/§8.4), never smaller text.
 
         The buttons viewport takes what the docked Stick Preview leaves. If the
-        2-column buttons would not fit there, the icon buttons fold into 4 columns
-        (same order: two pairs per row). Whatever still does not fit scrolls.
+        wide 2-column layout would not fit there, the page folds to 4 columns
+        (taller icon keys, one row per D-pad and per stick). Overflow scrolls.
         """
         available = page.winfo_height() - self.stick_preview.winfo_reqheight()
         if available <= 1:
             return
-        group, buttons = self._palette_fold
-        rows = (len(buttons) + self._palette_fold_columns - 1) // self._palette_fold_columns
-        row_height = group.winfo_reqheight() / rows
-        wide_rows = (len(buttons) + 1) // 2
-        wide_height = content.winfo_reqheight() + (wide_rows - rows) * row_height
-        columns = 4 if wide_height > available else 2
-        current = self._palette_fold_columns
-        if columns != current:
-            self._palette_fold_columns = columns
-            self._grid_palette_group(group, buttons, columns, previous=current)
+        if not self._palette_folded:
+            self._palette_wide_height = content.winfo_reqheight()
+        folded = self._palette_wide_height > available
+        if folded != self._palette_folded:
+            self._palette_folded = folded
+            for group, buttons in self._palette_folds:
+                self._grid_palette_group(group, buttons, folded, previous=True)
             content.update_idletasks()
         height = max(1, min(content.winfo_reqheight(), available))
         if canvas.winfo_reqheight() != height:
