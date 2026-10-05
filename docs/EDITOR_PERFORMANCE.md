@@ -99,3 +99,20 @@ python3 -m tools.benchmark_debug_cache path/to/script-debug.csv --mode sticks
 ```
 
 WindowsでもPython allocationと時間を測れます。Linux RSSを取得できない環境ではRSSは`null`です。native Windows / PyInstallerのmemory・latencyは未計測です。
+
+## Dopagaki3 P5: FX有り／無し（dopagaki3.md §15）
+
+同じ方法（10,000行のTSV、Linux/WSLg Xvfb、Python 3.12、Tk 8.6、各30回の中央値）で、演出の強さ0%（FX無し）と、EXTRA状態（テープ・放射線・RIMの循環が動作中、5操作ごとに新しいセル確定のカスケード、操作の合間にFXを1コマ進める）を比べました。順序の影響を避けるため、off→on→off→onと測り、後半の組を採りました。
+
+| 操作 | FX無し | FX有り | 差 |
+| --- | ---: | ---: | ---: |
+| 表の再描画 | 5.839 ms | 7.313 ms | +1.474 ms |
+| セル選択＋再描画 | 12.736 ms | 12.415 ms | −0.321 ms |
+| 縦スクロール | 13.642 ms | 14.137 ms | +0.495 ms |
+| セル内の入力（挿入＋補完） | 0.459 ms | 1.827 ms | +1.368 ms |
+
+FX有りの時点で表canvas上のFX itemは108、動作中の効果は28。完了条件（選択とscrollの中央値の悪化が2 ms以内）を満たします。再描画の差は、毎回の再描画で`fx` itemを最前面へ上げる分です。
+
+音：mixerは`audioop`ありで25 msあたり0.05 ms、純Python（Python 3.13以降・Windows）で1.22 ms。鳴っている間だけ動きます。
+
+F5のLet's Go同期（P4後の16 ms tick、Windows native・WinMM・実音で1回）：曲の推定開始はF5処理から+0.165 s、成功の結果は曲の19.177 s、叩きつけは曲の**21.5176 s**（cue 21.506 sに対して+11.6 ms、1 frame以内）。曲の時刻はWinMMの出力遅延を30 msと仮定した推定値で、最終的な同期の判断はユーザーの聴感による。

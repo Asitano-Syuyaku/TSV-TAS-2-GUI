@@ -14,12 +14,19 @@ from tkinter import filedialog, messagebox
 if __package__:
     from .app_settings import AppSettings
     from .background import hold_gc, resume_gc, resume_gc_soon
+    from .editor.theme import (COLORS, button_options, choice_options, entry_options,
+                               label_options)
+    from .editor.dopa.outcome import FAILED, SEND_UNVERIFIED, classify_conversion
+    from .editor.dopa.words import WORDS as DOPA_WORDS
     from .converter_logic import (build_commands, conversion_outputs, load_ftp_config,
                                   open_output_folder, save_ftp_config, scripts_dir,
                                   utf8_subprocess_kwargs)
 else:
     from app_settings import AppSettings
     from background import hold_gc, resume_gc, resume_gc_soon
+    from editor.theme import COLORS, button_options, choice_options, entry_options, label_options
+    from editor.dopa.outcome import FAILED, SEND_UNVERIFIED, classify_conversion
+    from editor.dopa.words import WORDS as DOPA_WORDS
     from converter_logic import (build_commands, conversion_outputs, load_ftp_config,
                                  open_output_folder, save_ftp_config, scripts_dir,
                                  utf8_subprocess_kwargs)
@@ -117,49 +124,62 @@ class TASConverterApp(tk.Tk):
         self._conversion_stdout = ""
         self._conversion_format = None
 
-        tk.Label(self, text=self.words["input"]).grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        self.input_entry = tk.Entry(self, width=50)
+        # Dopagaki3 neon skin (§8.7): constructor options only; behavior unchanged.
+        self.config(background=COLORS["app_background"])
+        ground = {"background": COLORS["app_background"]}
+        text = label_options("app_background")
+        entry = {**entry_options(), "highlightthickness": 1}
+
+        tk.Label(self, text=self.words["input"], **text).grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        self.input_entry = tk.Entry(self, width=50, **entry)
         self.input_entry.grid(row=0, column=1, padx=5, pady=5)
-        input_buttons = tk.Frame(self)
+        input_buttons = tk.Frame(self, **ground)
         input_buttons.grid(row=0, column=2, padx=5, pady=5)
-        tk.Button(input_buttons, text=self.words["browse"], command=self.browse_input).pack(side="left")
-        tk.Button(input_buttons, text=self.words["edit"], command=self.open_editor).pack(side="left")
+        tk.Button(input_buttons, text=self.words["browse"], command=self.browse_input,
+                  **button_options()).pack(side="left")
+        tk.Button(input_buttons, text=self.words["edit"], command=self.open_editor,
+                  **button_options("primary")).pack(side="left", padx=(4, 0))
 
-        tk.Label(self, text=self.words["output"]).grid(row=1, column=0, padx=5, pady=5, sticky="e")
-        self.output_entry = tk.Entry(self, width=50)
+        tk.Label(self, text=self.words["output"], **text).grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        self.output_entry = tk.Entry(self, width=50, **entry)
         self.output_entry.grid(row=1, column=1, padx=5, pady=5)
-        output_buttons = tk.Frame(self)
+        output_buttons = tk.Frame(self, **ground)
         output_buttons.grid(row=1, column=2, padx=5, pady=5)
-        tk.Button(output_buttons, text=self.words["browse"], command=self.browse_output).pack(side="left")
-        tk.Button(output_buttons, text=self.words["open_output"], command=self.open_output_folder).pack(side="left")
+        tk.Button(output_buttons, text=self.words["browse"], command=self.browse_output,
+                  **button_options()).pack(side="left")
+        tk.Button(output_buttons, text=self.words["open_output"], command=self.open_output_folder,
+                  **button_options()).pack(side="left", padx=(4, 0))
 
-        tk.Label(self, text=self.words["name"]).grid(row=2, column=0, padx=5, pady=5, sticky="e")
-        self.outname_entry = tk.Entry(self, width=50)
+        tk.Label(self, text=self.words["name"], **text).grid(row=2, column=0, padx=5, pady=5, sticky="e")
+        self.outname_entry = tk.Entry(self, width=50, **entry)
         self.outname_entry.grid(row=2, column=1, columnspan=2, padx=5, pady=5)
 
-        tk.Label(self, text=self.words["format"]).grid(row=3, column=0, padx=5, pady=5, sticky="e")
+        tk.Label(self, text=self.words["format"], **text).grid(row=3, column=0, padx=5, pady=5, sticky="e")
         self.format_var = tk.StringVar(value=self.settings.get("output_format"))
-        format_frame = tk.Frame(self)
+        format_frame = tk.Frame(self, **ground)
         format_frame.grid(row=3, column=1, columnspan=2, sticky="w")
         for key in ("binary", "stas", "nxtas"):
             tk.Radiobutton(format_frame, text=self.words[key], value=key,
-                           variable=self.format_var, command=self._format_changed).pack(side="left")
+                           variable=self.format_var, command=self._format_changed,
+                           **choice_options()).pack(side="left", padx=(0, 8))
 
         self.skip_var = tk.BooleanVar()
-        self.skip_check = tk.Checkbutton(self, text=self.words["skip"], variable=self.skip_var)
+        self.skip_check = tk.Checkbutton(self, text=self.words["skip"], variable=self.skip_var,
+                                         **choice_options())
         self.skip_check.grid(row=4, column=0, columnspan=3, padx=5, sticky="w")
         self.toggle_skip()
 
         self.debug_var = tk.BooleanVar(value=self.settings.get("debug_enabled"))
         tk.Checkbutton(self, text=self.words["debug"], variable=self.debug_var,
-                       command=self._save_preferences).grid(
+                       command=self._save_preferences, **choice_options()).grid(
             row=5, column=0, columnspan=3, padx=5, sticky="w")
 
         self.ftp_var = tk.BooleanVar()
         tk.Checkbutton(self, text=self.words["ftp"], variable=self.ftp_var,
-                       command=self.toggle_ftp).grid(row=6, column=0, columnspan=3, padx=5, sticky="w")
+                       command=self.toggle_ftp, **choice_options()).grid(
+            row=6, column=0, columnspan=3, padx=5, sticky="w")
 
-        self.ftp_frame = tk.Frame(self)
+        self.ftp_frame = tk.Frame(self, **ground)
         self.ip_entry = self._ftp_field("ip", 0, 0)
         self.port_entry = self._ftp_field("port", 0, 2)
         self.user_entry = self._ftp_field("user", 1, 0)
@@ -167,13 +187,18 @@ class TASConverterApp(tk.Tk):
         self.ftp_frame.grid(row=7, column=0, columnspan=3)
         self.ftp_frame.grid_remove()
         config = load_ftp_config(self.base_dir)
-        for entry, key in ((self.ip_entry, "ip"), (self.port_entry, "port"),
-                           (self.user_entry, "user"), (self.pass_entry, "passwd")):
-            entry.insert(0, str(config.get(key, "")))
+        for entry_widget, key in ((self.ip_entry, "ip"), (self.port_entry, "port"),
+                                  (self.user_entry, "user"), (self.pass_entry, "passwd")):
+            entry_widget.insert(0, str(config.get(key, "")))
 
-        self.convert_btn = tk.Button(self, text=self.words["start"], command=self.start_conversion)
+        self.convert_btn = tk.Button(self, text=self.words["start"], command=self.start_conversion,
+                                     **button_options("convert", fonts={"standard": "TkHeadingFont"}))
+        self.convert_btn.config(padx=18, pady=5)
         self.convert_btn.grid(row=8, column=1, padx=5, pady=10)
-        self.log_text = tk.Text(self, height=10, width=80, state="disabled")
+        # Factual result badge for the latest conversion (§8.7, §9.1 classes).
+        self.result_badge = tk.Label(self, text="", **label_options("app_background", "heading"))
+        self.result_badge.grid(row=8, column=2, padx=5, sticky="w")
+        self.log_text = tk.Text(self, height=10, width=80, state="disabled", **entry_options())
         self.log_text.grid(row=9, column=0, columnspan=3, padx=5, pady=5)
         if __package__:
             from .editor.recovery import RecoveryStore
@@ -231,8 +256,9 @@ class TASConverterApp(tk.Tk):
         self.destroy()
 
     def _ftp_field(self, key, row, column, **kwargs):
-        tk.Label(self.ftp_frame, text=self.words[key]).grid(row=row, column=column, padx=5, pady=2, sticky="e")
-        entry = tk.Entry(self.ftp_frame, **kwargs)
+        tk.Label(self.ftp_frame, text=self.words[key], **label_options("app_background")).grid(
+            row=row, column=column, padx=5, pady=2, sticky="e")
+        entry = tk.Entry(self.ftp_frame, **entry_options(), **kwargs)
         entry.grid(row=row, column=column + 1, padx=5, pady=2)
         return entry
 
@@ -474,9 +500,11 @@ class TASConverterApp(tk.Tk):
                 self.log("\n".join(logs))
                 logs.clear()
             if kind == "success":
+                self._show_badge(True, message)
                 presented = self._notify_editor_result(True, message)
                 self._show_conversion_result(message, dialog=not presented)
             elif kind == "error":
+                self._show_badge(False)
                 if not self._notify_editor_result(False, error=message):
                     messagebox.showerror(self.words["error_title"], message)
             elif kind == "validation":
@@ -504,6 +532,22 @@ class TASConverterApp(tk.Tk):
         if logs:
             self.log("\n".join(logs))
         self.after(50, self._drain_events)
+
+    def _show_badge(self, succeeded, outputs=None):
+        """Same truth classes as the Editor: a send counts only with the upload line."""
+        badge = self.__dict__.get("result_badge")
+        if badge is None:
+            return
+        words = DOPA_WORDS[self.language]
+        send = bool(outputs is not None and outputs.ftp_requested)
+        outcome = classify_conversion(succeeded, send, self.__dict__.get("_conversion_stdout", ""))
+        if outcome == FAILED:
+            text, color = words["oshii"], COLORS["neon_orange"]
+        elif outcome == SEND_UNVERIFIED:
+            text, color = f"{words['built']} · {words['send_unverified']}", COLORS["neon_orange"]
+        else:
+            text, color = words["sent" if send else "converted"], COLORS["neon_green"]
+        badge.config(text=text, foreground=color)
 
     def _show_conversion_result(self, outputs, dialog=True):
         self._last_successful_output = outputs.primary

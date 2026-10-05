@@ -35,6 +35,20 @@ def settings_path(platform=None, environ=None, home=None):
     return directory / APP_NAME / "settings.json"
 
 
+def os_reduces_motion(platform=None):
+    """Windows "Show animations" off (SPI_GETCLIENTAREAANIMATION). Never raises."""
+    platform = sys.platform if platform is None else platform
+    if not platform.startswith("win"):
+        return False
+    try:
+        import ctypes
+        value = ctypes.c_int(1)
+        ok = ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(value), 0)
+        return bool(ok) and not value.value
+    except (AttributeError, ImportError, OSError):
+        return False
+
+
 def _path(value, relative=False):
     """Normalize lexically; never stat recent paths just to load settings."""
     if not isinstance(value, str) or not value.strip() or "\0" in value:
@@ -100,7 +114,7 @@ def _clean(values):
 
 
 class AppSettings:
-    def __init__(self, path=None):
+    def __init__(self, path=None, reduced_motion=os_reduces_motion):
         try:
             self.path = Path(path) if path is not None else settings_path()
             with self.path.open("r", encoding="utf-8") as file:
@@ -111,6 +125,9 @@ class AppSettings:
                 self.path = None
             values = {}
         self._values = _clean(values)
+        # First choice only (dopagaki3.md §12.3): an explicit saved strength always wins.
+        if not (isinstance(values, dict) and "dopa_motion" in values) and reduced_motion():
+            self._values["dopa_motion"] = 25
 
     def get(self, key, default=None):
         value = self._values.get(key, default)

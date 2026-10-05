@@ -503,3 +503,15 @@ class NonModalResultTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class P5SettingsTests(unittest.TestCase):
+    def test_windows_reduced_motion_sets_only_the_first_default(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "settings.json"
+            self.assertEqual(AppSettings(path, reduced_motion=lambda: True).get("dopa_motion"), 25)
+            self.assertEqual(AppSettings(path, reduced_motion=lambda: False).get("dopa_motion"), 100)
+            path.write_text('{"version": 1, "dopa_motion": 75}', encoding="utf-8")
+            self.assertEqual(AppSettings(path, reduced_motion=lambda: True).get("dopa_motion"), 75)
+        from python_to_exe.app_settings import os_reduces_motion
+        self.assertFalse(os_reduces_motion("linux"))

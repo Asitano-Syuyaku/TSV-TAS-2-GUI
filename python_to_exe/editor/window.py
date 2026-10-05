@@ -1487,23 +1487,33 @@ class EditorWindow(tk.Toplevel):
         if not self.show_raw(remember=False):
             return
         if self._find_dialog is None or not self._find_dialog.winfo_exists():
-            dialog = tk.Toplevel(self)
+            dialog = tk.Toplevel(self, background=COLORS["panel_background"])
             dialog.title(self.words["search"])
             dialog.transient(self)
             self._find_dialog = dialog
-            tk.Label(dialog, text=self.words["find_text"]).grid(row=0, column=0, sticky="e")
-            self._find_entry = tk.Entry(dialog, textvariable=self.find_query, width=32)
-            self._find_entry.grid(row=0, column=1, columnspan=4, sticky="ew")
-            tk.Label(dialog, text=self.words["replace_text"]).grid(row=1, column=0, sticky="e")
-            self._replace_entry = tk.Entry(dialog, textvariable=self.replace_value, width=32)
-            self._replace_entry.grid(row=1, column=1, columnspan=4, sticky="ew")
+            fonts = self._theme_fonts
+            pad = {"padx": SPACING["gap"], "pady": SPACING["gap"]}
+            for row, key, variable in ((0, "find_text", self.find_query),
+                                       (1, "replace_text", self.replace_value)):
+                tk.Label(dialog, text=self.words[key], **label_options(fonts=fonts)).grid(
+                    row=row, column=0, sticky="e", **pad)
+                entry = tk.Entry(dialog, textvariable=variable, width=32,
+                                 font=fonts["standard"], **entry_options())
+                entry.grid(row=row, column=1, columnspan=4, sticky="ew", **pad)
+                if row == 0:
+                    self._find_entry = entry
+                else:
+                    self._replace_entry = entry
             for column, key, command in (
                 (0, "next", self.find_next), (1, "previous", self.find_previous),
                 (2, "replace_current", self.replace_current), (3, "replace_all", self.replace_all),
             ):
-                tk.Button(dialog, text=self.words[key], command=command).grid(row=2, column=column)
-            self._find_feedback = tk.Label(dialog, anchor="w")
-            self._find_feedback.grid(row=3, column=0, columnspan=5, sticky="ew")
+                tk.Button(dialog, text=self.words[key], command=command,
+                          **button_options("primary" if column == 0 else "toolbar")).grid(
+                    row=2, column=column, **pad)
+            self._find_feedback = tk.Label(dialog, anchor="w", **label_options(fonts=fonts))
+            self._find_feedback.configure(foreground=COLORS["warning"])
+            self._find_feedback.grid(row=3, column=0, columnspan=5, sticky="ew", **pad)
             self._find_entry.bind("<Return>", lambda event: self._shortcut(self.find_next))
             self._replace_entry.bind("<Return>", lambda event: self._shortcut(self.replace_current))
             dialog.bind("<F3>", lambda event: self._shortcut(self.find_next))

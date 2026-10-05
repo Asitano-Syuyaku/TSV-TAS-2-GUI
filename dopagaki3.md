@@ -447,7 +447,8 @@ comboの節目でだけ出す。毎回は出さない。
 
 - **Frame Inspector**：同じtokenでskinする（直接書かれた色をtokenに置き換える）。選択行はcyan地。`総フレーム数`のlabel textは現行のまま、右に大きな数字（meter font、YELLOW）を表示し、開いた瞬間にpunchする（確定値なのでcount-upしない）。
 - **検索ダイアログ**：tokenでskinするだけ。
-- **Converter画面**：Phase 5でskinする（§15）。地はVOID、`変換実行`は黄の大ボタン。Converter自身の変換結果にも§9の分類を使い、log欄の上に結果バッジ（`変換成功!!` / `おしい!`）を出す。messageboxは現行どおり。
+- **Converter画面**：Phase 5でskinする（§15）。地はVOID、`変換実行`は黄の大ボタン。Converter自身の変換結果にも§9の分類を使い、`変換実行`の右に結果バッジ（`変換成功!!` / `転送確定!!` / `生成OK · 送信: 未確認` / `おしい!`）を出す。Converter自身の`変換実行`のmessageboxは現行どおり（§9.6）。
+  - **P5の実装メモ**：converterのtestは偽のtkinter（constructor引数と`config`だけ）でConverterを起動するため、skinはconstructor引数と`config()`だけで当てる。バッジは「log欄の上」ではなく`変換実行`の右（gridの行を動かさない）。
 
 ### 8.8 scrollbar・menu
 
@@ -674,7 +675,7 @@ skillのreduced-motionの扱いに合わせる。
 - **フラッシュはRIMとHUDだけ。** 全画面は光らせない。400msに1回まで（3Hz未満）、1つの山で最大2回。色は白か黄で、**赤の点滅はしない**。
 - HUDのshakeは振幅3px以下、260ms以内で、**REWARD canvasだけ**（canvasのviewをずらし、itemの座標は動かさない）。**WORK層もMETERも揺らさない。**
 - 叫び文字は同時に1つまで。新しいものが来たら前のものはすぐに沈める。
-- OSのアニメーション無効設定：Windowsでは`SystemParametersInfo(SPI_GETCLIENTAREAANIMATION)`がFalseなら、初回起動時の既定を25%にする（任意。失敗したら無視する）。**P2では未実装**（Windows実機で確認できる段階、P5で扱う）。
+- OSのアニメーション無効設定：Windowsでは`SystemParametersInfo(SPI_GETCLIENTAREAANIMATION)`がFalseなら、初回起動時の既定を25%にする（失敗したら無視する）。**P5で実装**：`settings.json`に`dopa_motion`が無い時だけ効き、ユーザーが一度選んだ強さは常に優先する。開発機のWindowsではこの設定がOFF（`SPI_GETCLIENTAREAANIMATION`＝0）だったため、そこでの初回起動は25%から始まる。
 
 ---
 
@@ -728,6 +729,7 @@ trim済みfileを`analyze_audio.py`とbeat trackingで測った事実：**180.00
 - **2回目のF5**：前の曲を80 msで消して新しく始める。前の成功の叩きつけが残っていれば、その場で済ませる。
 - **mute（途中）**：曲を0.15秒で消し、待っていた叩きつけはその場で出す。**Editorを閉じた**：曲を即停止し、叩きつけは出さない。
 - 振付は共通tickerの1つのeffectで動き、曲が鳴っている間だけ16 ms周期にする（dropの位置ずれ1 frame以内）。別のschedulerは作らない。
+- **Windows nativeの実音確認（P5冒頭、1回）**：WinMMで、叩きつけは曲の21.5176 s（cueから+11.6 ms、1 frame以内）。明確なズレが無いため、sync offsetは追加していない（必要になれば、曲の再encodeではなく`choreo`の時刻計算に定数を1つ足すだけで調整できる）。
 - **最終的な同期の評価は、ユーザーが耳で行う。** 試聴ポイント：0:18.84（F5、曲の入り）、0:21.25（息）、0:21.506（drop＝叩きつけ）、drop＋2小節（fadeの開始）。
 
 ### 13.4 合成音（D中心。曲がD系なので、曲と重なる音は5度だけの和音にして長短を決めない）
@@ -800,7 +802,7 @@ trim済みfileを`analyze_audio.py`とbeat trackingで測った事実：**180.00
 | **P2 FX engine＋HUD**（実装済み） | `dopa/heat.py`・`fx.py`・`hud.py`・`fonts.py`・`words.py`・`director.py`、FRAME METER、REWARD、セル確定のカスケード、叫び文字、ドパmenu／チップ／settings（音関係はP4、§12.1） | §7のタイムラインがコマ送りで確認できる。IME・補完・Undoへの影響が無い |
 | **P3 真の山**（実装済み） | §10のhook、`outcome.py`、Validate / F5 / F7 / F8、COVER（§9.5） | §9の全分岐を、成功・送信未確認・失敗のfixtureで確認できる |
 | **P4 音**（実装済み） | `sound.py`・`mixer.py`・`music.py`・`audio.py`・`choreo.py`、F5 × Let's Go（§13.3）、合成音（§13.4）、音の設定、F5/F8結果のnon-modal化（§9.6） | Windows / Linux / 無音環境でエラーにならない |
-| **P5 周辺＋計測** | Frame Inspector / 検索 / Converter画面のskin、性能の計測（`docs/EDITOR_PERFORMANCE.md`の方法で、FX有り／無しのredraw・選択・scroll・typing） | FX有りでも、選択とscrollの中央値の悪化が2ms以内 |
+| **P5 周辺＋計測**（実装済み） | Frame Inspector / 検索 / Converter画面のskin、Windowsのアニメーション無効設定（§12.3）、性能の計測（`docs/EDITOR_PERFORMANCE.md`の方法で、FX有り／無しのredraw・選択・scroll・typing。結果は同docの「Dopagaki3 P5」） | FX有りでも、選択とscrollの中央値の悪化が2ms以内（実測：選択−0.32 ms、scroll＋0.50 ms） |
 
 ### 15.1 追加するテスト
 

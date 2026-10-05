@@ -3,6 +3,8 @@
 import tkinter as tk
 from pathlib import Path
 
+from .theme import COLORS, INSPECTOR, SPACING, button_options, entry_options, label_options
+
 
 # Display labels are intentionally separate from the converter's exact CSV fields.
 MAIN_COLUMNS = (
@@ -30,24 +32,37 @@ class FrameInspector(tk.Toplevel):
         for _, _, width in MAIN_COLUMNS:
             self._column_edges.append(self._column_edges[-1] + width)
         self.geometry("1050x550")
+        self.configure(background=COLORS["app_background"])
+        # The Editor's director (fonts + FX) when available; display only (§8.7).
+        self._dopa = getattr(master, "_dopa", None)
+        self._punch = None
+        from .widgets import scrollbar
 
-        top = tk.Frame(self)
+        top = tk.Frame(self, background=COLORS["panel_background"])
         top.pack(fill="x")
-        self.total_label = tk.Label(top, anchor="w")
-        self.total_label.pack(side="left", padx=6)
-        tk.Label(top, text=words["frame_number"]).pack(side="left")
-        self.frame_entry = tk.Entry(top, width=12)
-        self.frame_entry.pack(side="left", padx=4)
+        self.total_label = tk.Label(top, anchor="w", **label_options(role="heading"))
+        self.total_label.pack(side="left", padx=(SPACING["section"] * 2, SPACING["gap"]),
+                              pady=SPACING["gap"])
+        # The confirmed CSV total, large: snapped with a punch, never counted up (T1).
+        self.total_value = tk.Label(top, anchor="w", **label_options())
+        self.total_value.configure(foreground=COLORS["neon_yellow"],
+                                   font=self._meter_font(22))
+        self.total_value.pack(side="left", padx=(0, SPACING["deck_group"] * 2))
+        tk.Label(top, text=words["frame_number"], **label_options(role="small")).pack(side="left")
+        self.frame_entry = tk.Entry(top, width=12, **entry_options())
+        self.frame_entry.pack(side="left", padx=SPACING["gap"])
         self.frame_entry.bind("<Return>", lambda event: self.go_to_frame())
-        tk.Button(top, text=words["go"], command=self.go_to_frame).pack(side="left")
-        self.feedback = tk.Label(top, anchor="w")
-        self.feedback.pack(side="left", padx=8)
+        tk.Button(top, text=words["go"], command=self.go_to_frame,
+                  **button_options("primary")).pack(side="left")
+        self.feedback = tk.Label(top, anchor="w", **label_options())
+        self.feedback.configure(foreground=COLORS["warning"])
+        self.feedback.pack(side="left", padx=SPACING["deck_group"])
 
-        body = tk.Frame(self)
-        body.pack(fill="both", expand=True)
-        self.canvas = tk.Canvas(body, background="#ffffff", highlightthickness=0)
-        vertical = tk.Scrollbar(body, orient="vertical", command=self.canvas.yview)
-        horizontal = tk.Scrollbar(body, orient="horizontal", command=self.canvas.xview)
+        body = tk.Frame(self, background=COLORS["app_background"])
+        body.pack(fill="both", expand=True, pady=(SPACING["gap"], 0))
+        self.canvas = tk.Canvas(body, background=INSPECTOR["row"], highlightthickness=0)
+        vertical = scrollbar(body, orient="vertical", command=self.canvas.yview)
+        horizontal = scrollbar(body, orient="horizontal", command=self.canvas.xview)
         self.canvas.configure(yscrollcommand=lambda first, last: self._scrolled(vertical, first, last),
                               xscrollcommand=lambda first, last: self._scrolled(horizontal, first, last))
         self.canvas.grid(row=0, column=0, sticky="nsew")
@@ -62,13 +77,16 @@ class FrameInspector(tk.Toplevel):
         self.canvas.bind("<Button-5>", lambda event: self._wheel_units(1))
         self.bind("<Destroy>", self._on_destroy)
 
-        tk.Label(self, text=words["frame_details"], anchor="w").pack(fill="x")
-        detail_area = tk.Frame(self)
+        tk.Label(self, text=words["frame_details"], anchor="w",
+                 **label_options("app_background", "heading")).pack(fill="x", padx=SPACING["gap"],
+                                                                   pady=(SPACING["gap"], 0))
+        detail_area = tk.Frame(self, background=COLORS["app_background"])
         detail_area.pack(fill="x")
-        self.detail_text = tk.Text(detail_area, height=7, wrap="none", state="disabled")
-        detail_scroll = tk.Scrollbar(detail_area, command=self.detail_text.yview)
-        detail_horizontal = tk.Scrollbar(detail_area, orient="horizontal",
-                                         command=self.detail_text.xview)
+        self.detail_text = tk.Text(detail_area, height=7, wrap="none", state="disabled",
+                                   **entry_options())
+        detail_scroll = scrollbar(detail_area, orient="vertical", command=self.detail_text.yview)
+        detail_horizontal = scrollbar(detail_area, orient="horizontal",
+                                      command=self.detail_text.xview)
         self.detail_text.configure(yscrollcommand=detail_scroll.set,
                                    xscrollcommand=detail_horizontal.set)
         self.detail_text.grid(row=0, column=0, sticky="nsew")
@@ -77,8 +95,16 @@ class FrameInspector(tk.Toplevel):
         detail_area.grid_columnconfigure(0, weight=1)
         self.set_data(frames, source)
 
+    def _meter_font(self, pixels):
+        director = self._dopa
+        return director.fonts.get("meter", pixels) if director is not None else "TkFixedFont"
+
     def _on_destroy(self, event):
         if event.widget is self:
+            punch, director = getattr(self, "_punch", None), getattr(self, "_dopa", None)
+            if punch is not None and director is not None:
+                director.fx.stop(punch)
+                self._punch = None
             if self._draw_job is not None:
                 self.after_cancel(self._draw_job)
                 self._draw_job = None
@@ -112,29 +138,30 @@ class FrameInspector(tk.Toplevel):
         for row in range(first, max(first, last)):
             values = self.frames.summary(row)
             y = HEADER_HEIGHT + row * ROW_HEIGHT
-            background = ("#cde1fa" if row == self.selected_row else
-                          "#f7f9fc" if row % 2 else "#ffffff")
+            background = (INSPECTOR["selected"] if row == self.selected_row else
+                          INSPECTOR["row_alt"] if row % 2 else INSPECTOR["row"])
             for column, value in enumerate(values):
                 left, right = self._column_edges[column:column + 2]
                 if right < x0 or left > x1:
                     continue
                 canvas.create_rectangle(left, y, right, y + ROW_HEIGHT,
-                                        fill=background, outline="#d5dce6", tags="inspector")
+                                        fill=background, outline=INSPECTOR["grid"], tags="inspector")
                 limit = max(1, (right - left - 10) // 7)
                 shown = str(value)
                 if len(shown) > limit:
                     shown = shown[:limit - 1] + "…"
                 canvas.create_text(left + 4, y + ROW_HEIGHT / 2, text=shown,
                                    anchor="w",
-                                   fill="#243447", tags="inspector")
+                                   fill=INSPECTOR["text"], tags="inspector")
         for column, (label, _, _) in enumerate(MAIN_COLUMNS):
             left, right = self._column_edges[column:column + 2]
             if right < x0 or left > x1:
                 continue
             canvas.create_rectangle(left, y0, right, y0 + HEADER_HEIGHT,
-                                    fill="#e4ebf3", outline="#78889c", tags="inspector")
+                                    fill=INSPECTOR["header"], outline=INSPECTOR["header_line"],
+                                    tags="inspector")
             canvas.create_text(left + 4, y0 + HEADER_HEIGHT / 2, text=label,
-                               anchor="w", fill="#26384d", tags="inspector")
+                               anchor="w", fill=INSPECTOR["header_text"], tags="inspector")
 
     def _click(self, event):
         if event.y < HEADER_HEIGHT:
@@ -183,6 +210,20 @@ class FrameInspector(tk.Toplevel):
         self._schedule_draw()
         return True
 
+    def _punch_total(self):
+        director = self._dopa
+        if director is None or director.fx.reduced:
+            return
+        from .dopa.fx import Tween, ease_out
+        if self._punch is not None:
+            director.fx.stop(self._punch)
+
+        def punch(progress):
+            if self.winfo_exists():
+                self.total_value.configure(font=self._meter_font(22 + 8 * (1 - ease_out(progress))))
+
+        self._punch = director.fx.add(Tween(0.12, punch))
+
     def mark_stale(self):
         self.feedback.configure(text=self.words["previous_frames"])
 
@@ -191,6 +232,8 @@ class FrameInspector(tk.Toplevel):
         self.source = Path(source)
         self.title(f"{self.words['frame_inspector']} — {self.source.name}")
         self.total_label.configure(text=f"{self.words['total_frames']}: {frames.total_frames}")
+        self.total_value.configure(text=f"{frames.total_frames:,}f")
+        self._punch_total()
         self.feedback.configure(text="")
         self.selected_row = None
         self.canvas.configure(scrollregion=(0, 0, self._column_edges[-1],

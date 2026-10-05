@@ -159,3 +159,17 @@ def menu_options():
     return {"background": COLORS["panel_background"], "foreground": COLORS["text"],
             "activebackground": COLORS["header_selected"], "activeforeground": COLORS["text"],
             "disabledforeground": COLORS["muted_text"], "relief": "flat", "borderwidth": 1}
+
+
+def choice_options(surface="app_background"):
+    """Checkbutton / Radiobutton on the dark ground (Converter, §8.7)."""
+    return {"background": COLORS[surface], "foreground": COLORS["text"],
+            "activebackground": COLORS[surface], "activeforeground": COLORS["accent"],
+            "selectcolor": COLORS["cell_background"], "disabledforeground": COLORS["muted_text"],
+            "highlightthickness": 0, "borderwidth": 0}
+
+
+INSPECTOR = {"row": COLORS["cell_background"], "row_alt": "#17142a",
+             "selected": COLORS["active_cell"], "grid": COLORS["subtle_border"],
+             "header": COLORS["header_background"], "header_line": COLORS["border"],
+             "header_text": COLORS["header_text"], "text": COLORS["text"]}
