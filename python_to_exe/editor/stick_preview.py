@@ -26,6 +26,9 @@ class StickPreview(tk.Frame):
         self.frame = None
         self.samples = ()
         self._key = None
+        # Optional display-only effects (dopagaki3.md §8.4); set by the Editor.
+        self.effects = None
+        self._points = [None, None]
         self.plots, self.values = [], []
         heading = tk.Frame(self, background=COLORS["panel_background"])
         heading.grid(row=0, column=0, columnspan=2, sticky="ew", padx=SPACING["button_gap"],
@@ -70,6 +73,11 @@ class StickPreview(tk.Frame):
             self.lamp.pack_forget()
         for column in range(2):
             self._draw(column)
+        if frame is not None and self.effects is not None:
+            # A new confirmed sample: a ring at the exact current point, never a tween.
+            for column, point in enumerate(self._points):
+                if point is not None:
+                    self.effects.stick_ring(self.plots[column], point, STICK_RAMPS[STICKS[column]][0])
 
     def _draw(self, column):
         canvas = self.plots[column]
@@ -88,6 +96,7 @@ class StickPreview(tk.Frame):
                            outline=ramp[0], width=2)
         canvas.create_oval(cx - 2, cy - 2, cx + 2, cy + 2, fill=COLORS["preview_center"], outline="")
         current = None
+        self._points[column] = None
         for sample in reversed(self.samples):
             age = self.frame - sample.frame
             state = sample.left if column == 0 else sample.right
@@ -98,6 +107,7 @@ class StickPreview(tk.Frame):
             if point is not None:
                 x, y = point
                 if age == 0:
+                    self._points[column] = x, y
                     canvas.create_oval(x - 7, y - 7, x + 7, y + 7, outline=ramp[0], width=2,
                                        tags=("current_ring",))
                     size, fill = 4, STICK_CORE

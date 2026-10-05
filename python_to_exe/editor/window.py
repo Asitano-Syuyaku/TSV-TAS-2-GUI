@@ -17,6 +17,7 @@ from .text_ops import (file_kind, find_next as next_match, find_previous as prev
 from .theme import (CATEGORY_COLORS, COLORS, FONTS, HEAT_RAMP, SIZES, SPACING, SYNTAX_COLORS,
                     button_options, editor_fonts, entry_options, label_options, menu_options)
 from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
+from .dopa.words import MOTION_LEVELS, WORDS as DOPA_WORDS
 
 if __package__ == "editor":
     from app_settings import AppSettings, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
@@ -162,6 +163,7 @@ class EditorWindow(tk.Toplevel):
                  on_analyze=None, can_analyze=None, settings=None, recovery=None):
         super().__init__(master)
         self.words = LABELS[language]
+        self._language = language
         self.settings = settings if settings is not None else getattr(master, "settings", None)
         if self.settings is None:
             self.settings = getattr(master, "_tas_app_settings", None)
@@ -263,25 +265,35 @@ class EditorWindow(tk.Toplevel):
             table_menu.add_command(label=self.words[key],
                                    command=lambda name=action: self._table_action(name))
         menu.add_cascade(label=self.words["table_menu"], menu=table_menu)
+        dopa_menus = self._build_dopa_menu(menu)
         if self._windowingsystem != "win32":
             # Windows menus stay native (§8.8); X11/macOS Tk menus take the skin.
-            for themed in (menu, file_menu, self._recent_menu, edit_menu, search_menu, table_menu):
+            for themed in (menu, file_menu, self._recent_menu, edit_menu, search_menu, table_menu,
+                           *dopa_menus):
                 themed.configure(**menu_options())
         self.config(menu=menu)
 
         from .widgets import scrollbar
 
         self._build_command_deck()
-        # FEVER HUD row (§6). Phase 1 keeps the factual Frame readout full size
-        # here; the Phase 2 FRAME METER canvas will render the same model.
+        # FEVER HUD (§6): left FRAME METER (data) over the factual readout and Go
+        # field; right REWARD canvas (game numbers, shouts, background motion).
         hud = tk.Frame(self, background=COLORS["panel_background"],
                        highlightthickness=1, highlightbackground=COLORS["subtle_border"])
         hud.pack(fill="x", padx=SPACING["outer"], pady=(SPACING["gap"], 0))
         self.hud_row = hud
-        self.frame_status = tk.Label(hud, anchor="w", padx=SPACING["section"],
-                                     **label_options("panel_background", "frame_info", self._theme_fonts))
-        self.frame_status.pack(side="left", pady=SPACING["gap"])
-        frame_navigation = tk.Frame(hud, background=COLORS["panel_background"])
+        meter_column = tk.Frame(hud, background=COLORS["panel_background"])
+        meter_column.pack(side="left", fill="y")
+        self.meter_canvas = tk.Canvas(meter_column, width=470, height=54, highlightthickness=0,
+                                      background=COLORS["panel_background"], takefocus=False)
+        self.meter_canvas.pack(side="top", anchor="w")
+        readout = tk.Frame(meter_column, background=COLORS["panel_background"])
+        readout.pack(side="top", fill="x", pady=(0, SPACING["gap"]))
+        # The factual text stays exactly as before, now a small muted caption (§5.2).
+        self.frame_status = tk.Label(readout, anchor="w", padx=SPACING["section"],
+                                     **label_options("panel_background", "small", self._theme_fonts))
+        self.frame_status.pack(side="left")
+        frame_navigation = tk.Frame(readout, background=COLORS["panel_background"])
         frame_navigation.pack(side="left", padx=SPACING["deck_group"])
         tk.Label(frame_navigation, text=self.words["go_to"],
                  **label_options(role="small", fonts=self._theme_fonts)).pack(side="left")
@@ -296,6 +308,9 @@ class EditorWindow(tk.Toplevel):
         self._frame_jump_feedback.configure(foreground=COLORS["warning"])
         self.frame_entry.bind("<Return>", lambda event: self._shortcut(self.go_to_frame))
         self.frame_entry.bind("<Escape>", lambda event: self._shortcut(self._focus_editor))
+        self.reward_canvas = tk.Canvas(hud, height=76, highlightthickness=0, takefocus=False,
+                                       background=COLORS["panel_background"])
+        self.reward_canvas.pack(side="left", fill="both", expand=True)
 
         # RIM (§4.3): the WORK layer's neon edge. Without HEAT yet, it uses E's first stop.
         self._rim = tk.Frame(self, background=COLORS["app_background"],
@@ -337,7 +352,8 @@ class EditorWindow(tk.Toplevel):
                                     self._table_text_changed, self._update_status,
                                     self.undo, self.redo, self.words,
                                     on_edit_change=self._table_edit_pending,
-                                    on_column_resize=self._remember_column_width)
+                                    on_column_resize=self._remember_column_width,
+                                    on_effect=self._table_effect)
         self.table_grid.columns.import_widths(self.settings.get("editor_column_widths"))
         self.table_grid._update_region()
         self._load_palette_icons()
@@ -355,6 +371,11 @@ class EditorWindow(tk.Toplevel):
                                **label_options("panel_background", "small", self._theme_fonts))
         self.status.configure(pady=SPACING["status_y"])
         self.status.pack(side="left", fill="x", expand=True)
+        # Always-reachable effects strength (§12.1); a click cycles 100 -> 0%.
+        self._dopa_chip = tk.Label(status_row, cursor="hand2", padx=SPACING["section"],
+                                   **label_options("secondary_background", "small", self._theme_fonts))
+        self._dopa_chip.pack(side="right", padx=SPACING["gap"], pady=1)
+        self._dopa_chip.bind("<Button-1>", lambda event: self._cycle_dopa_motion())
         self._problems_panel = tk.Frame(self, background=COLORS["panel_background"],
                                         highlightthickness=1, highlightbackground=COLORS["border"])
         # Hazard tape (§8.6): shown only above a failed result.
@@ -383,6 +404,8 @@ class EditorWindow(tk.Toplevel):
         self.text.bind("<KeyRelease>", self._update_status)
         self.text.bind("<ButtonRelease-1>", self._update_status)
         self.text.bind("<Configure>", self._on_text_configure)
+        for sequence in ("<KeyPress-Return>", "<KeyPress-KP_Enter>"):
+            self.text.bind(sequence, self._raw_return, add="+")
         for sequence, command in (
             ("<Control-n>", self.new_document), ("<Control-o>", self.open_file),
             ("<Control-s>", self.save), ("<Control-Shift-S>", self.save_as),
@@ -397,6 +420,8 @@ class EditorWindow(tk.Toplevel):
             ("<Control-f>", self.show_find), ("<Control-h>", self.show_replace),
             ("<Control-g>", self.focus_frame_entry),
             ("<F3>", self.find_next), ("<Shift-F3>", self.find_previous),
+            ("<Control-Shift-D>", self._cycle_dopa_motion),
+            ("<Control-Shift-d>", self._cycle_dopa_motion),
         ):
             self.text.bind(sequence, lambda event, action=command: self._shortcut(action))
         for sequence, command in (
@@ -414,11 +439,18 @@ class EditorWindow(tk.Toplevel):
             ("<Control-g>", self.focus_frame_entry),
             ("<F3>", self.find_next),
             ("<Shift-F3>", self.find_previous),
+            ("<Control-Shift-D>", self._cycle_dopa_motion),
+            ("<Control-Shift-d>", self._cycle_dopa_motion),
         ):
             self.bind(sequence, lambda event, action=command: self._shortcut(action))
         self.protocol("WM_DELETE_WINDOW", self.close_editor)
         self.bind("<Destroy>", self._on_destroy)
         self.bind("<Configure>", self._workspace_resized)
+        from .dopa.director import DopaDirector
+        self._dopa = DopaDirector(self, self._language, motion=self.settings.get("dopa_motion"),
+                                  flashes=self.settings.get("dopa_flash"))
+        self.stick_preview.effects = self._dopa
+        self._update_dopa_chip()
         self._update_title()
         self._update_status()
         self._schedule_line_numbers()
@@ -502,6 +534,81 @@ class EditorWindow(tk.Toplevel):
         if self._deck_full_width is not None:
             self._set_deck_compact(event.width < self._deck_full_width)
 
+    # 1F FEVER (dopagaki3.md §7, §12) -----------------------------------------
+
+    def _build_dopa_menu(self, menubar):
+        words = DOPA_WORDS[self._language]
+        menu = tk.Menu(menubar, tearoff=False)
+        levels = tk.Menu(menu, tearoff=False)
+        self._dopa_motion_var = tk.IntVar(self, value=self.settings.get("dopa_motion"))
+        self._dopa_flash_var = tk.BooleanVar(self, value=self.settings.get("dopa_flash"))
+        for level in MOTION_LEVELS:
+            levels.add_radiobutton(
+                label=words["effects_level"].format(n=level) if level else words["effects_off"],
+                value=level, variable=self._dopa_motion_var,
+                command=lambda: self._set_dopa(motion=self._dopa_motion_var.get()))
+        menu.add_cascade(label=words["effects"], menu=levels, accelerator="Ctrl+Shift+D")
+        menu.add_checkbutton(label=words["flashes"], variable=self._dopa_flash_var,
+                             command=lambda: self._set_dopa(flash=self._dopa_flash_var.get()))
+        menubar.add_cascade(label=words["menu"], menu=menu)
+        return menu, levels
+
+    def _cycle_dopa_motion(self):
+        current = self.settings.get("dopa_motion")
+        index = MOTION_LEVELS.index(current) if current in MOTION_LEVELS else 0
+        self._set_dopa(motion=MOTION_LEVELS[(index + 1) % len(MOTION_LEVELS)])
+
+    def _set_dopa(self, motion=None, flash=None):
+        values = {}
+        if motion is not None:
+            values["dopa_motion"] = motion
+        if flash is not None:
+            values["dopa_flash"] = bool(flash)
+        self._remember_workspace(**values)
+        # Every open Editor shares these effect preferences.
+        for widget in self.master.winfo_children():
+            apply = getattr(widget, "_apply_dopa_settings", None)
+            if apply is not None and getattr(widget, "_dopa", None) is not None:
+                apply()
+
+    def _apply_dopa_settings(self):
+        motion, flash = self.settings.get("dopa_motion"), self.settings.get("dopa_flash")
+        self._dopa_motion_var.set(motion)
+        self._dopa_flash_var.set(flash)
+        self._dopa.set_settings(motion, flash)
+        self._update_dopa_chip()
+
+    def _update_dopa_chip(self):
+        chip = getattr(self, "_dopa_chip", None)
+        if chip is not None:
+            motion = self.settings.get("dopa_motion")
+            chip.configure(text=DOPA_WORDS[self._language]["chip"].format(n=motion),
+                           foreground=COLORS["neon_yellow"] if motion else COLORS["muted_text"])
+
+    def _table_effect(self, kind, info):
+        director = getattr(self, "_dopa", None)
+        if director is None or self._closed:
+            return
+        if kind == "commit":
+            director.cell_committed(info["cell"], info["direction"], info["active"])
+        elif kind == "transform":
+            director.table_transformed()
+
+    def _raw_return(self, _event=None):
+        # Runs before the Text class binding inserts the newline; check afterwards.
+        lines = int(self.text.index("end-1c").split(".")[0])
+        self.after_idle(lambda: self._raw_return_done(lines))
+
+    def _raw_return_done(self, lines_before):
+        director = getattr(self, "_dopa", None)
+        if director is None or self._closed or self._view != "raw":
+            return
+        if int(self.text.index("end-1c").split(".")[0]) <= lines_before:
+            return  # No newline was inserted (e.g. an IME confirmation).
+        line = int(self.text.index("insert").split(".")[0]) - 1
+        if line >= 1 and self.text.get(f"{line}.0", f"{line}.0 lineend").strip():
+            director.raw_line_committed(line)
+
     def _draw_problems_tape(self, _event=None):
         tape = self._problems_tape
         tape.delete("all")
@@ -581,6 +688,7 @@ class EditorWindow(tk.Toplevel):
                          target.configure(scrollregion=target.bbox("all")))
             canvas.bind("<Configure>", lambda event, target=canvas, item=content_id:
                         target.itemconfigure(item, width=event.width))
+            rules = []
             for category in categories:
                 if category == "stick_preview":
                     self.stick_preview = StickPreview(content, fonts=fonts,
@@ -595,8 +703,9 @@ class EditorWindow(tk.Toplevel):
                 heading.configure(foreground=color)
                 heading.pack(fill="x", padx=SPACING["section"],
                              pady=(SPACING["category_top"], 0))
-                tk.Frame(content, width=28, height=2, background=color).pack(
-                    anchor="w", padx=SPACING["section"], pady=(1, SPACING["category_bottom"] + 2))
+                rule = tk.Frame(content, width=28, height=2, background=color)
+                rule.pack(anchor="w", padx=SPACING["section"], pady=(1, SPACING["category_bottom"] + 2))
+                rules.append(rule)
                 group = tk.Frame(content, background=COLORS["panel_background"])
                 group.pack(fill="x", padx=SPACING["gap"])
                 for column in (0, 1):
@@ -614,6 +723,7 @@ class EditorWindow(tk.Toplevel):
                         sticky="ew", padx=SPACING["button_gap"], pady=SPACING["palette_grid_y"])
                     slot += span
             self._bind_palette_scroll(page, canvas)
+            self._palette_rules = getattr(self, "_palette_rules", []) + [rules]
             self._palette_pages.append((page, canvas))
         settings = getattr(self, "settings", None)
         self._show_palette_page(settings.get("editor_palette_page", 0) + 1 if settings else 1,
@@ -640,6 +750,9 @@ class EditorWindow(tk.Toplevel):
         self._palette_next.configure(state="disabled" if number == len(self._palette_pages) else "normal")
         if remember:
             self._remember_workspace(editor_palette_page=number - 1)
+            director = getattr(self, "_dopa", None)
+            if director is not None:
+                director.grow_rules(self._palette_rules[number - 1])
 
     def _remember_workspace(self, **values):
         settings = getattr(self, "settings", None)
@@ -718,11 +831,21 @@ class EditorWindow(tk.Toplevel):
         options = {**button_options("palette"),
                    "text": (candidate.short_label or candidate.display_label)
                    if image is not None else candidate.display_label,
-                   "anchor": "w",
-                   "command": lambda item=candidate: self.table_grid.insert_candidate(item)}
+                   "anchor": "w"}
         if image is not None:
             options.update(image=image, compound="left")
-        return tk.Button(parent, **options)
+        holder = []
+
+        def press(item=candidate):
+            self.table_grid.insert_candidate(item)  # The real action first.
+            director = getattr(self, "_dopa", None)
+            if director is not None and holder:
+                director.palette_pressed(holder[0], CATEGORY_COLORS.get(
+                    item.category, COLORS["muted_text"]))
+
+        button = tk.Button(parent, command=press, **options)
+        holder.append(button)
+        return button
 
     @staticmethod
     def _shortcut(action):
@@ -779,6 +902,9 @@ class EditorWindow(tk.Toplevel):
             # Release Tk images on the UI thread, before background CSV parsing
             # can collect a destroyed Editor's cyclic references.
             self._palette_icons.clear()
+            director = getattr(self, "_dopa", None)
+            if director is not None:
+                director.destroy()  # Stops its ticker; releases its fonts here.
             getattr(self, "_theme_fonts", {}).clear()
             for name in ("_gutter_job", "_highlight_job", "_position_job",
                          "_position_poll_job", "_recovery_job"):
@@ -798,7 +924,7 @@ class EditorWindow(tk.Toplevel):
         width = self._fixed_font.measure(str(last_line)) + 12
         if int(self.line_numbers.cget("width")) != width:
             self.line_numbers.configure(width=width)
-        self.line_numbers.delete("all")
+        self.line_numbers.delete("line")  # Keep in-flight "fx" items.
         index = self.text.index("@0,0")
         current = getattr(self, "_cursor_line", None)
         while True:
@@ -878,14 +1004,18 @@ class EditorWindow(tk.Toplevel):
                        f"{self.words['frame_duration']}: {duration} | "
                        f"{self.words['frame_end']}: {end} | "
                        f"{self.words['frame_total']}: {self._positions.total_frames}f")
-            confirmed = True
+            # The METER renders this same structured result, never the string (§5.2).
+            model = ("confirmed", position.start if position else None,
+                     position.duration if position else None,
+                     position.end if position else None, self._positions.total_frames)
         else:
-            confirmed = False
+            model = ({self.words["frame_unavailable"]: "tsv_only",
+                      self.words["frame_updating"]: "pending"}.get(message, "unavailable"),
+                     None, None, None, None)
         self.frame_status.configure(text=message)
-        if hasattr(self, "hud_row"):
-            # T2: only converter-confirmed positions use the confirmed-data YELLOW.
-            self.frame_status.configure(
-                foreground=COLORS["neon_yellow" if confirmed else "muted_text"])
+        director = getattr(self, "_dopa", None)
+        if director is not None:
+            director.meter(model)
         if hasattr(self, "stick_preview"):
             self._update_stick_preview(line)
 
@@ -1064,6 +1194,9 @@ class EditorWindow(tk.Toplevel):
         if revision == self._position_revision:
             self._positions = result.positions if result.success else None
             self._stick_frames = result.sticks if result.success else None
+            director = getattr(self, "_dopa", None)
+            if director is not None and self._positions is not None:
+                director.positions_confirmed(self._positions.total_frames)
             self._update_frame_info(self._current_line())
         if self._position_waiting and self._position_job is None:
             self._start_position_analysis()
@@ -1216,6 +1349,9 @@ class EditorWindow(tk.Toplevel):
             self.table_grid.selected = (0, 0)
         if hasattr(self, "_cursor_line"):
             self._cursor_line = None
+        director = getattr(self, "_dopa", None)
+        if director is not None:
+            director.document_replaced()
         self.text.delete("1.0", "end")
         self.text.insert("1.0", self.document.text)
         self.text.edit_reset()
@@ -1242,6 +1378,9 @@ class EditorWindow(tk.Toplevel):
         self._update_status()
         self._schedule_line_numbers()
         self._schedule_highlight()
+        director = getattr(self, "_dopa", None)
+        if director is not None:
+            director.history()
         return True
 
     def redo(self):
@@ -1257,6 +1396,9 @@ class EditorWindow(tk.Toplevel):
         self._update_status()
         self._schedule_line_numbers()
         self._schedule_highlight()
+        director = getattr(self, "_dopa", None)
+        if director is not None:
+            director.history()
         return True
 
     def cut(self):

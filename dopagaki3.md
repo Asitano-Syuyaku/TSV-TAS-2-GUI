@@ -243,6 +243,13 @@ Raw表示でも同じ構成（本体が`tk.Text`＋gutterになり、パレッ�
 
 HUDは「計器」と「報酬」を左右に分ける。**左がデータ（嘘をつかない）、右がゲーム（盛ってよい）。** この左右の分離そのものが、Truth Contractを目に見えるようにしている。
 
+### 6.0 HUDの構造（P2で確定）
+
+- HUDの左列：**METER canvas**（幅470px〜、高さ54px。値が非常に長い時だけ広がる）の下に、`frame_status`の小さなmutedの読み出しと`移動`欄を1行で並べる。
+- HUDの右：**REWARD canvas**（残りの幅、高さ76px）。SHOUT ZONE・HEAT・COMBO・DOPA・背景のrays/テープはすべてここだけに描く。
+- **shake・背景のmotionはREWARD canvasだけ**。METERはデータなので、揺らさず、背景も持たない（Truth Contractを見た目にも分ける）。
+- METERの`START` `LEN` `END` `TOTAL`は日英とも英字caps（計器の見た目）。値は3桁区切り。
+
 ### 6.1 FRAME METER（左・データ）
 
 ```
@@ -318,7 +325,8 @@ START    LEN     END     TOTAL
   - E≥0.6：SPARKに星形が混ざる。
   - E≥0.8：確定のたびにセル上方へ小さな紙吹雪。
   - E≥1.0：PUNCH枠が虹色に循環する。
-- **Raw表示**：WORK層はgutterだけを使う。確定した行の行番号が黄→muted へ沈み、gutterの右端から小さな火花が出る。HUDの反応はTableと同じ。
+- **Raw表示**：WORK層はgutterだけを使う。確定した行の行番号が黄→muted へ沈み、gutterの右端から小さな火花が出る。HUDの反応はTableと同じ。数えるのは「Returnで**実際に改行が入り**、直前の行が空でない時」だけ（IMEの確定Returnなど、改行が入らないReturnは数えない）。
+- **効果の座標**：表canvasの効果はcanvas座標に置くので、scrollに追従する。表の再描画後は`"fx"`を最前面に上げる（一度でも効果を描いた表だけ）。embedded widget（編集Entry・補完popup）は常にその上にある。
 - **編集中（Entryが開いている間）はWORK層を静かにする。** キーごとの演出は出さず、確定の瞬間にまとめて返す。打鍵中の画面は落ち着かせる（skill 原則6の溜め）。
 
 ### 7.3 数字（DOPA・COMBO・HEAT）
@@ -344,7 +352,10 @@ ROUND：F5/F8の成功（§9の真の発火点）で精算 → ROUND+1、i=0
   - `5分突破!!`（18,000f）
   - `1万F突破!!`（10,000f）
   - `10万F突破!!`（100,000f）
-  - HUDでtier 3の叫び文字＋コインの粒子（表canvasの上端から）＋`stamp`音。
+  - HUDでtier 3の叫び文字＋コインの粒子（Table表示なら表canvasの上端から、Rawなら REWARD canvas）＋`stamp`音（P4）。
+  - **基準値**：New/Open後の最初の確定TOTALは基準になるだけで、スタンプも`Δf`も出さない（長いscriptを開くことは達成ではない）。一度に複数を越えたら一番大きいものだけを出す。
+- **`Δf`の色**：増加はGREEN、減少はCYAN（減少も失敗ではない）。
+- **表の構造編集**（貼り付け・消去・行/列の追加削除）：選択範囲の**見えている部分**にPUNCH、active cellに`+N`。
 
 ### 7.4 叫び文字（HUDのSHOUT ZONE）
 
@@ -588,7 +599,9 @@ Editor側の真のイベントを、1つのdispatcher（`DopaDirector`、Editor�
 FXを足すとallocationの量とタイミングが変わる。`main`には、破棄済みのTk object（別testのinterpreter、Variable、image、font）が循環参照に残り、**background workerのallocationがGCを起こすと、そのfinalizerがworker threadからTclを呼んで落ちる**（`Tcl_AsyncDelete`でabort）という潜在的な問題があった（GCの閾値を下げると`main`のままでも再現する）。
 
 - `python_to_exe/background.py`：Tk threadが`Thread.start()`の**前に**`hold_gc()`でautomatic GCを止め、workerは終了時にholdを返すだけで**自分では再開しない**（再開した直後の自分のallocationで、溜まったGCがworker上で走るため）。
-- 再開はTk threadの`resume_gc()`だけ：`_poll_position_analysis`、`_drain_events`、`_update_status`、Editor/Appのdestroy。holdが残っていれば何もしない。
+- 再開はTk threadの`resume_gc()`だけ。holdが残っている間、または**holdを返したworker threadがまだ終了していない間**は再開しない（返した直後のthread teardownもPythonを実行するため）。
+- 結果はworkerがholdを返す前に届くことがあるため、結果を受け取った側（`_poll_position_analysis`、`_drain_events`）とEditorのdestroyは`resume_gc_soon(root)`で、Tk thread上の`after`による再試行を1本だけ走らせる。破棄済みのwidgetならその再試行は終わり、次の呼び出しが引き継ぐ。`_update_status`も安価な`resume_gc()`を呼ぶ。
+- main threadでholdを返した場合（直接の`convert()`呼び出しなど）は、その場で再開を試みる。
 - 対象のworker：Frame位置解析、Validate、Frame解析（F7）、変換（F5/F8/Start Conversion）。
 - 明示的な`gc.collect()`は止めない。UI threadで毎回full collectionする案は、1万行で約19msかかるため採らない。
 
@@ -614,8 +627,9 @@ FXを足すとallocationの量とタイミングが変わる。`main`には、�
 | フラッシュ / Flashes | ON / OFF（check） | ON |
 
 - shortcut：`Ctrl+Shift+D`で演出の強さを1段ずつ巡回、`Ctrl+Shift+M`でmute。既存のbindと衝突しないことを実装時に確認する。
-- STATUSのチップからも同じ切替ができる（§8.5）。
+- STATUSのチップからも同じ切替ができる（§8.5）。設定の変更は、開いている全Editorへ即座に反映する。
 - `settings.json`に`dopa_motion`（0/25/50/75/100）、`dopa_sound`（bool）、`dopa_volume`（1〜3）、`dopa_flash`（bool）を追加する。`_clean`で厳密に検証し、不正な値は既定値に戻す。
+- **P2の範囲**：`演出の強さ`・`フラッシュ`・`[演出 n%]`チップ・`Ctrl+Shift+D`・`dopa_motion`/`dopa_flash`だけを実装する。**音が存在しないうちに`♪ ON`や音量を出すと嘘のUIになる**ため、`音`・`音量`・`[♪ ON]`チップ・`Ctrl+Shift+M`・`dopa_sound`/`dopa_volume`はP4で音と同時に追加する。
 
 ### 12.2 演出の強さ0%（作業集中）
 
@@ -628,9 +642,9 @@ skillのreduced-motionの扱いに合わせる。
 ### 12.3 制限
 
 - **フラッシュはRIMとHUDだけ。** 全画面は光らせない。400msに1回まで（3Hz未満）、1つの山で最大2回。色は白か黄で、**赤の点滅はしない**。
-- HUDのshakeは振幅3px以下、260ms以内。**WORK層は揺らさない。**
+- HUDのshakeは振幅3px以下、260ms以内で、**REWARD canvasだけ**（canvasのviewをずらし、itemの座標は動かさない）。**WORK層もMETERも揺らさない。**
 - 叫び文字は同時に1つまで。新しいものが来たら前のものはすぐに沈める。
-- OSのアニメーション無効設定：Windowsでは`SystemParametersInfo(SPI_GETCLIENTAREAANIMATION)`がFalseなら、初回起動時の既定を25%にする（任意。失敗したら無視する）。
+- OSのアニメーション無効設定：Windowsでは`SystemParametersInfo(SPI_GETCLIENTAREAANIMATION)`がFalseなら、初回起動時の既定を25%にする（任意。失敗したら無視する）。**P2では未実装**（Windows実機で確認できる段階、P5で扱う）。
 
 ---
 
@@ -712,7 +726,7 @@ skillのreduced-motionの扱いに合わせる。
 | Phase | 範囲 | 完了条件 |
 |---|---|---|
 | **P1 Neon skin**（実装済み） | `theme.py`のtoken、Table / Raw / パレット / Stick Preview / STATUS / Problems / ttk scrollbar / `png/neon/`アイコン、COMMAND DECKの再配置、Tk threadでのGC（§11.3）。motionなし | 全画面がネオン地で読める。既存の操作が全て同じに動く |
-| **P2 FX engine＋HUD** | `dopa/heat.py`・`fx.py`・`hud.py`・`fonts.py`、FRAME METER、REWARD、セル確定のカスケード、叫び文字、ドパmenu／チップ／settings | §7のタイムラインがコマ送りで確認できる。IME・補完・Undoへの影響が無い |
+| **P2 FX engine＋HUD**（実装済み） | `dopa/heat.py`・`fx.py`・`hud.py`・`fonts.py`・`words.py`・`director.py`、FRAME METER、REWARD、セル確定のカスケード、叫び文字、ドパmenu／チップ／settings（音関係はP4、§12.1） | §7のタイムラインがコマ送りで確認できる。IME・補完・Undoへの影響が無い |
 | **P3 真の山** | §10のhook、`outcome.py`、Validate / F5 / F7 / F8、COVER | §9の全分岐を、成功・送信未確認・失敗のfixtureで確認できる |
 | **P4 音** | `sound.py`、合成、override、再生 | Windows / Linux / 無音環境でエラーにならない |
 | **P5 周辺＋計測** | Frame Inspector / 検索 / Converter画面のskin、性能の計測（`docs/EDITOR_PERFORMANCE.md`の方法で、FX有り／無しのredraw・選択・scroll・typing） | FX有りでも、選択とscrollの中央値の悪化が2ms以内 |

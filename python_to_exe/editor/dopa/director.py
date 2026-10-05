@@ -1,0 +1,275 @@
+"""Connect true Editor events to HEAT and FX (dopagaki3.md §7, §9.1, §10).
+
+Every entry point is called only after the Editor's own work succeeded; the
+director never changes documents, selection, focus or Undo (T5). Phase 3
+adds Validate / F5 / F7 / F8 results; Phase 4 adds sound.
+"""
+
+import time
+import tkinter as tk
+
+from ..theme import COLORS, HEAT_RAMP, button_options
+from .fonts import FontBook
+from .fx import Burst, FxEngine, LockOn, Pop, Punch, Ring, Sparks, Tween, Ambient, NEON, cycle, mix, ramp
+from .heat import COMBO_WINDOW, HeatState
+from .hud import FeverHUD
+from .words import COMMON, WORDS
+
+
+TABLE_CAP = 90
+HUD_CAP = 40
+CELL_GROUND = COLORS["cell_background"]
+
+
+class DopaDirector:
+    def __init__(self, editor, language, motion=100, flashes=True, clock=time.monotonic):
+        self.editor = editor
+        self.words = WORDS[language]
+        self.clock = clock
+        self.heat = HeatState()
+        self.fonts = FontBook(editor)
+        self.fx = FxEngine(editor, motion=motion / 100, flashes=flashes)
+        self.hud = FeverHUD(editor.meter_canvas, editor.reward_canvas, language, self.fonts, self.fx)
+        self._punch_meter = False
+        self._pending_delta = None
+        self._combo_job = None
+        self._rim_cycle = None
+        self._closed = False
+        self._apply_rim()
+
+    # Settings (§12) -------------------------------------------------------
+
+    def set_settings(self, motion, flashes):
+        self.fx.motion, self.fx.flashes = motion / 100, flashes
+        self.hud.set_level(self.heat.intensity, self.heat.extra)
+        self._apply_rim()
+
+    # Core action (§7) ------------------------------------------------------
+
+    def cell_committed(self, cell, direction, active):
+        """A Table cell really changed (after on_change succeeded)."""
+        grid = self.editor.table_grid
+        grid.fx_layer = True
+        canvas = grid.canvas
+        reward = self._productive()
+        box = grid._cell_box(*cell)
+        heat = reward.intensity
+        reduced = self.fx.reduced
+        self.fx.add(Punch(canvas, box, CELL_GROUND, rainbow=heat >= 1.0, reduced=reduced))
+        x1, y1, x2, y2 = box
+        center = (x1 + x2) / 2, (y1 + y2) / 2
+        if heat >= 0.2 and not reduced:
+            self.fx.add(Ring(canvas, center, (8, 46), COLORS["accent"], CELL_GROUND))
+        count = self.fx.particle_count(6 + 14 * heat, canvas, TABLE_CAP)
+        if count:
+            origin = self._edge(box, direction)
+            self.fx.add(Sparks(canvas, origin, direction, count, CELL_GROUND, stars=heat >= 0.6))
+        if heat >= 0.8:
+            confetti = self.fx.particle_count(10, canvas, TABLE_CAP)
+            if confetti:
+                self.fx.add(Burst(canvas, (center[0], y1), confetti, CELL_GROUND,
+                                  power=0.6, duration=0.8))
+        self.fx.add(Pop(canvas, (x2 - 4, y1 + 8), f"+{reward.gain:,}", COLORS["neon_yellow"],
+                        self.fonts.get("meter", 13), CELL_GROUND, rise=0 if reduced else 28))
+        if active is not None and active != tuple(cell) and not reduced:
+            self.fx.add(LockOn(canvas, grid._cell_box(*active), COLORS["neon_yellow"]))
+        self._reward_feedback(reward)
+
+    def table_transformed(self):
+        """Paste / clear / row and column edits that changed the document."""
+        grid = self.editor.table_grid
+        grid.fx_layer = True
+        canvas = grid.canvas
+        reward = self._productive()
+        top, bottom, left, right = grid._selection_bounds()
+        x1, y1, _, _ = grid._cell_box(top, left)
+        _, _, x2, y2 = grid._cell_box(bottom, right)
+        # Clip to the visible area: a whole-column selection can span 10,000 rows.
+        view_x, view_y = canvas.canvasx(0), canvas.canvasy(0)
+        x1, y1 = max(x1, view_x), max(y1, view_y)
+        x2 = min(x2, view_x + canvas.winfo_width())
+        y2 = min(y2, view_y + canvas.winfo_height())
+        if x1 < x2 and y1 < y2:
+            self.fx.add(Punch(canvas, (x1, y1, x2, y2), CELL_GROUND, rainbow=reward.intensity >= 1,
+                              reduced=self.fx.reduced))
+        ax1, ay1, ax2, _ = grid._cell_box(*grid.selected)
+        self.fx.add(Pop(canvas, (ax2 - 4, ay1 + 8), f"+{reward.gain:,}", COLORS["neon_yellow"],
+                        self.fonts.get("meter", 13), CELL_GROUND,
+                        rise=0 if self.fx.reduced else 28))
+        self._reward_feedback(reward)
+
+    def raw_line_committed(self, line):
+        """Raw view: Return after a non-blank line that really inserted a newline."""
+        gutter = self.editor.line_numbers
+        reward = self._productive()
+        tag = f"line{line}"
+        box = gutter.bbox(tag)
+        muted, yellow = COLORS["muted_text"], COLORS["neon_yellow"]
+        current = getattr(self.editor, "_cursor_line", None)
+
+        def sink(progress):
+            gutter.itemconfigure(tag, fill=yellow if line == current else mix(yellow, muted, progress))
+
+        self.fx.add(Tween(0.35, sink))
+        if box is not None:
+            count = self.fx.particle_count(4 + 6 * reward.intensity, gutter, 30)
+            if count:
+                self.fx.add(Sparks(gutter, (box[2], (box[1] + box[3]) / 2), None, count,
+                                   COLORS["panel_background"]))
+        self._reward_feedback(reward)
+
+    def history(self):
+        """Undo/Redo: a small REWIND only. Not productive; HEAT never drops."""
+        self.hud.rewind()
+
+    # Frame data (§6.1) ---------------------------------------------------
+
+    def positions_confirmed(self, total):
+        confirmation = self.heat.confirmed_total(total)
+        self._punch_meter = True
+        self._pending_delta = confirmation.delta or None
+        if confirmation.milestone is not None:
+            self._milestone(confirmation.milestone)
+
+    def meter(self, model):
+        punch = self._punch_meter and model[0] == "confirmed"
+        self._punch_meter = False
+        self.hud.set_meter(model, punch=punch)
+        delta, self._pending_delta = self._pending_delta, None
+        if delta and model[0] == "confirmed":
+            self.hud.delta(delta)
+
+    def document_replaced(self):
+        self.heat.document_replaced()
+        self._punch_meter, self._pending_delta = False, None
+        self._show_heat(animate=False)
+
+    def stick_ring(self, canvas, point, color):
+        if not self.fx.reduced:
+            self.fx.add(Ring(canvas, point, (7, 16), color, COLORS["preview_background"], width=2))
+
+    # Palette (§8.3) --------------------------------------------------------
+
+    def palette_pressed(self, button, color):
+        # Theme values, not cget(): a second press mid-flash must not keep flash colors.
+        normal = button_options("palette")
+        if self.fx.reduced:
+            return
+
+        def flash(progress):
+            # Hold the category color 80ms, then return over 120ms.
+            amount = 0.0 if progress < 0.4 else (progress - 0.4) / 0.6
+            button.configure(background=mix(color, normal["background"], amount),
+                             activebackground=mix(color, normal["activebackground"], amount),
+                             foreground=COLORS["on_neon"] if amount < 0.5 else normal["foreground"],
+                             activeforeground=(COLORS["on_neon"] if amount < 0.5
+                                               else normal["activeforeground"]))
+
+        self.fx.add(Tween(0.2, flash))
+
+    def grow_rules(self, rules):
+        if self.fx.reduced:
+            return
+        for rule in rules:
+            self.fx.add(Tween(0.12, lambda progress, item=rule:
+                              item.configure(width=max(1, round(28 * progress)))))
+
+    # Internals -------------------------------------------------------------
+
+    def _productive(self):
+        return self.heat.productive(self.clock())
+
+    def _reward_feedback(self, reward):
+        self._show_heat(animate=True, level_up=reward.level_up)
+        if reward.shout is not None:
+            self.hud.shout(self.words["ladder"][reward.shout], reward.shout)
+            if reward.shout >= 6 and self.fx.flash_allowed():
+                self._flash_rim()
+        if self._combo_job is not None:
+            self.editor.after_cancel(self._combo_job)
+        self._combo_job = self.editor.after(int(COMBO_WINDOW * 1000) + 50, self._combo_check)
+
+    def _combo_check(self):
+        self._combo_job = None
+        if not self.heat.combo_alive(self.clock()):
+            self.hud.fade_combo()
+
+    def _show_heat(self, animate=True, level_up=False):
+        heat = self.heat
+        self.hud.set_reward(heat.dopa, heat.combo, heat.multiplier, heat.intensity, heat.segments,
+                            heat.round, heat.extra, animate=animate, level_up=level_up,
+                            combo_alive=heat.combo_alive(self.clock()))
+        self._apply_rim()
+
+    def _rim_color(self):
+        return ramp(HEAT_RAMP, min(1.0, self.heat.intensity))
+
+    def _apply_rim(self):
+        rim = self.editor._rim
+        if self.heat.extra and not self.fx.reduced:
+            if self._rim_cycle is None:
+                ring = HEAT_RAMP + HEAT_RAMP[-2:0:-1]
+                self._rim_cycle = self.fx.add(Ambient(lambda now: rim.configure(
+                    highlightbackground=cycle(ring, now, 0.25))))
+            return
+        if self._rim_cycle is not None:
+            self.fx.stop(self._rim_cycle)
+            self._rim_cycle = None
+        color = self._rim_color()
+        rim.configure(highlightbackground=color, highlightcolor=color)
+
+    def _flash_rim(self):
+        rim, color = self.editor._rim, self._rim_color()
+        self.fx.add(Tween(0.24, lambda progress: rim.configure(
+            highlightbackground=mix("#ffffff", color, progress))))
+
+    def _milestone(self, mark):
+        text = self.words["milestones"][mark]
+        self.hud.shout(text, 3)
+        if mark in (3600, 18000):
+            self.hud.caption(COMMON["fps_tag"])
+        editor = self.editor
+        if getattr(editor, "_view", "raw") == "table":
+            editor.table_grid.fx_layer = True
+            canvas = editor.table_grid.canvas
+            origin = (canvas.canvasx(canvas.winfo_width() / 2),
+                      canvas.canvasy(editor.table_grid.header_height))
+            ground, cap = CELL_GROUND, TABLE_CAP
+        else:
+            canvas = editor.reward_canvas
+            origin = self.hud.shout_center
+            ground, cap = COLORS["panel_background"], HUD_CAP
+        count = self.fx.particle_count(30, canvas, cap)
+        if count:
+            self.fx.add(Burst(canvas, origin, count, ground, kinds=("coin", "star", "coin"),
+                              power=0.9, duration=1.1))
+
+    @staticmethod
+    def _edge(box, direction):
+        x1, y1, x2, y2 = box
+        if direction is None:
+            return x2, y1
+        rows, columns = direction
+        if columns > 0:
+            return x2, (y1 + y2) / 2
+        if columns < 0:
+            return x1, (y1 + y2) / 2
+        if rows > 0:
+            return (x1 + x2) / 2, y2
+        return (x1 + x2) / 2, y1
+
+    def destroy(self):
+        if self._closed:
+            return
+        self._closed = True
+        # Runs inside the Editor's <Destroy>: canvases may already be gone, and
+        # nothing here may stop the Editor's own cleanup that follows.
+        if self._combo_job is not None:
+            try:
+                self.editor.after_cancel(self._combo_job)
+            except tk.TclError:
+                pass
+            self._combo_job = None
+        self.fx.close()
+        self.hud.destroy()
+        self.fonts.clear()

@@ -50,7 +50,8 @@ def column_heading(index, labels=None):
 
 class TableGrid(tk.Frame):
     def __init__(self, master, font, on_change, on_transform, on_select,
-                 on_undo, on_redo, labels=None, on_edit_change=None, on_column_resize=None):
+                 on_undo, on_redo, labels=None, on_edit_change=None, on_column_resize=None,
+                 on_effect=None):
         super().__init__(master, background=COLORS["panel_background"])
         self.font = font
         self.on_change = on_change
@@ -60,6 +61,9 @@ class TableGrid(tk.Frame):
         self.on_redo = on_redo
         self.on_edit_change = on_edit_change
         self.on_column_resize = on_column_resize
+        # Display-only reward hook (dopagaki3.md §7.1): told after real changes.
+        self.on_effect = on_effect
+        self._fx_commit = None
         self.labels = labels or {}
         self.row_height = max(font.metrics("linespace") + 8, 24)
         self.column_width = max(font.measure("0" * 18) + 12, 160)
@@ -125,6 +129,12 @@ class TableGrid(tk.Frame):
         if event.widget is self and self._draw_job is not None:
             self.after_cancel(self._draw_job)
             self._draw_job = None
+        value = getattr(self, "_entry_value", None)
+        if event.widget is self and value is not None:
+            # A Tcl trace command holds its Python callback: left registered, it
+            # keeps this grid and its Editor alive even through gc.collect().
+            for modes, callback in value.trace_info():
+                value.trace_remove(modes, callback)
 
     def _build_context_menus(self, labels):
         actions = {
@@ -368,6 +378,9 @@ class TableGrid(tk.Frame):
         if active is not None:
             canvas.create_rectangle(*active, outline=ACTIVE_LINE,
                                     width=LINE_WIDTHS["active"], tags="grid")
+        # Reward effects stay above freshly drawn cells; embedded widgets stay above both.
+        if getattr(self, "fx_layer", False):
+            canvas.tag_raise("fx")
         self._position_editor()
 
     def _draw_lockon(self, x1, y1, x2, y2):
@@ -704,13 +717,16 @@ class TableGrid(tk.Frame):
         if not self._apply_editor_value():
             return "break"
         self._close_editor()
-        return self._move(row_delta, column_delta, extend=extend)
+        result = self._move(row_delta, column_delta, extend=extend)
+        self._flush_commit((row_delta, column_delta))
+        return result
 
     def _entry_history(self, event, action):
         if event.widget is not self._editor:
             return "break"
         if self._apply_editor_value():
             self._close_editor()
+            self._flush_commit(None)
             action()
         return "break"
 
@@ -845,6 +861,7 @@ class TableGrid(tk.Frame):
             if not self._apply_editor_value():
                 return "break"
             self._close_editor()
+            self._flush_commit(None)
             self.paste_text(data)
             return "break"
         return None  # Let Entry paste ordinary cell text at its insertion point.
@@ -876,7 +893,10 @@ class TableGrid(tk.Frame):
                 return True
             updated = self.model.copy()
             updated.paste(row, column, value)
-            return self._apply_model(updated)
+            if not self._apply_model(updated, effect=False):
+                return False
+            self._fx_commit = row, column
+            return True
         try:
             new_line = self.model.changed_line(row, column, value)
         except ValueError:
@@ -888,6 +908,7 @@ class TableGrid(tk.Frame):
                 return False
             self.model.update_line(row, new_line)
             self._update_region()
+            self._fx_commit = row, column
         return True
 
     def commit_edit(self):
@@ -897,7 +918,19 @@ class TableGrid(tk.Frame):
             return False
         self._close_editor()
         self._schedule_draw()
+        self._flush_commit(None)
         return True
+
+    def _emit(self, kind, **info):
+        callback = getattr(self, "on_effect", None)
+        if callback is not None:
+            callback(kind, info)
+
+    def _flush_commit(self, direction):
+        """Report a committed cell once, after any Tab/Enter move has landed."""
+        cell, self._fx_commit = getattr(self, "_fx_commit", None), None
+        if cell is not None:
+            self._emit("commit", cell=cell, direction=direction, active=self.selected)
 
     def snapshot_text(self):
         """Preview a valid pending cell using a model copy, with no commit or history change."""
@@ -915,7 +948,7 @@ class TableGrid(tk.Frame):
             preview.update_line(row, preview.changed_line(row, column, value))
         return preview.to_text()
 
-    def _apply_model(self, updated, anchor=None, active=None):
+    def _apply_model(self, updated, anchor=None, active=None, effect=True):
         previous = self.model.to_text()
         current = updated.to_text()
         if current != previous and not self.on_transform(previous, current):
@@ -930,6 +963,8 @@ class TableGrid(tk.Frame):
         self._ensure_visible()
         self.on_select()
         self._schedule_draw()
+        if effect and current != previous:
+            self._emit("transform")
         return True
 
     def copy_selection(self):

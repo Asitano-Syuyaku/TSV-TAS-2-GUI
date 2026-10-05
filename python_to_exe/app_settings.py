@@ -52,7 +52,8 @@ def _clean(values):
     defaults = dict(version=VERSION, recent_files=[], output_format="binary",
                     debug_enabled=False, last_input_directory="", last_output_directory="",
                     editor_width=EDITOR_SIZE_DEFAULT[0], editor_height=EDITOR_SIZE_DEFAULT[1],
-                    editor_view="raw", editor_palette_page=0, editor_column_widths={})
+                    editor_view="raw", editor_palette_page=0, editor_column_widths={},
+                    dopa_motion=100, dopa_flash=True)
     if (not isinstance(values, dict) or type(values.get("version")) is not int
             or values["version"] != VERSION):
         return defaults
@@ -73,6 +74,12 @@ def _clean(values):
     if type(page) is int and page in (0, 1):
         defaults["editor_palette_page"] = page
     defaults["editor_column_widths"] = clean_column_widths(values.get("editor_column_widths"))
+    # Dopagaki3 effect preferences only (§12.1); never game numbers or documents.
+    motion = values.get("dopa_motion")
+    if type(motion) is int and motion in (0, 25, 50, 75, 100):
+        defaults["dopa_motion"] = motion
+    if type(values.get("dopa_flash")) is bool:
+        defaults["dopa_flash"] = values["dopa_flash"]
     recent = values.get("recent_files")
     if isinstance(recent, list):
         seen = set()

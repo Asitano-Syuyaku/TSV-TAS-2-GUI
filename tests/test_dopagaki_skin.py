@@ -242,17 +242,22 @@ class SkinTkTests(unittest.TestCase):
                 self.assertFalse(editor._deck_compact)
                 self.doCleanups()
 
-    def test_frame_readout_is_yellow_only_when_converter_confirmed(self):
+    def test_frame_meter_is_yellow_only_when_converter_confirmed(self):
+        # P2: the caption keeps the factual text (muted); the METER carries the state.
         root, editor, _ = self.make_editor()
-        self.assertEqual(editor.frame_status.cget("foreground"), theme.COLORS["muted_text"])
+        hud, meter = editor._dopa.hud, editor.meter_canvas
+        self.assertEqual(meter.itemcget(hud.values[0], "text"), "- - -")
         self.wait_for(root, lambda: editor._positions is not None)
         editor.table_grid.jump_to_row(3, column=1)
         self.assertIn("Start: 5f", editor.frame_status.cget("text"))
-        self.assertEqual(editor.frame_status.cget("foreground"), theme.COLORS["neon_yellow"])
+        self.assertEqual(editor.frame_status.cget("foreground"), theme.COLORS["muted_text"])
+        self.assertEqual([meter.itemcget(item, "text") for item in hud.values], ["5", "1", "5", "8"])
+        self.assertEqual(meter.itemcget(hud.values[0], "fill"), theme.COLORS["neon_yellow"])
         editor.table_grid.begin_edit(initial="b")
         root.update()
         self.assertEqual(editor.frame_status.cget("text"), editor.words["frame_updating"])
-        self.assertEqual(editor.frame_status.cget("foreground"), theme.COLORS["muted_text"])
+        self.assertEqual([meter.itemcget(item, "text") for item in hud.values], ["- - -"] * 4)
+        self.assertEqual(meter.itemcget(hud.values[0], "fill"), theme.COLORS["muted_text"])
         editor.table_grid.cancel_edit()
 
     def test_problem_badges_decorate_without_changing_factual_text(self):
