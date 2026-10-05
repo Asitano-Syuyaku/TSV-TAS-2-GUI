@@ -86,6 +86,8 @@ class PaletteTkTests(unittest.TestCase):
         root = self.make_root()
         for language in ("ja", "en"):
             editor = EditorWindow(root, language=language)
+            # Tall enough for 2 columns; short windows fold to 4 (test_dopagaki_display).
+            editor.geometry("1200x1000")
             try:
                 self.assertEqual(set(editor._palette_icons), set(BUTTON_KEYS.values()))
                 self.assertTrue(editor.show_table())

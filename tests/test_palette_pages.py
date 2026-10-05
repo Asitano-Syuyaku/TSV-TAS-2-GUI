@@ -81,8 +81,9 @@ class PalettePageTkTests(unittest.TestCase):
                 for child in content.winfo_children():
                     if isinstance(child, tk.Label):
                         headings.append(child.cget("text"))
-                    elif child is editor.stick_preview:
-                        headings.append(child.title.cget("text"))
+                # Dopagaki3 §8.4: Stick Preview is docked below the Basic page's scroll viewport.
+                if editor.stick_preview.master is page:
+                    headings.append(editor.stick_preview.title.cget("text"))
                 self.assertEqual(headings, [editor.words[category] for category in categories])
                 self.assertTrue(page.winfo_ismapped())
                 self.assertFalse(editor._palette_pages[2 - number][0].winfo_ismapped())

@@ -91,6 +91,34 @@ class TkDisplayTests(unittest.TestCase):
         self.assertEqual(int(editor._problems_text.cget("height")), 4)
         self.assertEqual(editor.table_grid.font.actual("size"), font_before)
 
+    def test_stick_preview_stays_whole_in_short_windows(self):
+        root, editor = self.make_editor("1200x1000")
+        preview, canvas = editor.stick_preview, editor.palette_canvas
+        page = preview.master
+        group, buttons = editor._palette_fold
+        size = preview.plots[0].winfo_height()
+
+        def check(columns):
+            root.update()
+            self.assertEqual(editor._palette_fold_columns, columns)
+            self.assertEqual({int(button.grid_info()["column"]) for button, _ in buttons},
+                             set(range(columns)))
+            self.assertLessEqual(preview.winfo_y() + preview.winfo_height(), page.winfo_height())
+            self.assertEqual(preview.plots[0].winfo_height(), size)  # Never a smaller plot.
+
+        check(2)
+        self.assertEqual(canvas.yview(), (0.0, 1.0))  # Everything fits: nothing scrolls.
+        for geometry in ("1200x700", "1280x650", "800x500"):
+            editor.geometry(geometry)
+            check(4)
+        editor._show_palette_page(2)
+        editor.geometry("1200x1000")
+        root.update()
+        editor._show_palette_page(1)
+        check(2)
+        editor.geometry("1280x650")
+        check(4)
+
     def test_reward_block_stays_inside_a_narrow_canvas(self):
         root, editor = self.make_editor("800x500")
         reward = editor.reward_canvas

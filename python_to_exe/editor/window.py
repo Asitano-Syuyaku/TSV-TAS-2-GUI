@@ -757,24 +757,30 @@ class EditorWindow(tk.Toplevel):
         self._palette_pages = []
         for categories in PALETTE_PAGES:
             page = tk.Frame(body, background=COLORS["panel_background"])
-            canvas = tk.Canvas(page, highlightthickness=0, yscrollincrement=20,
+            docked = "stick_preview" in categories
+            # The Basic page docks Stick Preview below its own scroll viewport (§8.4),
+            # so a short window scrolls the buttons, never the preview.
+            viewport = tk.Frame(page, background=COLORS["panel_background"]) if docked else page
+            canvas = tk.Canvas(viewport, highlightthickness=0, yscrollincrement=20,
                                background=COLORS["panel_background"])
-            scrollbar = self._make_scrollbar(page, orient="vertical", command=canvas.yview)
+            scrollbar = self._make_scrollbar(viewport, orient="vertical", command=canvas.yview)
             canvas.configure(yscrollcommand=scrollbar.set)
             scrollbar.pack(side="right", fill="y")
             canvas.pack(side="left", fill="both", expand=True)
+            if docked:
+                viewport.pack(side="top", fill="x")
             content = tk.Frame(canvas, background=COLORS["panel_background"])
             content_id = canvas.create_window((0, 0), window=content, anchor="nw")
-            content.bind("<Configure>", lambda event, target=canvas:
-                         target.configure(scrollregion=target.bbox("all")))
+            content.bind("<Configure>", lambda event, parts=(page, canvas, content, docked):
+                         self._palette_content_changed(*parts))
             canvas.bind("<Configure>", lambda event, target=canvas, item=content_id:
                         target.itemconfigure(item, width=event.width))
             rules = []
             for category in categories:
                 if category == "stick_preview":
-                    self.stick_preview = StickPreview(content, fonts=fonts,
+                    self.stick_preview = StickPreview(page, fonts=fonts,
                                                        title=self.words[category])
-                    self.stick_preview.pack(fill="x", padx=SPACING["gap"])
+                    self.stick_preview.pack(side="top", fill="x", padx=SPACING["gap"])
                     continue
                 # Category color (§8.3) on the heading text plus a short rule;
                 # headings stay direct Label children of the page content.
@@ -789,26 +795,67 @@ class EditorWindow(tk.Toplevel):
                 rules.append(rule)
                 group = tk.Frame(content, background=COLORS["panel_background"])
                 group.pack(fill="x", padx=SPACING["gap"])
-                for column in (0, 1):
-                    group.grid_columnconfigure(column, weight=1, uniform="palette")
-                slot = 0
-                candidates = (item for item in CANDIDATES if item.category == category)
-                for candidate in candidates:
-                    span = self._palette_span(candidate)
-                    if span == 2 and slot % 2:
-                        slot += 1
-                    row, column = divmod(slot, 2)
-                    group.grid_rowconfigure(row, minsize=px(SIZES["palette_row"]))
-                    self._palette_button(group, candidate).grid(
-                        row=row, column=column, columnspan=span,
-                        sticky="ew", padx=SPACING["button_gap"], pady=SPACING["palette_grid_y"])
-                    slot += span
+                buttons = [(self._palette_button(group, candidate), self._palette_span(candidate))
+                           for candidate in CANDIDATES if candidate.category == category]
+                self._grid_palette_group(group, buttons, 2)
+                if category == "buttons":
+                    self._palette_fold, self._palette_fold_columns = (group, buttons), 2
+            if docked:
+                page.bind("<Configure>", lambda event, parts=(page, canvas, content):
+                          self._fit_docked_page(*parts))
             self._bind_palette_scroll(page, canvas)
             self._palette_rules = getattr(self, "_palette_rules", []) + [rules]
             self._palette_pages.append((page, canvas))
         settings = getattr(self, "settings", None)
         self._show_palette_page(settings.get("editor_palette_page", 0) + 1 if settings else 1,
                                 remember=False)
+
+    def _grid_palette_group(self, group, buttons, columns, previous=None):
+        """Lay buttons out in `columns`; `previous` clears a former layout's extra tracks."""
+        for column in range(max(columns, previous or 0)):
+            used = column < columns
+            group.grid_columnconfigure(column, weight=int(used), uniform="palette" if used else "")
+        slot = 0
+        for button, span in buttons:
+            if span == 2 and slot % 2:
+                slot += 1
+            row, column = divmod(slot, columns)
+            button.grid(row=row, column=column, columnspan=span,
+                        sticky="ew", padx=SPACING["button_gap"], pady=SPACING["palette_grid_y"])
+            slot += span
+        rows = (slot + columns - 1) // columns
+        for row in range(len(buttons) if previous else rows):
+            group.grid_rowconfigure(row, minsize=px(SIZES["palette_row"]) if row < rows else 0)
+
+    def _palette_content_changed(self, page, canvas, content, docked):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+        if docked:
+            self._fit_docked_page(page, canvas, content)
+
+    def _fit_docked_page(self, page, canvas, content):
+        """Responsive density for the Basic page (§8.3/§8.4), never smaller text.
+
+        The buttons viewport takes what the docked Stick Preview leaves. If the
+        2-column buttons would not fit there, the icon buttons fold into 4 columns
+        (same order: two pairs per row). Whatever still does not fit scrolls.
+        """
+        available = page.winfo_height() - self.stick_preview.winfo_reqheight()
+        if available <= 1:
+            return
+        group, buttons = self._palette_fold
+        rows = (len(buttons) + self._palette_fold_columns - 1) // self._palette_fold_columns
+        row_height = group.winfo_reqheight() / rows
+        wide_rows = (len(buttons) + 1) // 2
+        wide_height = content.winfo_reqheight() + (wide_rows - rows) * row_height
+        columns = 4 if wide_height > available else 2
+        current = self._palette_fold_columns
+        if columns != current:
+            self._palette_fold_columns = columns
+            self._grid_palette_group(group, buttons, columns, previous=current)
+            content.update_idletasks()
+        height = max(1, min(content.winfo_reqheight(), available))
+        if canvas.winfo_reqheight() != height:
+            canvas.configure(height=height)
 
     @staticmethod
     def _make_scrollbar(master, **options):
