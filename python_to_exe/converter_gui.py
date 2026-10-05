@@ -12,11 +12,13 @@ from tkinter import filedialog, messagebox
 
 if __package__:
     from .app_settings import AppSettings
+    from .background import hold_gc, resume_gc
     from .converter_logic import (build_commands, conversion_outputs, load_ftp_config,
                                   open_output_folder, save_ftp_config, scripts_dir,
                                   utf8_subprocess_kwargs)
 else:
     from app_settings import AppSettings
+    from background import hold_gc, resume_gc
     from converter_logic import (build_commands, conversion_outputs, load_ftp_config,
                                  open_output_folder, save_ftp_config, scripts_dir,
                                  utf8_subprocess_kwargs)
@@ -177,6 +179,7 @@ class TASConverterApp(tk.Tk):
         self._recovery_check_job = self.after_idle(self._check_recovery)
 
     def destroy(self):
+        resume_gc()
         job = getattr(self, "_recovery_check_job", None)
         if job is not None:
             self.after_cancel(job)
@@ -288,20 +291,23 @@ class TASConverterApp(tk.Tk):
         skip_empty = self.skip_var.get() if output_format == "nxtas" else False
         self._validation_running = True
         self.convert_btn.config(state="disabled")
+        gc_hold = hold_gc()
 
         def worker():
-            try:
-                result = validate_script(snapshot, output_format, skip_empty, self.base_dir)
-            except Exception:
-                # Unexpected worker failures remain visible in stderr and Problems.
-                traceback.print_exc()
-                result = ValidationResult(False, stderr=traceback.format_exc(),
-                                          source_is_tsv=snapshot.suffix == ".tsv")
-            self._events.put(("validation", (callback, result)))
+            with gc_hold:
+                try:
+                    result = validate_script(snapshot, output_format, skip_empty, self.base_dir)
+                except Exception:
+                    # Unexpected worker failures remain visible in stderr and Problems.
+                    traceback.print_exc()
+                    result = ValidationResult(False, stderr=traceback.format_exc(),
+                                              source_is_tsv=snapshot.suffix == ".tsv")
+                self._events.put(("validation", (callback, result)))
 
         try:
             threading.Thread(target=worker, daemon=True).start()
         except Exception:
+            gc_hold.release()
             self._validation_running = False
             self.convert_btn.config(state="normal")
             raise
@@ -319,20 +325,23 @@ class TASConverterApp(tk.Tk):
         skip_empty = self.skip_var.get() if output_format == "nxtas" else False
         self._analysis_running = True
         self.convert_btn.config(state="disabled")
+        gc_hold = hold_gc()
 
         def worker():
-            try:
-                result = analyze_script(snapshot, output_format, skip_empty, self.base_dir)
-            except Exception:
-                traceback.print_exc()
-                report = ValidationResult(False, stderr=traceback.format_exc(),
-                                          source_is_tsv=snapshot.suffix == ".tsv")
-                result = AnalyzeResult(report)
-            self._events.put(("analysis", (callback, result)))
+            with gc_hold:
+                try:
+                    result = analyze_script(snapshot, output_format, skip_empty, self.base_dir)
+                except Exception:
+                    traceback.print_exc()
+                    report = ValidationResult(False, stderr=traceback.format_exc(),
+                                              source_is_tsv=snapshot.suffix == ".tsv")
+                    result = AnalyzeResult(report)
+                self._events.put(("analysis", (callback, result)))
 
         try:
             threading.Thread(target=worker, daemon=True).start()
         except Exception:
+            gc_hold.release()
             self._analysis_running = False
             self.convert_btn.config(state="normal")
             raise
@@ -387,9 +396,12 @@ class TASConverterApp(tk.Tk):
         self.convert_btn.config(state="disabled")
         if ftp_override is not None:
             self._events.put(("log", self.words["editor_send" if ftp else "editor_local"]))
+        gc_hold = hold_gc()
         try:
-            threading.Thread(target=self.convert, args=(values, ftp_values), daemon=True).start()
+            threading.Thread(target=self.convert, args=(values, ftp_values, gc_hold),
+                             daemon=True).start()
         except Exception:
+            gc_hold.release()
             self._conversion_running = False
             self.convert_btn.config(state="normal")
             raise
@@ -397,6 +409,7 @@ class TASConverterApp(tk.Tk):
         return True
 
     def _drain_events(self):
+        resume_gc()
         logs = []
         while True:
             try:
@@ -447,7 +460,11 @@ class TASConverterApp(tk.Tk):
         self.log("\n".join(lines))
         messagebox.showinfo(self.words["success_title"], message)
 
-    def convert(self, values, ftp_values):
+    def convert(self, values, ftp_values, gc_hold=None):
+        with gc_hold if gc_hold is not None else hold_gc():
+            self._convert(values, ftp_values)
+
+    def _convert(self, values, ftp_values):
         started = False
         try:
             commands = build_commands(*values, base_dir=self.base_dir)

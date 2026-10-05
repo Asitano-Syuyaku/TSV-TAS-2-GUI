@@ -3,6 +3,7 @@
 import sys
 import tempfile
 import tkinter as tk
+from tkinter import ttk
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -106,7 +107,8 @@ class PaletteTkTests(unittest.TestCase):
                 self.assertEqual(len({button.winfo_height() for button in icon_buttons}), 1)
                 self.assertTrue(all(icon.width() == icon.height() == 24
                                     for icon in editor._palette_icons.values()))
-                self.assertTrue(any(isinstance(child, tk.Scrollbar)
+                # Dopagaki3 §8.8: the palette uses the dark ttk scrollbar.
+                self.assertTrue(any(isinstance(child, (tk.Scrollbar, ttk.Scrollbar))
                                     for child in editor.palette_canvas.master.winfo_children()))
                 self.assertTrue(editor.show_raw())
                 self.assertTrue(editor.show_table())

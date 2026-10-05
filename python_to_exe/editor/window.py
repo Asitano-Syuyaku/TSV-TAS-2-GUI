@@ -10,18 +10,20 @@ from tkinter import filedialog, font as tkfont, messagebox
 from .document import EditorDocument
 from .file_state import ExternalFileConflict
 from .recovery import DEBOUNCE_MS, RecoverySnapshot, RecoveryStore
-from .resources import palette_icon_path
+from .resources import neon_icon_path, palette_icon_path
 from .snapshot import ScriptSnapshot
 from .text_ops import (file_kind, find_next as next_match, find_previous as previous_match,
                        line_column, replace_all as replace_every, replace_current as replace_match)
-from .theme import (COLORS, FONTS, SIZES, SPACING, SYNTAX_COLORS, button_options,
-                    editor_fonts, entry_options, label_options)
+from .theme import (CATEGORY_COLORS, COLORS, FONTS, HEAT_RAMP, SIZES, SPACING, SYNTAX_COLORS,
+                    button_options, editor_fonts, entry_options, label_options, menu_options)
 from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
 
 if __package__ == "editor":
     from app_settings import AppSettings, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
+    from background import hold_gc, resume_gc
 else:
     from ..app_settings import AppSettings, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
+    from ..background import hold_gc, resume_gc
 
 
 HIGHLIGHT_COLORS = SYNTAX_COLORS
@@ -82,6 +84,13 @@ LABELS = {
         "frame_range": "Enter 0–{last}", "no_frames": "No valid frames",
         "frame_no_source": "No source row for this frame",
         "frame_commit_failed": "Finish the cell edit first",
+        # Command deck entry points (dopagaki3.md §5.1); same commands as the menu.
+        "deck_validate": "Validate  F6", "deck_analyze": "Analyze  F7",
+        "deck_convert": "Save & Convert  F5", "deck_send": "Convert & SEND  F8",
+        "deck_validate_compact": "Validate", "deck_analyze_compact": "Analyze",
+        "deck_convert_compact": "Save & Convert", "deck_send_compact": "Convert & SEND",
+        # Decorative Dopagaki words only; factual messages above stay unchanged.
+        "dopa_oshii": "SO CLOSE!", "dopa_clear": "✔",
     },
     "ja": {
         "title": "TSV-TAS エディター", "untitled": "無題", "file": "ファイル",
@@ -138,6 +147,11 @@ LABELS = {
         "frame_range": "0～{last}を入力", "no_frames": "有効なフレームなし",
         "frame_no_source": "対応する元の行がありません",
         "frame_commit_failed": "セルの編集を完了してください",
+        "deck_validate": "検証  F6", "deck_analyze": "解析  F7",
+        "deck_convert": "保存して変換  F5", "deck_send": "変換してSEND  F8",
+        "deck_validate_compact": "検証", "deck_analyze_compact": "解析",
+        "deck_convert_compact": "保存して変換", "deck_send_compact": "変換してSEND",
+        "dopa_oshii": "おしい!", "dopa_clear": "✔",
     },
 }
 
@@ -249,21 +263,26 @@ class EditorWindow(tk.Toplevel):
             table_menu.add_command(label=self.words[key],
                                    command=lambda name=action: self._table_action(name))
         menu.add_cascade(label=self.words["table_menu"], menu=table_menu)
+        if self._windowingsystem != "win32":
+            # Windows menus stay native (§8.8); X11/macOS Tk menus take the skin.
+            for themed in (menu, file_menu, self._recent_menu, edit_menu, search_menu, table_menu):
+                themed.configure(**menu_options())
         self.config(menu=menu)
 
-        view_bar = tk.Frame(self, background=COLORS["panel_background"],
-                            highlightthickness=1, highlightbackground=COLORS["subtle_border"])
-        view_bar.pack(fill="x", padx=SPACING["outer"], pady=SPACING["toolbar_y"])
-        self._raw_button = tk.Button(view_bar, text=self.words["raw_view"],
-                                     command=self.show_raw, **button_options())
-        self._raw_button.pack(side="left", padx=SPACING["button_gap"], pady=SPACING["gap"])
-        self._table_button = tk.Button(view_bar, text=self.words["table_view"],
-                                       command=self.show_table, **button_options())
-        self._table_button.pack(side="left", padx=SPACING["button_gap"])
-        tk.Button(view_bar, text=self.words["validate"], command=self.validate,
-                  **button_options()).pack(side="left", padx=SPACING["gap"])
-        frame_navigation = tk.Frame(view_bar, background=COLORS["panel_background"])
-        frame_navigation.pack(side="right", padx=SPACING["gap"])
+        from .widgets import scrollbar
+
+        self._build_command_deck()
+        # FEVER HUD row (§6). Phase 1 keeps the factual Frame readout full size
+        # here; the Phase 2 FRAME METER canvas will render the same model.
+        hud = tk.Frame(self, background=COLORS["panel_background"],
+                       highlightthickness=1, highlightbackground=COLORS["subtle_border"])
+        hud.pack(fill="x", padx=SPACING["outer"], pady=(SPACING["gap"], 0))
+        self.hud_row = hud
+        self.frame_status = tk.Label(hud, anchor="w", padx=SPACING["section"],
+                                     **label_options("panel_background", "frame_info", self._theme_fonts))
+        self.frame_status.pack(side="left", pady=SPACING["gap"])
+        frame_navigation = tk.Frame(hud, background=COLORS["panel_background"])
+        frame_navigation.pack(side="left", padx=SPACING["deck_group"])
         tk.Label(frame_navigation, text=self.words["go_to"],
                  **label_options(role="small", fonts=self._theme_fonts)).pack(side="left")
         self.frame_entry = tk.Entry(frame_navigation, width=7, exportselection=False,
@@ -277,33 +296,33 @@ class EditorWindow(tk.Toplevel):
         self._frame_jump_feedback.configure(foreground=COLORS["warning"])
         self.frame_entry.bind("<Return>", lambda event: self._shortcut(self.go_to_frame))
         self.frame_entry.bind("<Escape>", lambda event: self._shortcut(self._focus_editor))
-        self.frame_status = tk.Label(view_bar, anchor="e", padx=SPACING["gap"],
-                                     **label_options("secondary_background", "frame_info", self._theme_fonts))
-        self.frame_status.pack(side="right", padx=SPACING["gap"])
-        self.table_tools = tk.Frame(view_bar, background=COLORS["panel_background"])
-        tk.Button(self.table_tools, text=self.words["add_row"],
-                  command=lambda: self._table_action("insert_row_below"),
-                  **button_options()).pack(side="left", padx=SPACING["button_gap"])
-        tk.Button(self.table_tools, text=self.words["add_column"],
-                  command=lambda: self._table_action("insert_column_right"),
-                  **button_options()).pack(side="left", padx=SPACING["button_gap"])
 
-        frame = tk.Frame(self, background=COLORS["app_background"])
-        frame.pack(fill="both", expand=True, padx=SPACING["outer"])
+        # RIM (§4.3): the WORK layer's neon edge. Without HEAT yet, it uses E's first stop.
+        self._rim = tk.Frame(self, background=COLORS["app_background"],
+                             highlightthickness=SPACING["rim"],
+                             highlightbackground=HEAT_RAMP[0], highlightcolor=HEAT_RAMP[0])
+        self._rim.pack(fill="both", expand=True, padx=SPACING["outer"], pady=(SPACING["gap"], 0))
+        frame = tk.Frame(self._rim, background=COLORS["app_background"])
+        frame.pack(fill="both", expand=True)
         self.raw_frame = frame
         fixed_font = tkfont.nametofont("TkFixedFont")
         self._fixed_font = fixed_font
         self.line_numbers = tk.Canvas(frame, width=40, highlightthickness=0,
-                                       background=COLORS["secondary_background"])
+                                       background=COLORS["panel_background"])
         self.text = tk.Text(frame, wrap="none", font=fixed_font, undo=True,
                             exportselection=False,
                             tabs=(fixed_font.measure(" " * 8),), **entry_options())
-        vertical = tk.Scrollbar(frame, orient="vertical", command=self.text.yview)
-        horizontal = tk.Scrollbar(frame, orient="horizontal", command=self.text.xview)
+        self.text.configure(highlightthickness=0)
+        vertical = scrollbar(frame, orient="vertical", command=self.text.yview)
+        horizontal = scrollbar(frame, orient="horizontal", command=self.text.xview)
         self.text.configure(yscrollcommand=lambda first, last: self._on_scroll(vertical, first, last),
                             xscrollcommand=horizontal.set)
         for kind, color in HIGHLIGHT_COLORS.items():
             self.text.tag_configure("syntax_" + kind, foreground=color)
+        # Cursor line (§8.2) sits below selection; syntax tags only set foreground.
+        self.text.tag_configure("cursor_line", background=COLORS["cursor_line"])
+        self.text.tag_lower("cursor_line")
+        self._cursor_line = None
         self.line_numbers.grid(row=0, column=0, sticky="ns")
         self.text.grid(row=0, column=1, sticky="nsew")
         vertical.grid(row=0, column=2, sticky="ns")
@@ -313,7 +332,7 @@ class EditorWindow(tk.Toplevel):
 
         # Import lazily so file/document logic remains usable without Tk widgets.
         from .grid import TableGrid
-        self.table_area = tk.Frame(self, background=COLORS["app_background"])
+        self.table_area = tk.Frame(self._rim, background=COLORS["app_background"])
         self.table_grid = TableGrid(self.table_area, fixed_font, self._table_cell_changed,
                                     self._table_text_changed, self._update_status,
                                     self.undo, self.redo, self.words,
@@ -324,18 +343,36 @@ class EditorWindow(tk.Toplevel):
         self._load_palette_icons()
         self._build_input_palette()
         self.table_grid.pack(side="left", fill="both", expand=True)
-        self.status = tk.Label(self, anchor="w", padx=SPACING["outer"],
-                               **label_options("secondary_background", "small", self._theme_fonts))
+        status_row = tk.Frame(self, background=COLORS["panel_background"])
+        status_row.pack(fill="x", pady=(SPACING["gap"], 0))
+        self._status_row = status_row
+        # Separate widget: the status text itself stays exactly as before.
+        self._modified_dot = tk.Label(status_row, text="", width=2, anchor="e",
+                                      **label_options("panel_background", "small", self._theme_fonts))
+        self._modified_dot.configure(foreground=COLORS["neon_magenta"])
+        self._modified_dot.pack(side="left", padx=(SPACING["gap"], 0))
+        self.status = tk.Label(status_row, anchor="w", padx=SPACING["gap"],
+                               **label_options("panel_background", "small", self._theme_fonts))
         self.status.configure(pady=SPACING["status_y"])
-        self.status.pack(fill="x", pady=(SPACING["gap"], 0))
+        self.status.pack(side="left", fill="x", expand=True)
         self._problems_panel = tk.Frame(self, background=COLORS["panel_background"],
                                         highlightthickness=1, highlightbackground=COLORS["border"])
-        self._problems_title = tk.Label(self._problems_panel, anchor="w",
+        # Hazard tape (§8.6): shown only above a failed result.
+        self._problems_tape = tk.Canvas(self._problems_panel, height=6, highlightthickness=0,
+                                        background=COLORS["on_neon"])
+        self._problems_tape.bind("<Configure>", self._draw_problems_tape)
+        problems_header = tk.Frame(self._problems_panel, background=COLORS["panel_background"])
+        problems_header.pack(fill="x")
+        self._problems_header = problems_header
+        self._problems_badge = tk.Label(problems_header, padx=SPACING["section"],
+                                        **label_options(role="heading", fonts=self._theme_fonts))
+        self._problems_title = tk.Label(problems_header, anchor="w",
                                          **label_options(role="heading", fonts=self._theme_fonts))
-        self._problems_title.pack(fill="x")
+        self._problems_title.pack(side="left", fill="x", expand=True)
         self._problems_text = tk.Text(self._problems_panel, height=4, wrap="word",
                                       state="disabled", takefocus=False,
                                       font=fixed_font, **entry_options())
+        self._problems_text.configure(highlightthickness=0)
         self._problems_text.tag_configure("jump", foreground=COLORS["accent"], underline=True)
         self._problems_text.bind("<Double-Button-1>", self._problem_double_click)
         self._problem_rows = {}
@@ -396,11 +433,106 @@ class EditorWindow(tk.Toplevel):
             self._position_document_changed()
             self._restore_editor_view()
 
+    def _build_command_deck(self):
+        """COMMAND DECK (§5.1): entry points that call the existing commands."""
+        deck = tk.Frame(self, background=COLORS["panel_background"])
+        deck.pack(fill="x")
+        tk.Frame(self, height=1, background=COLORS["subtle_border"]).pack(fill="x")
+        self.command_deck = deck
+        pad = {"pady": SPACING["deck_y"]}
+        heading = self._theme_fonts["heading"]
+        # Pack F8 then F5 first: pack gives earlier widgets space first, so a
+        # narrow window squeezes the left groups, never the round-ending actions.
+        self._send_button = tk.Button(deck, command=self.save_convert_and_send,
+                                      **button_options("send", fonts={"standard": heading}))
+        self._send_button.configure(padx=SPACING["deck_group"], pady=SPACING["gap"])
+        self._send_button.pack(side="right", padx=(SPACING["gap"], SPACING["outer"]), **pad)
+        self._convert_button = tk.Button(deck, command=self.save_and_convert,
+                                         **button_options("convert", fonts={"standard": heading}))
+        self._convert_button.pack(side="right", padx=SPACING["gap"], **pad)
+        # Segmented Raw | Table: the selected half is CYAN with dark text.
+        toggle = tk.Frame(deck, background=COLORS["subtle_border"])
+        toggle.pack(side="left", padx=(SPACING["outer"], 0), **pad)
+        self._view_toggle = toggle
+        self._raw_button = tk.Button(toggle, text=self.words["raw_view"],
+                                     command=self.show_raw, **button_options())
+        self._raw_button.pack(side="left", padx=(1, 0), pady=1)
+        self._table_button = tk.Button(toggle, text=self.words["table_view"],
+                                       command=self.show_table, **button_options())
+        self._table_button.pack(side="left", padx=1, pady=1)
+        self.table_tools = tk.Frame(deck, background=COLORS["panel_background"])
+        tk.Button(self.table_tools, text=self.words["add_row"],
+                  command=lambda: self._table_action("insert_row_below"),
+                  **button_options()).pack(side="left", padx=SPACING["button_gap"])
+        tk.Button(self.table_tools, text=self.words["add_column"],
+                  command=lambda: self._table_action("insert_column_right"),
+                  **button_options()).pack(side="left", padx=SPACING["button_gap"])
+        checks = tk.Frame(deck, background=COLORS["panel_background"])
+        checks.pack(side="left", padx=SPACING["deck_group"], **pad)
+        self._validate_button = tk.Button(checks, command=self.validate, **button_options())
+        self._validate_button.pack(side="left", padx=SPACING["button_gap"])
+        self._analyze_button = tk.Button(checks, command=self.analyze_frames, **button_options())
+        self._analyze_button.pack(side="left", padx=SPACING["button_gap"])
+        # (button, full label key, compact label key); compact drops the shortcut suffix.
+        self._deck_checks = checks
+        self._deck_labels = ((self._validate_button, "deck_validate"),
+                             (self._analyze_button, "deck_analyze"),
+                             (self._convert_button, "deck_convert"),
+                             (self._send_button, "deck_send"))
+        self._deck_compact = None
+        self._deck_full_width = None
+        self._set_deck_compact(False)
+        deck.bind("<Configure>", self._fit_command_deck)
+
+    def _set_deck_compact(self, compact):
+        if compact == self._deck_compact:
+            return
+        self._deck_compact = compact
+        for button, key in self._deck_labels:
+            button.configure(text=self.words[key + "_compact" if compact else key])
+        # Compact also tightens group gaps; F8 stays the widest button.
+        gap = SPACING["gap"] if compact else SPACING["deck_group"]
+        self._deck_checks.pack_configure(padx=gap)
+        self._send_button.configure(padx=SPACING["button_x"] if compact else SPACING["deck_group"])
+
+    def _fit_command_deck(self, event):
+        # Full labels' required width is known after the first layout pass.
+        if self._deck_full_width is None and not self._deck_compact:
+            self._deck_full_width = self.command_deck.winfo_reqwidth()
+        if self._deck_full_width is not None:
+            self._set_deck_compact(event.width < self._deck_full_width)
+
+    def _draw_problems_tape(self, _event=None):
+        tape = self._problems_tape
+        tape.delete("all")
+        width, height, step = tape.winfo_width(), 6, 12
+        for x in range(-step, width + step, step):
+            tape.create_polygon(x, height, x + step / 2, 0, x + step, 0, x + step / 2, height,
+                                fill=COLORS["neon_orange"], outline="")
+
+    def _set_problem_badge(self, kind=None):
+        """Decorative badge/tape beside the factual Problems title (§8.6)."""
+        badge = getattr(self, "_problems_badge", None)
+        if badge is None:
+            return
+        if kind is None:
+            badge.pack_forget()
+            self._problems_tape.pack_forget()
+            return
+        failed = kind == "oshii"
+        badge.configure(text=self.words["dopa_oshii" if failed else "dopa_clear"],
+                        foreground=COLORS["neon_orange" if failed else "neon_green"])
+        badge.pack(side="left", before=self._problems_title)
+        if failed:
+            self._problems_tape.pack(fill="x", before=self._problems_header)
+        else:
+            self._problems_tape.pack_forget()
+
     def _load_palette_icons(self):
         for candidate in CANDIDATES:
             if candidate.category != "buttons" or not candidate.icon_key:
                 continue
-            path = palette_icon_path(candidate.icon_key)
+            path = neon_icon_path(palette_icon_path(candidate.icon_key))
             try:
                 if not path.is_file():
                     continue
@@ -439,7 +571,7 @@ class EditorWindow(tk.Toplevel):
             page = tk.Frame(body, background=COLORS["panel_background"])
             canvas = tk.Canvas(page, highlightthickness=0, yscrollincrement=20,
                                background=COLORS["panel_background"])
-            scrollbar = tk.Scrollbar(page, orient="vertical", command=canvas.yview)
+            scrollbar = self._make_scrollbar(page, orient="vertical", command=canvas.yview)
             canvas.configure(yscrollcommand=scrollbar.set)
             scrollbar.pack(side="right", fill="y")
             canvas.pack(side="left", fill="both", expand=True)
@@ -455,10 +587,16 @@ class EditorWindow(tk.Toplevel):
                                                        title=self.words[category])
                     self.stick_preview.pack(fill="x", padx=SPACING["gap"])
                     continue
-                tk.Label(content, text=self.words[category], anchor="w",
-                         **label_options(role="heading", fonts=fonts)).pack(
-                    fill="x", padx=SPACING["section"],
-                    pady=(SPACING["category_top"], SPACING["category_bottom"]))
+                # Category color (§8.3) on the heading text plus a short rule;
+                # headings stay direct Label children of the page content.
+                color = CATEGORY_COLORS.get(category, COLORS["muted_text"])
+                heading = tk.Label(content, text=self.words[category], anchor="w",
+                                   **label_options(role="heading", fonts=fonts))
+                heading.configure(foreground=color)
+                heading.pack(fill="x", padx=SPACING["section"],
+                             pady=(SPACING["category_top"], 0))
+                tk.Frame(content, width=28, height=2, background=color).pack(
+                    anchor="w", padx=SPACING["section"], pady=(1, SPACING["category_bottom"] + 2))
                 group = tk.Frame(content, background=COLORS["panel_background"])
                 group.pack(fill="x", padx=SPACING["gap"])
                 for column in (0, 1):
@@ -480,6 +618,12 @@ class EditorWindow(tk.Toplevel):
         settings = getattr(self, "settings", None)
         self._show_palette_page(settings.get("editor_palette_page", 0) + 1 if settings else 1,
                                 remember=False)
+
+    @staticmethod
+    def _make_scrollbar(master, **options):
+        from .widgets import scrollbar
+
+        return scrollbar(master, **options)
 
     def _show_palette_page(self, number, *, remember=True):
         if not 1 <= number <= len(self._palette_pages):
@@ -628,6 +772,7 @@ class EditorWindow(tk.Toplevel):
 
     def _on_destroy(self, event):
         if event.widget is self:
+            resume_gc()
             self._flush_workspace()
             self._closed = True
             # Release Tk images on the UI thread, before background CSV parsing
@@ -654,6 +799,7 @@ class EditorWindow(tk.Toplevel):
             self.line_numbers.configure(width=width)
         self.line_numbers.delete("all")
         index = self.text.index("@0,0")
+        current = getattr(self, "_cursor_line", None)
         while True:
             details = self.text.dlineinfo(index)
             if details is None:
@@ -663,7 +809,9 @@ class EditorWindow(tk.Toplevel):
                 break
             self.line_numbers.create_text(width - 5, details[1] + details[3] / 2,
                                           text=str(line), anchor="e", font=self._fixed_font,
-                                          fill=COLORS["muted_text"])
+                                          fill=COLORS["neon_yellow" if line == current
+                                                     else "muted_text"],
+                                          tags=("line", f"line{line}"))
             following = self.text.index(f"{index}+1line")
             if following == index:
                 break
@@ -675,11 +823,31 @@ class EditorWindow(tk.Toplevel):
             line, column = row + 1, cell + 1
         else:
             line, column = line_column(self.text.index("insert"))
+            self._mark_cursor_line(line)
         state = self.words["modified"] if self.document.modified else self.words["saved"]
         self.status.config(text=f"{self.words['line']} {line}, {self.words['column']} {column}"
                                 f"  |  {state}  |  {file_kind(self.document.path)}")
+        resume_gc()  # Cheap Tk-thread fallback if a worker's poller was cancelled.
+        dot = getattr(self, "_modified_dot", None)
+        if dot is not None:
+            dot.configure(text="●" if self.document.modified else "")
         if hasattr(self, "frame_status"):
             self._update_frame_info(line)
+
+    def _mark_cursor_line(self, line):
+        """Raw cursor-line band and yellow gutter number (§8.2); display only."""
+        if not hasattr(self, "_cursor_line"):
+            return
+        # Edits move or widen the tagged range, so clear by its actual ranges.
+        ranges = self.text.tag_ranges("cursor_line")
+        if ranges:
+            self.text.tag_remove("cursor_line", ranges[0], ranges[-1])
+        self.text.tag_add("cursor_line", f"{line}.0", f"{line + 1}.0")
+        previous, self._cursor_line = self._cursor_line, line
+        if previous != line:
+            if previous is not None:
+                self.line_numbers.itemconfigure(f"line{previous}", fill=COLORS["muted_text"])
+            self.line_numbers.itemconfigure(f"line{line}", fill=COLORS["neon_yellow"])
 
     def _position_unavailable_message(self):
         """Use the same cached-mapping readiness for display and navigation."""
@@ -709,16 +877,23 @@ class EditorWindow(tk.Toplevel):
                        f"{self.words['frame_duration']}: {duration} | "
                        f"{self.words['frame_end']}: {end} | "
                        f"{self.words['frame_total']}: {self._positions.total_frames}f")
+            confirmed = True
+        else:
+            confirmed = False
         self.frame_status.configure(text=message)
+        if hasattr(self, "hud_row"):
+            # T2: only converter-confirmed positions use the confirmed-data YELLOW.
+            self.frame_status.configure(
+                foreground=COLORS["neon_yellow" if confirmed else "muted_text"])
         if hasattr(self, "stick_preview"):
             self._update_stick_preview(line)
 
     def _update_stick_preview(self, line):
         unavailable = self._position_unavailable_message()
         if unavailable:
-            message = self.words["preview_updating" if unavailable == self.words["frame_updating"]
-                                 else "preview_unavailable"]
-            self.stick_preview.show(message=message)
+            pending = unavailable == self.words["frame_updating"]
+            message = self.words["preview_updating" if pending else "preview_unavailable"]
+            self.stick_preview.show(message=message, lamp="pending" if pending else "unavailable")
             return
         position = self._positions.for_line(line)
         if position is None or self._stick_frames is None:
@@ -853,19 +1028,23 @@ class EditorWindow(tk.Toplevel):
         results = self._position_queue
         self._position_worker_active = True
         self._position_waiting = False
+        # CSV parsing allocates heavily; never let it finalize Tk garbage.
+        gc_hold = hold_gc()
 
         def worker():
-            try:
-                result = analyze_positions(snapshot, base_dir=base_dir, include_sticks=True)
-            except Exception as error:
-                traceback.print_exc()
-                result = PositionResult(error=str(error))
-            # The worker keeps only plain data and its queue, not Tk widgets.
-            results.put((revision, result))
+            with gc_hold:
+                try:
+                    result = analyze_positions(snapshot, base_dir=base_dir, include_sticks=True)
+                except Exception as error:
+                    traceback.print_exc()
+                    result = PositionResult(error=str(error))
+                # The worker keeps only plain data and its queue, not Tk widgets.
+                results.put((revision, result))
 
         try:
             threading.Thread(target=worker, daemon=True).start()
         except Exception:
+            gc_hold.release()
             self._position_worker_active = False
             raise
         if self._position_poll_job is None:
@@ -879,6 +1058,7 @@ class EditorWindow(tk.Toplevel):
             self._position_poll_job = self.after(50, self._poll_position_analysis)
             return
         self._position_worker_active = False
+        resume_gc()
         if revision == self._position_revision:
             self._positions = result.positions if result.success else None
             self._stick_frames = result.sticks if result.success else None
@@ -924,7 +1104,7 @@ class EditorWindow(tk.Toplevel):
             self.table_area.pack_forget()
             if hasattr(self, "table_tools"):
                 self.table_tools.pack_forget()
-            self.raw_frame.pack(fill="both", expand=True, before=self.status, padx=SPACING["outer"])
+            self.raw_frame.pack(fill="both", expand=True)
             self._view = "raw"
             self._update_status()
             self.text.focus_set()
@@ -944,9 +1124,11 @@ class EditorWindow(tk.Toplevel):
         self._sync_text()
         self.table_grid.set_text(self.document.text)
         self.raw_frame.pack_forget()
-        self.table_area.pack(fill="both", expand=True, before=self.status, padx=SPACING["outer"])
+        self.table_area.pack(fill="both", expand=True)
         if hasattr(self, "table_tools"):
-            self.table_tools.pack(side="left", after=self._table_button)
+            # The Raw | Table toggle is its own segmented container in the deck.
+            self.table_tools.pack(side="left", padx=(SPACING["gap"], 0),
+                                  after=getattr(self, "_view_toggle", self._table_button))
         self._view = "table"
         self._update_view_button()
         self._update_status()
@@ -1026,10 +1208,12 @@ class EditorWindow(tk.Toplevel):
             self.table_area.pack_forget()
             if hasattr(self, "table_tools"):
                 self.table_tools.pack_forget()
-            self.raw_frame.pack(fill="both", expand=True, before=self.status, padx=SPACING["outer"])
+            self.raw_frame.pack(fill="both", expand=True)
             self._view = "raw"
         if hasattr(self, "table_grid"):
             self.table_grid.selected = (0, 0)
+        if hasattr(self, "_cursor_line"):
+            self._cursor_line = None
         self.text.delete("1.0", "end")
         self.text.insert("1.0", self.document.text)
         self.text.edit_reset()
@@ -1427,9 +1611,10 @@ class EditorWindow(tk.Toplevel):
         return (identity == (getattr(self, "_document_revision", 0), self.document.path)
                 and not getattr(self, "_frame_edit_pending", False))
 
-    def _show_problem_title(self, title):
+    def _show_problem_title(self, title, badge=None):
         self._problems_title.config(text=title)
-        self._problems_panel.pack(fill="x", before=self.status)
+        self._set_problem_badge(badge)
+        self._problems_panel.pack(fill="x", before=getattr(self, "_status_row", self.status))
 
     def _show_stale_result(self, title):
         self._problem_rows = {}
@@ -1440,7 +1625,8 @@ class EditorWindow(tk.Toplevel):
     def _show_validation_result(self, result):
         self._problem_snapshot = self.document.text
         self._show_problem_title(self.words["no_errors"] if result.success else
-                                 self.words["problems"] + " — " + self.words["jump_hint"])
+                                 self.words["problems"] + " — " + self.words["jump_hint"],
+                                 badge="clear" if result.success else "oshii")
         self._problems_text.config(state="normal")
         self._problems_text.delete("1.0", "end")
         self._problem_rows = {}

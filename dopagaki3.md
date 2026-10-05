@@ -176,7 +176,13 @@ Tkでは外部fontを読み込まない（同梱もしない）。起動時に`t
 
 ### 4.4 アイコン
 
-現行のPNGは`#202020`の線画なので、暗い地では見えない。`assets/icons/render_png.py`に`--stroke`と`--output-dir`を指定して、`#F2EEFF`の線のvariantを`assets/icons/png_neon/`へ生成し、commitする（SVGは自前の原本なので問題ない）。`palette_icon_path`は`png_neon`を優先し、無ければ文字表示へfallbackする（現行と同じ方針）。PyInstallerの`--add-data`にも`png_neon`を追加する。
+現行のPNGは`#202020`の線画なので、暗い地では見えない。`assets/icons/render_png.py`に`--stroke`と`--output-dir`を指定して、`#F2EEFF`の線のvariantを**`assets/icons/png/neon/`**へ生成し、commitする（SVGは自前の原本なので問題ない）。
+
+- 置き場所を`png/`の下にしたのは、既存のPyInstaller `--add-data "assets/icons/png:assets/icons/png"`がそのまま同梱するため。READMEのbuild手順は変えない。
+- `palette_icon_path(key)`は現行のまま元のPNGを返す。Editorは`neon_icon_path(palette_icon_path(key))`で`neon/`の同名ファイルを読む。
+- neonが無い・読めない場合は**文字だけの表示**にする。元の暗いPNGへはfallbackしない（暗い地では読めないため）。
+
+再生成：`python assets/icons/render_png.py --stroke "#F2EEFF" --output-dir assets/icons/png/neon`
 
 ---
 
@@ -209,7 +215,9 @@ Tkでは外部fontを読み込まない（同梱もしない）。起動時に`t
   - 左：`テキスト|表`のsegmented（選択中はcyan地に暗い文字）、`+行` `+列`（Table時のみ、現行どおり）。
   - 中：`検証 F6` `解析 F7`（secondary）。
   - 右：**`保存して変換 F5`**（黄地・暗い文字）と**`変換してSEND F8`**（magenta地・暗い文字、一番大きい）。既存のmenu/shortcutと同じcommandを呼ぶだけの**入口の追加**で、機能は変えない。F5/F8はこのEditorのラウンドを締める動作なので、画面上で一番目立つ位置に置く。
+  - **幅が足りない時**（最小幅800pxの英語など）：F8→F5の順に先にpackし、狭い時に削られるのは左のグループにする。全ラベルの必要幅を下回ったら**compact表記**へ切り替える（F6/F7/F5/F8のショートカット表記を外す：`検証` `解析` `保存して変換` `変換してSEND` / `Validate` `Analyze` `Save & Convert` `Convert & SEND`）。同時にグループ間の余白を詰め、F8の内側余白も詰める。F8は常に一番大きいまま。
 - **FEVER HUD**（`tk.Canvas`、高さ76px、§6）
+  - **P1の暫定形**：HUDはまだcanvasではなく1行の`tk.Frame`。`frame_status`（現行の文言のまま、frame_info font）と`移動`欄を左から並べる。**converterが確定した値の時だけ文字をYELLOW**にし、更新中・未確定・TSV-TASのみの時はmutedにする（T2）。P2でFRAME METERに置き換え、Labelは§5.2のとおり小さな読み出しになる。
 - **RIM**：本体を包む`tk.Frame`（`highlightthickness=2`）
 - **本体**：現行どおり。Tableは左、パレットは右（幅400pxは固定、テストあり）
 - **STATUS**：現行のlabel textはそのまま。右端に`[演出 100%]` `[♪ ON]`のチップ（クリックで切替、§12）
@@ -374,7 +382,7 @@ comboの節目でだけ出す。毎回は出さない。
 - **仮想行・仮想列**（`row >= model.row_count`、または`column >= model.column_count`）は`virtual_cell`。保存されない領域が一目で分かる。
 - header：`header_background`、文字`#C9C2EA`。A列のheaderには黄の下線2px。現行のguide文言（`A · フレーム数`など）はそのまま。
 - gutter：行番号はmuted。active行の行番号は黄。ROW_HINTSのバー（4px）は現行の分類のまま、ネオン色にする。
-- active cell：`active_cell`地、cyanの2px枠、黄のロックオン・ブラケット。
+- active cell：`active_cell`地、cyanの2px枠、黄のロックオン・ブラケット。ブラケットは**4本のpolyline**で描き、cyan枠の内側に重ならない位置へinsetする（1回の再描画のrectangle数を増やさない。既存testの描画予算＝可視範囲でrectangle 30未満を守る）。
 - 範囲選択：`selection_background`地、cyanの2px外枠。
 - 編集Entry：地`active_cell`、文字`text`、caretは黄（`insertwidth=2`）、枠はcyan 2px。**Entryの生成・bind・IMEの経路は変えない。**
 - 補完Listbox：地`panel_background`、文字`text`、選択はmagenta地に暗い文字。
@@ -389,7 +397,7 @@ comboの節目でだけ出す。毎回は出さない。
 
 ### 8.3 入力パレット
 
-- 地は`panel_background`。カテゴリ見出しの左に3pxの色バーを付ける：
+- 地は`panel_background`。**カテゴリ見出しの文字をカテゴリ色**にし、見出しの直下に**28×2pxの同色のrule**を置く（当初の「見出しの左に3pxの色バー」から変更。見出しは「page contentの直接の子のLabel」というデータ契約（既存test）があり、Tk Labelの横に色バーを置くとgeometryが崩れるため）：
   - ボタン = YELLOW
   - 左スティック = CYAN
   - 右スティック = MAGENTA
@@ -397,9 +405,9 @@ comboの節目でだけ出す。毎回は出さない。
   - Cappy = GREEN
   - 加速度／ジャイロ = ORANGE
   - 記法 = muted
-- ボタン：地`palette_button`、文字`text`、アイコンは`png_neon`。hoverは`palette_hover`。
-- **押した時**：80msだけカテゴリの色の地に暗い文字になり、120msでhoverの色に戻る（Tkのsquash代わりの「光る押し込み」）。`pady`も1px沈める。挿入結果は§7の経路で表に返る。
-- ページ切替`◀ 1/2 ▶`：数字はcaps。切替時に見出しの色バーが左から伸びる（120ms）。
+- ボタン：地`palette_button`、文字`text`、アイコンは`png/neon/`。hoverは`palette_hover`。
+- **押した時**（P2、motion）：80msだけカテゴリの色の地に暗い文字になり、120msでhoverの色に戻る（Tkのsquash代わりの「光る押し込み」）。`pady`も1px沈める。挿入結果は§7の経路で表に返る。
+- ページ切替`◀ 1/2 ▶`：数字はcaps。切替時に見出しのruleが左から伸びる（P2、120ms）。
 - 幅400px・2列・各ページのscrollは現行どおり。
 
 ### 8.4 Stick Preview
@@ -421,7 +429,7 @@ comboの節目でだけ出す。毎回は出さない。
 ### 8.6 Problems
 
 - 地`panel_background`。`_problems_title`のtextは現行どおり。
-- 失敗時は、titleの左に別widgetで**orangeの短い警告テープ帯（高さ4px）**と`おしい!` / `SO CLOSE!`のバッジを出す。成功時は**GREENの`✔`バッジ**。
+- 失敗時は、panelの最上部に**全幅の警告テープ帯（高さ6px、黒地にorangeの斜線）**を出し、titleの左に別widgetで`おしい!` / `SO CLOSE!`のバッジ（orange）を出す。成功時はテープ無しで**GREENの`✔`バッジ**。実行中・staleの時はどちらも出さない。
 - 本文（converterのメッセージ）はmono、`text`色。jumpできる行はcyanの下線（現行のtag）。本文は1文字も変えない。
 
 ### 8.7 Frame Inspector / 検索ダイアログ / Converter画面
@@ -433,7 +441,8 @@ comboの節目でだけ出す。毎回は出さない。
 ### 8.8 scrollbar・menu
 
 - scrollbarは`ttk.Scrollbar`＋`clam`系のcustom style（つまみ`#3A3260`、溝`#0F0D1A`）に置き換える。Converterはttkを使っていないので、ttk themeの切替の影響はない（実装時に再確認）。
-- Windowsのmenubarとmessageboxはnativeのまま（変えられないし、変えない）。
+- Windowsのmenubarとmessageboxはnativeのまま（変えられないし、変えない）。X11/macOSではmenubar・各menu・右クリックmenuにも同じskinを当てる。
+- **実装メモ（P1）**：ttkの`theme_use`はinterpreter全体に効くため切り替えない。clamの`trough`/`thumb` elementを現在のthemeへ`element create ... from clam`で複製し、`Dopa.Vertical.TScrollbar` / `Dopa.Horizontal.TScrollbar`だけがそれを使う（`editor/widgets.py`）。
 
 ---
 
@@ -574,7 +583,16 @@ Editor側の真のイベントを、1つのdispatcher（`DopaDirector`、Editor�
 | `lockon` | ブラケット | 1.4→1.0、90ms、ease-out-back（小さく行き過ぎる） |
 | `pulse` | lamp | 明度の正弦波、600ms周期 |
 
-### 11.3 粒子の種類（canvas polygon / oval）
+### 11.3 Tk threadでのGC（P1で追加）
+
+FXを足すとallocationの量とタイミングが変わる。`main`には、破棄済みのTk object（別testのinterpreter、Variable、image、font）が循環参照に残り、**background workerのallocationがGCを起こすと、そのfinalizerがworker threadからTclを呼んで落ちる**（`Tcl_AsyncDelete`でabort）という潜在的な問題があった（GCの閾値を下げると`main`のままでも再現する）。
+
+- `python_to_exe/background.py`：Tk threadが`Thread.start()`の**前に**`hold_gc()`でautomatic GCを止め、workerは終了時にholdを返すだけで**自分では再開しない**（再開した直後の自分のallocationで、溜まったGCがworker上で走るため）。
+- 再開はTk threadの`resume_gc()`だけ：`_poll_position_analysis`、`_drain_events`、`_update_status`、Editor/Appのdestroy。holdが残っていれば何もしない。
+- 対象のworker：Frame位置解析、Validate、Frame解析（F7）、変換（F5/F8/Start Conversion）。
+- 明示的な`gc.collect()`は止めない。UI threadで毎回full collectionする案は、1万行で約19msかかるため採らない。
+
+### 11.4 粒子の種類（canvas polygon / oval）
 
 - 紙吹雪：回転する長方形（polygonの4点を毎tick計算）
 - 星：縁取りあり
@@ -644,7 +662,7 @@ skillのreduced-motionの扱いに合わせる。
 | `rewind` | 150ms | 下降sweep（Undo） |
 | `chime` | 300ms | 単音のベル（送信未確認） |
 
-dopagaki-music skillはこの環境に無いため、音は本仕様で設計した。
+本章は、dopagaki-music skillが無い状態で設計した。**その後`.claude/skills/`にdopagaki-music skillが追加された**ため、P4の開始時にそのskillを読み、本章（event・音色・長さ・調）をskillに沿って見直してから実装する。commercial audio assetを使わない・repositoryへ音声ファイルを入れない、という制約は変えない。
 
 ---
 
@@ -693,7 +711,7 @@ dopagaki-music skillはこの環境に無いため、音は本仕様で設計し
 
 | Phase | 範囲 | 完了条件 |
 |---|---|---|
-| **P1 Neon skin** | `theme.py`のtoken、Table / Raw / パレット / Stick Preview / STATUS / Problems / ttk scrollbar / `png_neon`アイコン、COMMAND DECKの再配置。motionなし | 全画面がネオン地で読める。既存の操作が全て同じに動く |
+| **P1 Neon skin**（実装済み） | `theme.py`のtoken、Table / Raw / パレット / Stick Preview / STATUS / Problems / ttk scrollbar / `png/neon/`アイコン、COMMAND DECKの再配置、Tk threadでのGC（§11.3）。motionなし | 全画面がネオン地で読める。既存の操作が全て同じに動く |
 | **P2 FX engine＋HUD** | `dopa/heat.py`・`fx.py`・`hud.py`・`fonts.py`、FRAME METER、REWARD、セル確定のカスケード、叫び文字、ドパmenu／チップ／settings | §7のタイムラインがコマ送りで確認できる。IME・補完・Undoへの影響が無い |
 | **P3 真の山** | §10のhook、`outcome.py`、Validate / F5 / F7 / F8、COVER | §9の全分岐を、成功・送信未確認・失敗のfixtureで確認できる |
 | **P4 音** | `sound.py`、合成、override、再生 | Windows / Linux / 無音環境でエラーにならない |

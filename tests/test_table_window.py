@@ -235,6 +235,8 @@ class TableWindowTests(unittest.TestCase):
                             Button=lambda master, **kw: Widget("button", master, **kw)), \
              patch.dict(sys.modules, {"python_to_exe.editor.stick_preview": SimpleNamespace(
                  StickPreview=lambda master, **kw: Widget("preview", master, **kw))}):
+            # Dopagaki3 §8.8 builds the dark ttk scrollbar through this factory.
+            window._make_scrollbar = lambda master, **kw: Widget("scrollbar", master, **kw)
             window._build_input_palette()
             icon = object()
             window._palette_icons = {"button_a": icon}
