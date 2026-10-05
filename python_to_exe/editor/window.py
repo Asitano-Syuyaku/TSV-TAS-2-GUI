@@ -816,26 +816,25 @@ class EditorWindow(tk.Toplevel):
                                 remember=False)
 
     def _palette_placements(self, buttons, folded):
-        """(button, row, column, span): wide 2 columns, or folded 4 columns (§8.3)."""
+        """(button, row, column, span): wide 2 columns, or folded rows (§8.3)."""
         if folded and buttons[0][1].category == "buttons":
             order = {text: index for index, text in enumerate(FOLDED_BUTTONS)}
             return [(button, *divmod(order[item.text], 4), 1) for button, item in buttons]
-        columns, placements, slot = (4 if folded else 2), [], 0
+        if folded:  # One row per stick, three equal keys: angle | radius; angle | x; y.
+            return [(button, 0, column, 1) for column, (button, _) in enumerate(buttons)]
+        placements, slot = [], 0
         for button, item in buttons:
-            if folded:  # One row per stick: angle | radius; angle (2) | x; y.
-                span = 2 if "radius" in item.label else 1
-            else:
-                span = self._palette_span(item)
-                if span == 2 and slot % 2:
-                    slot += 1
-            placements.append((button, *divmod(slot, columns), span))
+            span = self._palette_span(item)
+            if span == 2 and slot % 2:
+                slot += 1
+            placements.append((button, *divmod(slot, 2), span))
             slot += span
         return placements
 
     def _grid_palette_group(self, group, buttons, folded, previous=None):
         """Lay out one category; `previous` clears a former layout's extra tracks."""
         placements = self._palette_placements(buttons, folded)
-        columns = 4 if folded else 2
+        columns = max(column + span for _, _, column, span in placements)
         for column in range(4 if previous is not None else columns):
             used = column < columns
             group.grid_columnconfigure(column, weight=int(used), uniform="palette" if used else "")
@@ -845,6 +844,12 @@ class EditorWindow(tk.Toplevel):
         rows = 1 + max(row for _, row, _, _ in placements)
         for row in range(len(buttons) if previous is not None else rows):
             group.grid_rowconfigure(row, minsize=size if row < rows else 0)
+        if previous is not None and buttons[0][1].category != "buttons":
+            # Folded stick keys share one row in equal thirds: centered, with
+            # less inner padding so the longest label still fits whole.
+            for button, _ in buttons:
+                button.configure(anchor="center" if folded else "w",
+                                 padx=1 if folded else SPACING["button_x"])
         for button, row, column, span in placements:
             # Keys get the same gap between rows as between columns (separate keys).
             button.grid(row=row, column=column, columnspan=span, sticky="nsew" if keys else "ew",

@@ -108,6 +108,8 @@ class TkDisplayTests(unittest.TestCase):
             if folded:  # The whole D-pad shares one row; each stick set is one row.
                 self.assertEqual({places[key][0] for key in ("dp-u", "dp-d", "dp-l", "dp-r")}, {2})
                 self.assertEqual({int(button.grid_info()["row"]) for button, _ in stick_buttons}, {0})
+                widths = [button.winfo_width() for button, _ in stick_buttons]
+                self.assertLessEqual(max(widths) - min(widths), 1)  # Equal thirds (pixel rounding).
                 self.assertGreater(key_buttons[0][0].winfo_height(), wide_key)
             for button, _ in key_buttons + stick_buttons:
                 self.assertLessEqual(button.winfo_reqwidth(), button.winfo_width())
