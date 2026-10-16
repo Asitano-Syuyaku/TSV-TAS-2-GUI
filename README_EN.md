@@ -254,8 +254,8 @@ Install Python 3 and PyInstaller on Windows, then run from the repository root:
 
 ```text
 python -m pip install pyinstaller
-python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_jp.py
-python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_en.py
+python -m PyInstaller --noconsole --onefile --paths python_to_exe --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_jp.py
+python -m PyInstaller --noconsole --onefile --paths python_to_exe --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_en.py
 ```
 
 Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-tas.py`, `nx-tas-to-tsv-tas.py`, and `ftp_config.json`. The exe bundles the GUI and PNG icons, and launches the companion `.py` files. Keep Python 3 installed for use: on Windows the GUI looks for `py -3`, then a Python executable on `PATH`. The GUI passes paths containing spaces as separate arguments.
