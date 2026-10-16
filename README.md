@@ -13,6 +13,17 @@ Super Mario Odyssey のTAS用スクリプトを変換する、[xiivler/TSV-TAS-2
 
 どちらのbranchでも、同じスクリプトからは同じ出力ファイルができます。このREADMEは `main` の説明です。
 
+## ダウンロード
+
+Windows用の配布パッケージは [GitHub Releases](https://github.com/Asitano-Syuyaku/TSV-TAS-2-GUI/releases) にあります。
+
+| 版 | Release | ファイル |
+| --- | --- | --- |
+| 通常版（`main`） | [`v2`](https://github.com/Asitano-Syuyaku/TSV-TAS-2-GUI/releases/tag/v2) | `TSV-TAS-2-GUI-v2-ja.zip`（日本語）、`TSV-TAS-2-GUI-v2-en.zip`（English） |
+| ドパガキ版（`dopagaki`） | [`dopagaki-v2`](https://github.com/Asitano-Syuyaku/TSV-TAS-2-GUI/releases/tag/dopagaki-v2) | `TSV-TAS-2-GUI-dopagaki-v2-ja.zip`（日本語）、`TSV-TAS-2-GUI-dopagaki-v2-en.zip`（English） |
+
+zipにはexe（`TSV-TAS-2-GUI-ja.exe` など）、`tsv-tas.py`、`nx-tas-to-tsv-tas.py`、`ftp_config.json` と、その言語のREADMEが入っています。展開してexeを起動してください。exeは同じフォルダーの `.py` をインストール済みの**Python 3**で実行するため、Python 3が必要です。ファイルは同じフォルダーにまとめたまま使ってください。exeには署名がないため、初回起動時にWindowsの保護画面が出ることがあります。その場合は「詳細情報」→「実行」を選びます。
+
 ## 出力形式と必要環境
 
 | GUIの選択肢 | 出力 | 用途 |
@@ -37,8 +48,8 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
    6	ls(0)->ls(50)
    ```
 
-2. repositoryのルートで `python3 python_to_exe/main_jp.py`（日本語）または `python3 python_to_exe/main_en.py`（English）を起動します。Windowsでは `python` または `py -3` でも実行できます。
-3. Inputに `sample.tsv` を選びます。Output Directoryが空なら入力ファイルと同じフォルダーが自動設定されます。必要なら変更し、Output File Nameに拡張子なしの名前（例: `sample`）を指定します。形式を選び、**Start Conversion／変換実行**を押します。
+2. repositoryのルートで `python3 python_to_exe/main_jp.py`（日本語）または `python3 python_to_exe/main_en.py`（English）を起動します。Windowsでは `python` または `py -3` でも実行できます。[配布exe](#ダウンロード)を使う場合は、展開したexeを起動します。
+3. Inputに `sample.tsv` を選ぶと、Output File Nameに拡張子を除いた名前（`sample`）が入り、Output Directoryが空なら入力ファイルと同じフォルダーが自動設定されます。どちらも必要なら変更できます。形式を選び、**Start Conversion／変換実行**を押します。
 4. 選んだ形式に応じて `sample.stas`、`sample`、または `sample.txt` が保存先にできます。まずはDebugを有効にして `sample.stas-debug.csv`（LunaKit binaryなら `sample-debug.csv`）でフレームを確認できます。
 
 この例は最初に左スティックを5フレーム上方向へ倒し、次にAボタンと右スティックを1フレーム入力し、3フレーム待機します。ループとスティック補間の詳細は下の早見表にあります。
@@ -51,7 +62,7 @@ Converter画面は「ファイル」（入力・出力先・出力名）と「�
 | --- | --- |
 | Input Script File／入力スクリプトファイル | `.tsv` は直接コンパイル。`.txt` はnx-TAS入力として先にTSVへ変換 |
 | Output Directory／出力ディレクトリ | 空欄ならInput選択時にそのファイルのフォルダーを自動設定。指定済みの出力先は上書きしない。`.txt` 入力の中間 `.tsv` もここに保存 |
-| Output File Name／出力ファイル名 | 拡張子やフォルダーを含まないベース名。形式に応じた拡張子をGUIが付加 |
+| Output File Name／出力ファイル名 | 拡張子やフォルダーを含まないベース名。形式に応じた拡張子をGUIが付加。Inputを選ぶと、そのファイル名から拡張子を除いた名前が入る |
 | Output format／出力形式 | STAS（既定）、LunaKit binary、nx-TASから選択 |
 | Skip empty frames／空フレームを省略 | nx-TASを選んだ場合だけ有効。upstreamの `-e` |
 | Debug output／Debug出力 | upstreamの `-d`。出力ファイル名に `-debug.csv` を加えたCSVを保存 |
@@ -88,7 +99,7 @@ Recoveryは復元直後も残し、Save／Save As／F5／F8の保存成功、ま
 
 ### 内蔵エディター
 
-変換実行ボタンの左にある **Open Editor／エディターを開く** で、Input欄の `.tsv`・`.txt` をeditorで開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、保存・変換してFTP送信、Validate、フレーム解析、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5`、`F6`、`F7`、`F8` も使えます。未保存の変更があるタブやウィンドウを閉じると保存確認が出ます。
+変換実行ボタンの左にある **Open Editor／エディターを開く** で、Input欄の `.tsv`・`.txt` をeditorで開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます（Output File Nameの扱いは下の **Save & Convert** と同じです）。Fileメニューには New、Open、Save、Save As、Save & Convert、保存・変換してFTP送信、Validate、フレーム解析、タブを閉じる、Close（Editorのウィンドウを閉じる）があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5`、`F6`、`F7`、`F8`、`Ctrl+W` も使えます。未保存の変更があるタブやウィンドウを閉じると保存確認が出ます。
 
 Editorはブラウザのように**タブ**で複数のファイルを開けます。New（`Ctrl+N`）、Open（`Ctrl+O`）、最近使ったファイル、Converterの **エディターを開く** は、同じウィンドウに新しいタブを追加します。すでに開いているファイルならそのタブに切り替え、何も書いていない無題のタブはそのファイルに使います。タブをクリックすると切り替わり、`Ctrl+Tab`／`Ctrl+Shift+Tab` で次／前のタブ、`×`・中クリック・`Ctrl+W` でタブを閉じます。`+` またはタブ列の空いた所をダブルクリックすると新しいタブを開きます。未保存のタブには `●` が付きます。文書の内容、Undo履歴、テキスト／表の表示、フレーム情報、検証の結果はタブごとに保持し、保存・変換・検証（`Ctrl+S`、F5、F8、F6、F7）は表示中のタブに対して行います。裏のタブの検証結果は、そのタブに戻った時に表示します。最後のタブを閉じるとEditorのウィンドウも閉じます。
 
@@ -118,7 +129,7 @@ Frame表示のすぐ横にある常設の**移動**欄へ0-basedのframe番号�
 
 最終行でEnterまたは下矢印を押すと、未保存の仮想行へ移動できます。移動だけでは空行を追加しません。その行へ文字を入力して確定したとき、必要な行だけ追加します。表の編集で末尾に中身のない行が残った場合（書いたセルを消した時など）は、その行を文書から取り除きます。空の行もconverterでは1フレームとして数えられるためです。途中の空行と、テキスト表示で入れた空行はそのまま残します。TabやEnterで移動した後はセル選択状態のままで、次の文字をそのまま打ち込めます。表は画面の余白にも空セルを表示し、一度広げた表示範囲は別セルを選んでも残ります。表示上の空セルだけでは保存内容は増えません。
 
-表のセルを編集中に `l` や `/` などを入力すると、ボタン、スティック、加速度／ジャイロ、2P入力、STAS commandなどの候補が表示されます。上下キーで候補を選び、Tab／Enterまたはクリックで挿入すると、セル編集を続けられます。Escapeはまず候補だけを閉じます。括弧や引数を含む候補は値を選択したtemplateとして入り、そのまま値を打ち替えられます。表の右側には **入力パレット** が常時表示され、よく使うボタン、モーション、左右スティック、STAS command、STASの題名などを選べます。カテゴリの見出しは種類ごとに色分けしています。選んだ項目は現在セルへ挿入され、編集中ならカーソル位置へ挿入されます。左右スティック候補はそれぞれ角度だけの形を先頭に表示します。`.tsv` のテキスト表示ではコメント・command・変数・入力を色で、表では先頭列をdurationの目安として薄い背景で区別し、行番号横の色で通常入力・コメント・command・変数・loop/control風・空行を見分けられます。commandやコメント行の先頭列をdurationとして扱いません。色や行分類は**入力支援**であり、構文の正否判定ではありません。STAS commandの実際の処理はSTAS出力時にconverterが行います。
+表のセルを編集中に `l` や `/` などを入力すると、ボタン、スティック、加速度／ジャイロ、2P入力、STAS commandなどの候補が表示されます。上下キーで候補を選び、Tab／Enterまたはクリックで挿入すると、セル編集を続けられます。Escapeはまず候補だけを閉じます。括弧や引数を含む候補は値を選択したtemplateとして入り、そのまま値を打ち替えられます。表の右側には **入力パレット** が常時表示され、よく使うボタン、モーション、左右スティック、STAS command、STASのヘッダー設定（`$stage` など）を選べます。カテゴリの見出しは種類ごとに色分けしています。選んだ項目は現在セルへ挿入され、編集中ならカーソル位置へ挿入されます。左右スティック候補はそれぞれ角度だけの形を先頭に表示します。`.tsv` のテキスト表示ではコメント・command・変数・入力を色で、表では先頭列をdurationの目安として薄い背景で区別し、行番号横の色で通常入力・コメント・command・変数・loop/control風・空行を見分けられます。commandやコメント行の先頭列をdurationとして扱いません。色や行分類は**入力支援**であり、構文の正否判定ではありません。STAS commandの実際の処理はSTAS出力時にconverterが行います。
 
 入力パレットは幅400pxの2列表示です。上部の◀／▶で、Page 1 **Basic**（Buttons／Motion／Left Stick／Right Stick／Stick Preview）とPage 2 **Advanced**（STAS Commands／STAS Settings／Cappy／Accel／Gyro／Notation）を切り替えます。初回はPage 1で、次回は最後のページを復元します。切替は文書や選択範囲、Undo履歴に影響しません。各ページはパレット内のマウスホイールまたはスクロールバーで縦スクロールできます。左右スティックでは `ls(angle)`／`rs(angle)` が各カテゴリ最上段の大きなボタン、半径＋角度／XY形式が次段の左右に並びます。Advancedページの先頭は、STAS Commandsの `/tp x y z`、`/absStick on`／`/absStick off`、`/speed 10`、`/section TASer` と、STAS Settingsの `$stage`／`$entrance`／`$scenario`／`$pos`／`$is2p`／`$author` です。これらはクリックするとA列の独立した行に入ります。選んでいる行に文字があればその下に1行追加し、セルを確定するまで文書は変わりません（Escで取り消すと行は残りません）。値の部分（`0 0 0`、`StageName` など）は選択状態になるので、そのまま打ち替えられます。`/ctp`、`/pause`、`/loadFile`、`/reloadFile`、`/demo` はパレットにはありませんが、`/` の入力補完と手入力で使えます。`$title`／`$desc` も手入力で使えます。STAS Settingsの項目は `$` の入力補完には出ません（durationに変数を使う行でTabを押しても変数名が置き換わらないようにするため）。Motionには十字キーの代わりにJoy-Conを振る入力を並べます。上段が片手の `m-u`／`m-d`／`m-l`／`m-r`、下段が両手の `m-uu`／`m-dd`／`m-ll`／`m-rr` で、常に4列です。十字キーの `dp-u` などはパレットには出ませんが、入力補完と色分けには残っています。12種類のボタンと8種類のモーションにはアイコンと文字を併記します。画像が読めない場合は文字だけで表示します。表示と挿入するTSV文字列は別に管理しています。
 
@@ -216,6 +227,19 @@ python -m PyInstaller --noconsole --onefile --paths python_to_exe --add-data "as
 
 できた `dist/main_jp.exe` または `dist/main_en.exe` を、`tsv-tas.py`、`nx-tas-to-tsv-tas.py`、`ftp_config.json` と**同じフォルダー**へ置きます。exeはGUIとPNGアイコンを内包し、converterは同じフォルダーの `.py` を起動します。Windowsでは `py -3`、次にPATH上のPythonを探すため、利用時にもPython 3をインストールしてください。pathに空白があってもGUIは引数を分けて渡します。
 
+### GitHub Actionsでのビルド
+
+`main` の `.github/workflows/build-exe.yml`（**Build Windows executables**）は、配布用の4つのzip（通常版／ドパガキ版 × 日本語／English）を `windows-latest` で作ります。自動では動かず、GitHubのActionsタブから手動で実行します（`workflow_dispatch`）。
+
+| 入力 | 既定値 | 内容 |
+| --- | --- | --- |
+| `version` | `v2` | パッケージ名に入るversion（例: `TSV-TAS-2-GUI-v2-ja.zip`） |
+| `main_ref` | `main` | 通常版をビルドするbranchまたはtag |
+| `dopagaki_ref` | `dopagaki` | ドパガキ版をビルドするbranchまたはtag |
+| `run_tests` | OFF | 各版で1回テストも実行。失敗してもビルドは止めない |
+
+各jobは指定したrefをcheckoutし、Python 3.12とPyInstallerで上と同じオプションに `--name` を加えてexe（`TSV-TAS-2-GUI-ja.exe`、`TSV-TAS-2-GUI-dopagaki-en.exe` など）を作ります。GUIのmoduleが同梱されていないexeはエラーとして止めます。exe、`tsv-tas.py`、`nx-tas-to-tsv-tas.py`、`ftp_config.json`、その言語のREADMEをzipにまとめ、workflow artifactとしてuploadします。Releaseへの添付は手動です。`.github` は `main` にだけあり、ドパガキ版はこのworkflowが `dopagaki_ref` をcheckoutしてビルドします。
+
 ## repository構成とupstreamとの差分
 
 | path | 役割 |
@@ -229,8 +253,10 @@ python -m PyInstaller --noconsole --onefile --paths python_to_exe --add-data "as
 | `python_to_exe/editor/recovery.py` | user config内の文書別Recovery snapshot、復元、元ファイルの変更検出 |
 | `python_to_exe/editor/theme.py` | EditorとConverter画面で共通のlight theme。色、system font、余白、罫線、widget style、パレットのカテゴリ色を集約 |
 | `python_to_exe/display.py` | Windowsの高DPI対応とfont設定。125%・150%などの拡大表示でも文字がぼやけないようにし、Meiryo UIを使う。Windows以外では何もしない |
+| `python_to_exe/background.py` | 変換・解析のworker thread実行中はGCを止め、Tk以外のthreadでのTcl呼び出しによる異常終了を防ぐ |
 | `ftp_config.json` | FTP接続設定。実credentialをcommitしないこと |
-| `tests/test_conversion.py` | ローカル変換とGUI引数のテスト |
+| `tests/` | 変換、GUI引数、Editor、Recovery、パレットなどのテスト（Tkを使うテストを含む）。repositoryのルートで `python -m unittest discover -s tests -p "test_*.py"` |
+| `.github/workflows/` | `build-exe.yml`（Windows配布zipのビルド）と `tests.yml`（LinuxのXvfb上で全テストを実行）。どちらもActionsタブから手動で実行 |
 
 GUI固有機能はファイル選択、3形式の選択、Debug・FTP・空フレーム省略の切り替え、日英表示、ログ表示、PyInstaller起動です。scriptの構文、motion、gyro、STASの生成はupstream converterに委ねています。
 
@@ -239,4 +265,5 @@ GUI固有機能はファイル選択、3形式の選択、Debug・FTP・空フ�
 - GUIは `.txt` をnx-TAS入力として扱います。タブ区切りのTSV-TASを `.txt` で保存した場合は `.tsv` に改名するかCLIで直接変換してください。
 - upstream compilerは `.csv` 拡張子を認識しますが、現在の行解析はタブで分割するためCSV入力は信頼できません。GUIは `.csv` を選択対象にしていません。
 - `-e` はnx-TAS専用です。STAS commandは実験的で、対象modでの動作確認が必要です。
+- Editorのタブ名は24文字を超えると `…` で省略します。タブ列の幅に収まらないタブ（と `+`）は表示されませんが、`Ctrl+Tab`／`Ctrl+Shift+Tab` で切り替えられ、新しいタブも `Ctrl+N` で開けます。
 - GUI exeのWindows実行と実機FTP転送は利用環境で確認してください。READMEの例はローカルconverterで確認しています。
