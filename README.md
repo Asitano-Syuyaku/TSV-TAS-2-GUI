@@ -4,6 +4,15 @@
 
 Super Mario Odyssey のTAS用スクリプトを変換する、[xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2) のGUI forkです。converterは [MrKatzenGaming/TSV-TAS-2](https://github.com/MrKatzenGaming/TSV-TAS-2/tree/stas-dev) **`stas-dev` の commit `00bf6f6146eb4d9a455af5dd92157dc5c7bc532c`** を基準とし、GUIは同梱のPythonスクリプトをsubprocessで実行します。高度な書式は [TSV-TAS-2 Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing) を参照してください。
 
+## ブランチ
+
+| branch | 内容 |
+| --- | --- |
+| [`main`](https://github.com/Asitano-Syuyaku/TSV-TAS-2-GUI/tree/main) | 通常版。明るく落ち着いた画面で、演出や音はありません |
+| [`dopagaki`](https://github.com/Asitano-Syuyaku/TSV-TAS-2-GUI/tree/dopagaki) | ドパガキ版。変換機能と入力支援は同じで、ネオンの暗い画面、入力ごとの演出、F5／F8の確定演出、効果音を加えたもの |
+
+どちらのbranchでも、同じスクリプトからは同じ出力ファイルができます。このREADMEは `main` の説明です。
+
 ## 出力形式と必要環境
 
 | GUIの選択肢 | 出力 | 用途 |
@@ -36,6 +45,8 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 
 ## GUIの項目
 
+Converter画面は「ファイル」（入力・出力先・出力名）と「出力設定」（形式・オプション・FTP）の2枚のカード、その下の **エディターを開く**／**変換実行** ボタン、ログで構成されます。
+
 | 項目 | 使い方 |
 | --- | --- |
 | Input Script File／入力スクリプトファイル | `.tsv` は直接コンパイル。`.txt` はnx-TAS入力として先にTSVへ変換 |
@@ -45,6 +56,7 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 | Skip empty frames／空フレームを省略 | nx-TASを選んだ場合だけ有効。upstreamの `-e` |
 | Debug output／Debug出力 | upstreamの `-d`。出力ファイル名に `-debug.csv` を加えたCSVを保存 |
 | Send via FTP／FTPで送信 | upstreamの `-f`。ローカル出力後、`SMO/tas/scripts/` へ送信 |
+| Open Editor／エディターを開く | 変換実行の左。Inputのファイル（未選択なら空の文書）を内蔵エディターで開く |
 
 日本語版と英語版は表示言語以外、同じ変換処理を使います。`-l` は対話的に再生成するCLI専用オプションで、GUIにはありません。
 
@@ -86,7 +98,7 @@ Editorで既存の `.tsv` を保存するたび、同じフォルダーに**最�
 
 **保存・変換してFTP送信／Save, Convert & Send**（`F8`）は同じ保存・Input同期・ローカル変換に加えて、FTP送信を行います。親GUIのFTPチェックがOFFでも送信し、現在入力されているIP／Port／Username／Passwordを使います。新規文書はSave Asが必要で、キャンセルすれば送信しません。FTP設定の保存に失敗した場合は変換開始前に停止し、新しい出力を生成しません。転送時の失敗ではローカル出力が既に生成されている場合があります。親GUIの **Start Conversion／変換実行** は従来どおりFTPチェックに従います。F5／F8はチェック状態を書き換えず、実行種別をログに表示します。
 
-**Validate**（`F6`）は現在のセル編集を確定し、未保存のEditor内容を一時snapshotとして、現在選択中の出力形式で既存converterへ渡します。実ファイルは保存せず、無題の新規文書でもSave Asなしで検証できます。modified状態とUndo履歴も保持します。成功時は「エラーなし」、失敗時は下部のProblemsにconverterのメッセージをそのまま表示します。明示的な行番号があるメッセージをダブルクリックすると、その行へ移動します。行番号を特定できないエラーや、`.txt` から変換した中間TSVのエラーには推測でジャンプ先を付けません。検証中に内容を変更した場合は再検証を案内します。ValidateはConverterの出力設定を変更せず、FTP送信とDebug CSV生成も行いません。保存して通常の出力を作る場合は引き続き **Save & Convert** を使ってください。
+**Validate**（`F6`）は現在のセル編集を確定し、未保存のEditor内容を一時snapshotとして、現在選択中の出力形式で既存converterへ渡します。実ファイルは保存せず、無題の新規文書でもSave Asなしで検証できます。modified状態とUndo履歴も保持します。成功時は緑の「エラーなし」、失敗時は下部のProblemsに赤い見出しとconverterのメッセージをそのまま表示します。明示的な行番号があるメッセージをダブルクリックすると、その行へ移動します。行番号を特定できないエラーや、`.txt` から変換した中間TSVのエラーには推測でジャンプ先を付けません。検証中に内容を変更した場合は再検証を案内します。ValidateはConverterの出力設定を変更せず、FTP送信とDebug CSV生成も行いません。保存して通常の出力を作る場合は引き続き **Save & Convert** を使ってください。
 
 上部右側には、選択中のTSV行の**開始／長さ／終了／全体**frameを表示します。開始・終了は0-basedのframe index、長さ・全体はframe個数です。例えば18fなら `開始: 0f | 長さ: 18f | 終了: 17f | 全体: 18f` です。表では選択範囲の上端～下端の行を集計し、単一行ならその行を表示します。テキストではcursor行が対象です。完全な空行（TABや空白だけの行を含む）もconverterでは既定の1fを消費します。A列が空でも他のcellに入力がある行も既定の1fです。編集後は約0.5秒の待機を挟んで、未保存の内容を一時TSVとして既存converterでbackground解析し、結果を自動更新します。保存やFTP送信は行いません。値はconverterが確定した行のdurationと総frame数に基づき、更新中・解析失敗時は未確定として表示します。選択範囲を変えるだけなら再解析せず、結果をすぐ切り替えます。`.txt` は対象外です。
 
@@ -104,7 +116,7 @@ Frame表示のすぐ横にある常設の**移動**欄へ0-basedのframe番号�
 
 最終行でEnterまたは下矢印を押すと、未保存の仮想行へ移動できます。移動だけでは空行を追加しません。その行へ文字を入力して確定したとき、必要な行だけ追加します。TabやEnterで移動した後はセル選択状態のままで、次の文字をそのまま打ち込めます。表は画面の余白にも空セルを表示し、一度広げた表示範囲は別セルを選んでも残ります。表示上の空セルだけでは保存内容は増えません。
 
-表のセルを編集中に `l` や `/` などを入力すると、ボタン、スティック、加速度／ジャイロ、2P入力、STAS commandなどの候補が表示されます。上下キーで候補を選び、Tab／Enterまたはクリックで挿入すると、セル編集を続けられます。Escapeはまず候補だけを閉じます。括弧や引数を含む候補は値を選択したtemplateとして入り、そのまま値を打ち替えられます。表の右側には **入力パレット** が常時表示され、よく使うボタン、左右スティック、STAS commandを選べます。選んだ項目は現在セルへ挿入され、編集中ならカーソル位置へ挿入されます。左右スティック候補はそれぞれ角度だけの形を先頭に表示します。`.tsv` のテキスト表示ではコメント・command・変数・入力を色で、表では先頭列をdurationの目安として薄い背景で区別し、行番号横の色で通常入力・コメント・command・変数・loop/control風・空行を見分けられます。commandやコメント行の先頭列をdurationとして扱いません。色や行分類は**入力支援**であり、構文の正否判定ではありません。STAS commandの実際の処理はSTAS出力時にconverterが行います。
+表のセルを編集中に `l` や `/` などを入力すると、ボタン、スティック、加速度／ジャイロ、2P入力、STAS commandなどの候補が表示されます。上下キーで候補を選び、Tab／Enterまたはクリックで挿入すると、セル編集を続けられます。Escapeはまず候補だけを閉じます。括弧や引数を含む候補は値を選択したtemplateとして入り、そのまま値を打ち替えられます。表の右側には **入力パレット** が常時表示され、よく使うボタン、モーション、左右スティック、STAS command、STASの題名などを選べます。カテゴリの見出しは種類ごとに色分けしています。選んだ項目は現在セルへ挿入され、編集中ならカーソル位置へ挿入されます。左右スティック候補はそれぞれ角度だけの形を先頭に表示します。`.tsv` のテキスト表示ではコメント・command・変数・入力を色で、表では先頭列をdurationの目安として薄い背景で区別し、行番号横の色で通常入力・コメント・command・変数・loop/control風・空行を見分けられます。commandやコメント行の先頭列をdurationとして扱いません。色や行分類は**入力支援**であり、構文の正否判定ではありません。STAS commandの実際の処理はSTAS出力時にconverterが行います。
 
 入力パレットは幅400pxの2列表示です。上部の◀／▶で、Page 1 **Basic**（Buttons／Motion／Left Stick／Right Stick／Stick Preview）とPage 2 **Advanced**（STAS Commands／STAS Info／Cappy／Accel／Gyro／Notation）を切り替えます。初回はPage 1で、次回は最後のページを復元します。切替は文書や選択範囲、Undo履歴に影響しません。各ページはパレット内のマウスホイールまたはスクロールバーで縦スクロールできます。左右スティックでは `ls(angle)`／`rs(angle)` が各カテゴリ最上段の大きなボタン、半径＋角度／XY形式が次段の左右に並びます。STAS Infoの `$title`／`$author`／`$desc` はパレットからだけ挿入でき、`$` の入力補完には出ません（durationに変数を使う行でTabを押しても変数名が置き換わらないようにするため）。Motionには十字キーの代わりにJoy-Conを振る入力を並べます。上段が片手の `m-u`／`m-d`／`m-l`／`m-r`、下段が両手の `m-uu`／`m-dd`／`m-ll`／`m-rr` で、常に4列です。十字キーの `dp-u` などはパレットには出ませんが、入力補完と色分けには残っています。12種類のボタンと8種類のモーションにはアイコンと文字を併記します。画像が読めない場合は文字だけで表示します。表示と挿入するTSV文字列は別に管理しています。
 
@@ -126,6 +138,7 @@ FTPを有効にするとIP、port、user、passwordの入力欄が表示され�
 | 2P／Cappy | 例: `$is_two_player = true` を独立行に置き、`1<TAB>ca<TAB>cls(45)` で2P側のAと左スティックを入力。詳細と対象modの制限はDocumentationを参照 |
 | ループ | `6<TAB>a/b` はA、Bを交互に6フレーム入力。`/` で同じセル内の入力を区切る |
 | スティック補間 | `6<TAB>ls(0)->ls(50)` は6フレームで左スティックを0度から50度へ補間 |
+| モーション | `1<TAB>m-u` は片手のJoy-Conを上に振る（帽子投げなどのモーション入力）。`m-d`／`m-l`／`m-r` は向き違い、`m-uu` などは両手。`$motion_offset` などはDocumentationを参照 |
 | 式と変数 | `$angle = 90` を独立行に置き、`4<TAB>ls($angle + 45)` のように利用。加減乗除に対応 |
 | コメント | duration欄を `//` で始めた行は実行しない。例: `// 説明` |
 
@@ -212,7 +225,7 @@ python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/
 | `python_to_exe/app_settings.py` | user config内の非機密設定と共有Recent Files履歴 |
 | `python_to_exe/editor/` | テキスト／表の編集画面、ファイル状態、検索・置換、入力支援、Validation、Debug CSV解析とFrame Inspector |
 | `python_to_exe/editor/recovery.py` | user config内の文書別Recovery snapshot、復元、元ファイルの変更検出 |
-| `python_to_exe/editor/theme.py` | Editor専用のlight theme。色、system font、余白、罫線、widget styleを集約。Converter画面のstyleは変更しない |
+| `python_to_exe/editor/theme.py` | EditorとConverter画面で共通のlight theme。色、system font、余白、罫線、widget style、パレットのカテゴリ色を集約 |
 | `ftp_config.json` | FTP接続設定。実credentialをcommitしないこと |
 | `tests/test_conversion.py` | ローカル変換とGUI引数のテスト |
 
