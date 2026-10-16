@@ -282,25 +282,32 @@ class GuiStartupTests(unittest.TestCase):
                 app.output_entry.delete(0, fake_tk.END)
                 app.output_entry.insert(0, "chosen output")
                 options["on_saved"](another)
+                # Another file brings its own output name; the chosen folder stays.
                 self.assertEqual(app.output_entry.get(), "chosen output")
-                self.assertEqual(app.outname_entry.get(), "sample")
+                self.assertEqual(app.outname_entry.get(), "another")
                 app.output_entry.delete(0, fake_tk.END)
                 fake_tk.filedialog.askopenfilename = lambda **kwargs: str(next_input)
                 app.browse_input()
                 self.assertEqual(app.output_entry.get(), os.path.dirname(os.path.abspath(next_input)))
             en_app.output_entry.delete(0, fake_tk.END)
             en_app.output_entry.insert(0, "chosen output")
-            en_app.outname_entry.delete(0, fake_tk.END)
-            en_app.outname_entry.insert(0, "chosen name")
             with patch.dict(sys.modules, {"editor.window": fake_editor}):
                 en_app.open_editor()
             second_editor = opened[-1][1]
             second_editor["on_saved"](another)
+            self.assertEqual(en_app.outname_entry.get(), "another")
+            # Reported: F8 of b.tsv after a.tsv wrote a.stas. Each file gets its name.
             with patch.object(en_app, "start_conversion", return_value=True) as start:
                 self.assertTrue(opened[0][1]["on_convert"](sample))
                 start.assert_called_once_with(ftp_override=False)
             self.assertEqual(en_app.input_entry.get(), str(sample))
             self.assertEqual(en_app.output_entry.get(), "chosen output")
+            self.assertEqual(en_app.outname_entry.get(), "sample")
+            # A name typed for the same file survives its next F5/F8.
+            en_app.outname_entry.delete(0, fake_tk.END)
+            en_app.outname_entry.insert(0, "chosen name")
+            with patch.object(en_app, "start_conversion", return_value=True):
+                self.assertTrue(opened[0][1]["on_convert"](sample))
             self.assertEqual(en_app.outname_entry.get(), "chosen name")
             en_app._conversion_running = True
             with patch.object(en_app, "start_conversion") as start:

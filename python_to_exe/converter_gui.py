@@ -273,10 +273,21 @@ class TASConverterApp(tk.Tk):
             self._set_input_path(path)
             self.settings.add_recent(path)
 
+    @staticmethod
+    def _same_file(first, second):
+        if not first or not second:
+            return False
+        normalize = lambda path: os.path.normcase(os.path.abspath(str(path)))
+        return normalize(first) == normalize(second)
+
     def _set_input_path(self, path, preserve_output_name=False):
+        # An output name belongs to its input: a typed name survives saves and F5/F8
+        # of the same file, but switching files (b.tsv after a.tsv) brings b's name.
+        previous = self.input_entry.get().strip()
+        switched = bool(previous) and not self._same_file(previous, path)
         self.input_entry.delete(0, tk.END)
         self.input_entry.insert(0, str(path))
-        if not preserve_output_name or not self.outname_entry.get().strip():
+        if not preserve_output_name or switched or not self.outname_entry.get().strip():
             self.outname_entry.delete(0, tk.END)
             self.outname_entry.insert(0, os.path.splitext(os.path.basename(path))[0])
         if not self.output_entry.get().strip():
