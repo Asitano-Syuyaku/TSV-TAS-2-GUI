@@ -208,8 +208,8 @@ WindowsでPython 3とPyInstallerを用意し、repositoryのルートで実行�
 
 ```text
 python -m pip install pyinstaller
-python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_jp.py
-python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_en.py
+python -m PyInstaller --noconsole --onefile --paths python_to_exe --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_jp.py
+python -m PyInstaller --noconsole --onefile --paths python_to_exe --add-data "assets/icons/png:assets/icons/png" python_to_exe/main_en.py
 ```
 
 できた `dist/main_jp.exe` または `dist/main_en.exe` を、`tsv-tas.py`、`nx-tas-to-tsv-tas.py`、`ftp_config.json` と**同じフォルダー**へ置きます。exeはGUIとPNGアイコンを内包し、converterは同じフォルダーの `.py` を起動します。Windowsでは `py -3`、次にPATH上のPythonを探すため、利用時にもPython 3をインストールしてください。pathに空白があってもGUIは引数を分けて渡します。

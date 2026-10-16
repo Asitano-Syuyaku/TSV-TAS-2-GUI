@@ -10,6 +10,18 @@ on:
         description: "Version label in the package names (e.g. v2)"
         required: true
         default: v2
+      main_ref:
+        description: "Branch or tag for the normal edition"
+        required: true
+        default: main
+      dopagaki_ref:
+        description: "Branch or tag for the Dopagaki edition"
+        required: true
+        default: dopagaki
+      run_tests:
+        description: "Also run the test suite once per edition"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ matrix.edition }}
+          ref: ${{ matrix.edition == 'main' && inputs.main_ref || inputs.dopagaki_ref }}
 
       - uses: actions/setup-python@v5
         with:
@@ -34,10 +46,10 @@ jobs:
       - name: Install PyInstaller
         run: python -m pip install pyinstaller
 
-      # Once per edition. Reported, but a failing or stuck test does not hide the
-      # build; -v names the test that was running if the time limit is hit.
+      # Reported, but a failing or stuck test does not hide the build; -v names
+      # the test that was running if the time limit is hit.
       - name: Run tests
-        if: matrix.language == 'ja'
+        if: inputs.run_tests && matrix.language == 'ja'
         continue-on-error: true
         timeout-minutes: 10
         run: python -m unittest discover -v -s tests -p "test_*.py"
@@ -51,8 +63,13 @@ jobs:
           if [ "${{ matrix.edition }}" = main ]; then edition=""; else edition="-dopagaki"; fi
           name="TSV-TAS-2-GUI${edition}-${{ matrix.language }}"
           package="TSV-TAS-2-GUI${edition}-${{ inputs.version }}-${{ matrix.language }}"
-          python -m PyInstaller --noconsole --onefile --name "$name" \
+          # The launchers import converter_gui and editor/ from python_to_exe/.
+          python -m PyInstaller --noconsole --onefile --name "$name" --paths python_to_exe \
             --add-data "assets/icons/png:assets/icons/png" "python_to_exe/${launcher}.py"
+          # A launcher-only exe starts and fails with ModuleNotFoundError: refuse it.
+          for module in converter_gui app_settings editor.window editor.grid tkinter; do
+            grep -q "'$module'" "build/$name/PYZ-00.toc" || { echo "::error::$module is not bundled"; exit 1; }
+          done
           # The exe runs the converters beside it with the installed Python 3.
           mkdir -p "release/$package"
           cp "dist/$name.exe" tsv-tas.py nx-tas-to-tsv-tas.py ftp_config.json "$readme" "release/$package/"
