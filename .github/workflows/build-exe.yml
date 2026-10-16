@@ -1,0 +1,64 @@
+name: Build Windows executables
+
+# Builds the four release packages (normal and Dopagaki editions, Japanese and
+# English) on Windows. Run it from the Actions tab; the zips come out as
+# workflow artifacts, ready to attach to a release.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label in the package names (e.g. v2)"
+        required: true
+        default: v2
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        edition: [main, dopagaki]
+        language: [ja, en]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.edition }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: python -m pip install pyinstaller
+
+      # Once per edition. Reported, but a failing test does not hide the build.
+      - name: Run tests
+        if: matrix.language == 'ja'
+        continue-on-error: true
+        run: python -m unittest discover -s tests -p "test_*.py"
+
+      - name: Build package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.language }}" = ja ]; then launcher=main_jp; readme=README.md; else launcher=main_en; readme=README_EN.md; fi
+          if [ "${{ matrix.edition }}" = main ]; then edition=""; else edition="-dopagaki"; fi
+          name="TSV-TAS-2-GUI${edition}-${{ matrix.language }}"
+          package="TSV-TAS-2-GUI${edition}-${{ inputs.version }}-${{ matrix.language }}"
+          python -m PyInstaller --noconsole --onefile --name "$name" \
+            --add-data "assets/icons/png:assets/icons/png" "python_to_exe/${launcher}.py"
+          # The exe runs the converters beside it with the installed Python 3.
+          mkdir -p "release/$package"
+          cp "dist/$name.exe" tsv-tas.py nx-tas-to-tsv-tas.py ftp_config.json "$readme" "release/$package/"
+          (cd release && 7z a -tzip "$package.zip" "$package" > /dev/null)
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.package }}
+          path: release/${{ steps.package.outputs.package }}.zip
+          if-no-files-found: error
