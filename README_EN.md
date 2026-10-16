@@ -13,6 +13,17 @@ A GUI fork of [xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2) for conv
 
 Both branches produce the same output files from the same script. This README describes `dopagaki`. Features only in the Dopagaki edition are collected in [Dopagaki edition features](#dopagaki-edition-features).
 
+## Download
+
+Ready-made Windows packages are on [GitHub Releases](https://github.com/Asitano-Syuyaku/TSV-TAS-2-GUI/releases).
+
+| Edition | Release | Files |
+| --- | --- | --- |
+| Dopagaki (`dopagaki`) | [`dopagaki-v2`](https://github.com/Asitano-Syuyaku/TSV-TAS-2-GUI/releases/tag/dopagaki-v2) | `TSV-TAS-2-GUI-dopagaki-v2-ja.zip` (Japanese), `TSV-TAS-2-GUI-dopagaki-v2-en.zip` (English) |
+| Standard (`main`) | [`v2`](https://github.com/Asitano-Syuyaku/TSV-TAS-2-GUI/releases/tag/v2) | `TSV-TAS-2-GUI-v2-ja.zip` (Japanese), `TSV-TAS-2-GUI-v2-en.zip` (English) |
+
+Each zip holds the exe (such as `TSV-TAS-2-GUI-dopagaki-en.exe`), `tsv-tas.py`, `nx-tas-to-tsv-tas.py`, `ftp_config.json`, and the README in that language. Unzip it and run the exe. The exe runs the `.py` converters beside it with your installed **Python 3**, so Python 3 is required; keep the files together in one folder. The exe is unsigned, so Windows may show a protection screen on first launch. If it does, choose "More info", then "Run anyway".
+
 ## Output formats and requirements
 
 | GUI choice | Output | Intended use |
@@ -37,8 +48,8 @@ Python 3 and Tkinter are required. The GUI exe also requires a separate Python 3
    6	ls(0)->ls(50)
    ```
 
-2. From the repository root, run `python3 python_to_exe/main_en.py` (English) or `python3 python_to_exe/main_jp.py` (Japanese). On Windows, `python` or `py -3` also works.
-3. Select `sample.tsv` as Input. If Output Directory is empty, it fills with the input file's folder. Change it if needed, and set Output File Name to a name without an extension (for example, `sample`). Choose a format and click **Start Conversion／変換実行**.
+2. From the repository root, run `python3 python_to_exe/main_en.py` (English) or `python3 python_to_exe/main_jp.py` (Japanese). On Windows, `python` or `py -3` also works. With a [downloaded package](#download), run the unzipped exe instead.
+3. Select `sample.tsv` as Input. Output File Name fills with its name without the extension (`sample`), and an empty Output Directory fills with the input file's folder. Change either if needed. Choose a format and click **Start Conversion／変換実行**.
 4. The destination will contain `sample.stas`, `sample`, or `sample.txt`, depending on the format. You can enable Debug first and inspect `sample.stas-debug.csv` (or `sample-debug.csv` for LunaKit binary) to see the frames.
 
 This example holds the left stick upward for five frames, then inputs A and the right stick for one frame, and waits three frames. The reference table below explains the loop and stick interpolation.
@@ -48,8 +59,9 @@ This example holds the left stick upward for five frames, then inputs A and the 
 | Field | How to use it |
 | --- | --- |
 | Input Script File／入力スクリプトファイル | `.tsv` compiles directly. `.txt` is treated as nx-TAS and converted to TSV first |
+| Edit...／編集... | Right of Input's **Browse...**. Opens the Input file (or an empty document) in the built-in editor; with the editor open, as a new tab there |
 | Output Directory／出力ディレクトリ | If empty, fills with the input file's folder when Input is selected. An existing destination is not overwritten. An intermediate `.tsv` from `.txt` input is also saved here |
-| Output File Name／出力ファイル名 | Enter a base name without an extension or folder. The GUI adds the format's extension |
+| Output File Name／出力ファイル名 | Enter a base name without an extension or folder. The GUI adds the format's extension. Selecting Input fills it with that file's name without the extension |
 | Output format／出力形式 | Choose STAS (default), LunaKit binary, or nx-TAS |
 | Skip empty frames／空フレームを省略 | Available only for nx-TAS; upstream `-e` |
 | Debug output／Debug出力 | Upstream `-d`; writes a CSV by appending `-debug.csv` to the output filename |
@@ -85,9 +97,9 @@ Recovery remains after restoration. It is deleted after a successful Save / Save
 
 ### Built-in editor
 
-Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, Save & Convert, Save, Convert & Send, Validate, Analyze Frames, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, `F5`, `F6`, `F7`, and `F8`. Closing a tab or the window with unsaved changes asks whether to save.
+Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field (Output File Name follows the same rule as **Save & Convert** below). The File menu has New, Open, Save, Save As, Save & Convert, Save, Convert & Send, Validate, Analyze Frames, Close Tab, and Close (closes the Editor window). Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, `F5`, `F6`, `F7`, `F8`, and `Ctrl+W`. Closing a tab or the window with unsaved changes asks whether to save.
 
-Like a browser, the Editor opens several files as **tabs**. New (`Ctrl+N`), Open (`Ctrl+O`), Recent Files, and the Converter's **Open Editor** add a tab to the same window; an already open file shows its tab instead, and an untouched Untitled tab is used for the file. Click a tab to switch, use `Ctrl+Tab`/`Ctrl+Shift+Tab` for the next/previous tab, and close one with `×`, a middle click, or `Ctrl+W`. `+` or a double click on the empty tab bar opens a new tab. Tabs with unsaved changes show `●`. Each tab keeps its own document, Undo history, Raw/Table view, frame information, and validation result; Save, Convert, and Validate (`Ctrl+S`, F5, F8, F6, F7) act on the shown tab. A background tab's validation result appears when you return to it. Closing the last tab closes the Editor window.
+Like a browser, the Editor opens several files as **tabs**. New (`Ctrl+N`), Open (`Ctrl+O`), Recent Files, and the Converter's **Edit...** add a tab to the same window; an already open file shows its tab instead, and an untouched Untitled tab is used for the file. Click a tab to switch, use `Ctrl+Tab`/`Ctrl+Shift+Tab` for the next/previous tab, and close one with `×`, a middle click, or `Ctrl+W`. `+` or a double click on the empty tab bar opens a new tab. Tabs with unsaved changes show `●`. Each tab keeps its own document, Undo history, Raw/Table view, frame information, and validation result; Save, Convert, and Validate (`Ctrl+S`, F5, F8, F6, F7) act on the shown tab. A background tab's validation result appears when you return to it. Closing the last tab closes the Editor window.
 
 Before saving to the same path, the Editor compares disk content with the Open / last-save baseline using a hash. It asks before overwriting an externally changed file or recreating a deleted one. Choosing No keeps the buffer, Undo, and Recovery, and stops F5/F8 conversion and FTP sending. If the contents cannot be checked, saving stops with an error. The same protection uses the old baseline after Recovery restoration. Save As to a different path is unaffected by changes to the original; overwrite confirmation for an existing destination stays with the file dialog. Save As to the same path uses the normal save guard.
 
@@ -115,7 +127,7 @@ Drag the right edge of a column header to resize that column. Click away from an
 
 At the last row, Enter or Down moves to an unsaved virtual row. Moving alone adds no blank line. Entering and committing text there adds only the needed rows. If a Table edit leaves rows with nothing written at the end (for example, after clearing the last cells you typed), those rows are removed from the document, because the converter counts even a blank row as one frame. Blank rows between written rows, and blank lines typed in Raw Text, stay. After Tab or Enter navigation, the cell remains selected so you can type the next value directly. The table also draws empty cells across unused viewport space and keeps an expanded display range when you select another cell. Displayed empty cells alone do not add saved content.
 
-While editing a Table cell, typing `l` or `/` can show suggestions for buttons, sticks, acceleration/gyro, 2P input, and STAS commands. Use Up/Down to select, then Tab/Enter or a click to insert a suggestion and continue editing. Escape first closes only the popup. The **Input Palette** is always visible to the right of the table and offers common buttons, motion shakes, left/right sticks, STAS commands, and STAS header fields. Category headings use a neon color per kind. Selecting an item starts editing the selected cell or inserts at the caret while editing. Left and right stick suggestions each show the simple angle form first. Candidates with parentheses or arguments insert a template with its value selected, ready to replace. Raw Text for `.tsv` colors comments, commands, variables, and inputs. In Table, a subtle background hints that the first column is often duration, while a color beside row numbers distinguishes ordinary input, comment, command, variable, loop/control-like, and blank rows. The first cell of a command or comment row is not treated as duration. Colors and row categories are **editing aids**, not syntax validation. The converter processes STAS commands when producing STAS output.
+While editing a Table cell, typing `l` or `/` can show suggestions for buttons, sticks, acceleration/gyro, 2P input, and STAS commands. Use Up/Down to select, then Tab/Enter or a click to insert a suggestion and continue editing. Escape first closes only the popup. The **Input Palette** is always visible to the right of the table and offers common buttons, motion shakes, left/right sticks, STAS commands, and STAS header settings (`$stage` and so on). Category headings use a neon color per kind. Selecting an item starts editing the selected cell or inserts at the caret while editing. Left and right stick suggestions each show the simple angle form first. Candidates with parentheses or arguments insert a template with its value selected, ready to replace. Raw Text for `.tsv` colors comments, commands, variables, and inputs. In Table, a subtle background hints that the first column is often duration, while a color beside row numbers distinguishes ordinary input, comment, command, variable, loop/control-like, and blank rows. The first cell of a command or comment row is not treated as duration. Colors and row categories are **editing aids**, not syntax validation. The converter processes STAS commands when producing STAS output.
 
 The Input Palette uses two columns in a 400px sidebar. Use the top ◀/▶ buttons to switch between Page 1 **Basic** (Buttons / Motion / Left Stick / Right Stick / Stick Preview) and Page 2 **Advanced** (STAS Commands / STAS Settings / Cappy / Accel / Gyro / Notation). The first Editor starts on Page 1; later Editors restore the last page. Switching pages does not affect the document, selection, or Undo history. Scroll each page vertically with the mouse wheel inside the palette or its scrollbar. When the window is short, the Basic page folds its buttons into four columns (`A B X Y` / `L R ZL ZR` / `+ − LS RS`, three keys per stick row) and scrolls only what still does not fit. In each stick category, `ls(angle)` or `rs(angle)` occupies a wide first-row button; radius-plus-angle and XY forms sit left and right on the next row. The Advanced page starts with STAS Commands `/tp x y z`, `/absStick on`/`/absStick off`, `/speed 10` and `/section TASer`, then STAS Settings `$stage`/`$entrance`/`$scenario`/`$pos`/`$is2p`/`$author`. A click puts each on a row of its own, in column A. If the selected row has content, the new row goes below it and reaches the document only when you confirm the cell (Escape leaves no row). The value part (`0 0 0`, `StageName` and so on) is selected, ready to type over. `/ctp`, `/pause`, `/loadFile`, `/reloadFile` and `/demo` are not on the palette but stay in `/` completion and work when typed, as do `$title`/`$desc`. STAS Settings are not offered by `$` completion, so pressing Tab after a variable used as a duration keeps that variable. Motion takes the D-pad's place with Joy-Con shakes, always four a row: single `m-u`/`m-d`/`m-l`/`m-r` on top, double `m-uu`/`m-dd`/`m-ll`/`m-rr` below. The D-pad (`dp-u` and so on) leaves the palette but stays in completion and highlighting. The 12 buttons and 8 shakes show icons alongside text. If an image cannot be read, the button shows text alone. Display labels and inserted TSV text are managed separately.
 
@@ -134,7 +146,7 @@ Converting, saving, and editing aids work exactly as on `main`. Effects celebrat
 ### Interface
 
 - The Editor, Converter, Frame Inspector, and Find dialog use a dark neon theme.
-- The **COMMAND DECK** at the top of the Editor holds the Raw/Table toggle, `+ Row`/`+ Column`, `Validate F6`, `Analyze F7`, `Save & Convert F5`, and `Convert & SEND F8`. They are extra entry points to the same menu and shortcut commands. In a narrow window, the shortcut labels are dropped.
+- The **COMMAND DECK** at the top of the Editor holds the Raw/Table toggle, `+ Row`/`+ Column`, `Validate F6`, `Analyze F7`, `Reset Widths`, `Save & Convert F5`, and `Convert & SEND F8`. Apart from Reset Widths, they are extra entry points to the same menu and shortcut commands. Reset Widths returns every dragged Table column to its default width and exists only in the Dopagaki edition. In a narrow window, the shortcut labels are dropped.
 - Below it, the **FEVER HUD** shows the FRAME METER on the left (the selected rows' Start/Duration/End/Total frames and the Go field) and COMBO, HEAT, and DOPA on the right. FRAME METER numbers turn yellow only when the converter has confirmed them.
 - The status bar ends with `[FX 100%]` and `[♪ ON]` chips; click them to change the settings.
 - The Converter window also shows each conversion's result as a badge beside Start Conversion (`CONVERTED!!`, `SENT!!`, `BUILT · SEND: UNVERIFIED (see log)`, or `SO CLOSE!`).
@@ -145,6 +157,7 @@ Converting, saving, and editing aids work exactly as on `main`. Effects celebrat
 - Validate (F6) shows `NO ERRORS!!` on success and `SO CLOSE!` on failure.
 - F5 shows `CONVERTED!!` once the conversion has succeeded.
 - F8 keeps the `HOT!!` cover only while conversion and FTP transfer are actually running. A confirmed send shows `SENT!!` and a result card (output file, format, destination). When the send cannot be confirmed, it shows `BUILT` / `SEND: UNVERIFIED` so it never looks like a success.
+- Reset Widths answers with an `ALIGNED!!` stamp, and in Table view the column headers light up from left to right. It is housekeeping, so HEAT does not rise.
 - Effects never delay work: conversion starts the moment you press the key.
 
 ### F5/F8 results
@@ -262,6 +275,19 @@ python -m PyInstaller --noconsole --onefile --paths python_to_exe --add-data "as
 
 Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-tas.py`, `nx-tas-to-tsv-tas.py`, and `ftp_config.json`. The exe bundles the GUI and PNG icons, and launches the companion `.py` files. Keep Python 3 installed for use: on Windows the GUI looks for `py -3`, then a Python executable on `PATH`. The GUI passes paths containing spaces as separate arguments.
 
+### Building with GitHub Actions
+
+On `main`, `.github/workflows/build-exe.yml` (**Build Windows executables**) builds the four release zips (standard/Dopagaki × Japanese/English) on `windows-latest`. It never runs automatically: start it by hand from the repository's Actions tab (`workflow_dispatch`).
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `version` | `v2` | Version label in the package names (for example `TSV-TAS-2-GUI-dopagaki-v2-ja.zip`) |
+| `main_ref` | `main` | Branch or tag to build the standard edition from |
+| `dopagaki_ref` | `dopagaki` | Branch or tag to build the Dopagaki edition from |
+| `run_tests` | Off | Also run the test suite once per edition; a failure does not stop the build |
+
+Each job checks out the chosen ref and builds the exe with Python 3.12 and PyInstaller, using the options above plus `--name` (`TSV-TAS-2-GUI-dopagaki-ja.exe`, `TSV-TAS-2-GUI-en.exe`, and so on). An exe missing the GUI modules fails the job. The exe, `tsv-tas.py`, `nx-tas-to-tsv-tas.py`, `ftp_config.json`, and the README in that language are zipped and uploaded as workflow artifacts; attaching them to a release is a manual step. The `.github` folder exists only on `main`; the workflow checks out `dopagaki_ref` itself to build the Dopagaki edition.
+
 ## Repository layout and differences from upstream
 
 | Path | Role |
@@ -279,7 +305,7 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 | `python_to_exe/background.py` | Pauses GC while conversion/analysis workers run, preventing crashes from Tcl calls on non-Tk threads |
 | `dopagaki3.md` | Dopagaki edition design specification |
 | `ftp_config.json` | FTP connection settings; do not commit real credentials |
-| `tests/test_conversion.py` | Local conversion and GUI argument tests |
+| `tests/` | Tests for conversion, GUI arguments, the Editor, Recovery, the palette, the Dopagaki effects and sound, and more (Tk tests included). Run `python -m unittest discover -s tests -p "test_*.py"` from the repository root |
 
 The GUI adds file selection, three output formats, Debug/FTP/skip-empty controls, Japanese and English labels, logs, and PyInstaller entry points. Script syntax, motion, gyro, and STAS generation remain in the upstream converter.
 
@@ -288,4 +314,5 @@ The GUI adds file selection, three output formats, Debug/FTP/skip-empty controls
 - The GUI treats `.txt` as nx-TAS input. Rename a tab-separated TSV-TAS script saved as `.txt` to `.tsv`, or compile it directly with the CLI.
 - The upstream compiler recognizes the `.csv` suffix, but its current row parser still splits on tabs, so CSV input is unreliable. The GUI does not offer `.csv` input.
 - `-e` is for nx-TAS only. STAS commands are experimental and need testing with the target mod.
+- Editor tab names longer than 24 characters are shortened with `…`. Tabs that do not fit the width of the tab bar (and `+`) are not shown, but `Ctrl+Tab`/`Ctrl+Shift+Tab` still reach them and `Ctrl+N` still opens a new tab.
 - Verify Windows GUI exe behavior and real Switch FTP transfer in your own environment. The README examples were checked with the local converter.
