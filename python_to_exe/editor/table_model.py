@@ -144,6 +144,38 @@ class TableModel:
     def to_text(self):
         return "\n".join("\t".join(cells) for cells in self.rows)
 
+    def _blank_tail(self, row=None, line=None):
+        """(start, settled): rows from `start` on hold no written cell.
+
+        `row`/`line` preview one changed line. Settled means the tail is at most
+        the final newline's empty row, which the converter does not count.
+        """
+        def cells(index):
+            return line.split("\t") if index == row else self.rows[index]
+
+        start = len(self.rows)
+        while start > 0 and not any(cell.strip() for cell in cells(start - 1)):
+            start -= 1
+        last = len(self.rows) - 1
+        settled = start == len(self.rows) or (start == last and cells(last) == [""])
+        return start, settled
+
+    def needs_tail_trim(self, row=None, line=None):
+        return not self._blank_tail(row, line)[1]
+
+    def trim_blank_tail(self):
+        """Drop blank rows after the last written row, keeping one final newline.
+
+        They look like the Table's empty virtual rows, yet the converter counts
+        every blank or TAB-only line as a 1-frame row.
+        """
+        start, settled = self._blank_tail()
+        if settled:
+            return False
+        self.rows = self.rows[:start] + [[""]]
+        self._recount()
+        return True
+
 
 def visible_span(origin, viewport, prefix, size, count):
     """Bound a canvas draw pass to visible row/column indexes plus one margin."""

@@ -845,6 +845,11 @@ class TableGrid(tk.Frame):
             return False
         old_line = self.model.line(row)
         if new_line != old_line:
+            if self.model.needs_tail_trim(row, new_line):
+                # Emptying the last written row: drop the blank tail in the same step.
+                updated = self.model.copy()
+                updated.update_line(row, new_line)
+                return self._apply_model(updated)
             if not self.on_change(row, old_line, new_line):
                 return False
             self.model.update_line(row, new_line)
@@ -877,6 +882,8 @@ class TableGrid(tk.Frame):
         return preview.to_text()
 
     def _apply_model(self, updated, anchor=None, active=None):
+        # Blank rows left at the end would convert as frames (TableModel.trim_blank_tail).
+        updated.trim_blank_tail()
         previous = self.model.to_text()
         current = updated.to_text()
         if current != previous and not self.on_transform(previous, current):

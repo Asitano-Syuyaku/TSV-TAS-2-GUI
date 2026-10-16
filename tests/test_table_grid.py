@@ -917,19 +917,44 @@ class TableGridTests(unittest.TestCase):
         self.assertEqual(grid.model.to_text(), "\t\t\n\t\t\nA\tB\t\nC\tD\t")
         self.assertEqual(grid.selection.bounds, (2, 3, 0, 2))
         self.assertTrue(grid.clear_selection())
-        self.assertEqual(grid.model.to_text(), "\t\t\n\t\t\n\t\t\n\t\t")
+        # Nothing written remains, so no blank row is left to convert as a frame.
+        self.assertEqual(grid.model.to_text(), "")
+        grid.selected = (0, 0)
+        self.assertTrue(grid.paste_text("A\tB\t\nC\tD\t\n/pause"))
         grid.selected = (1, 0)
-        self.assertTrue(grid.insert_row())
-        self.assertEqual(grid.model.row_count, 5)
+        self.assertTrue(grid.insert_row())  # A blank row between written rows stays.
+        self.assertEqual(grid.model.row_count, 4)
         self.assertTrue(grid.duplicate_row())
-        self.assertEqual(grid.model.row_count, 6)
-        self.assertTrue(grid.delete_row())
         self.assertEqual(grid.model.row_count, 5)
+        self.assertTrue(grid.delete_row())
+        self.assertEqual(grid.model.row_count, 4)
         self.assertTrue(grid.insert_column())
         self.assertEqual(grid.model.column_count, 4)
         self.assertTrue(grid.delete_column())
         self.assertEqual(grid.model.column_count, 3)
-        self.assertEqual(len(grid.changes), 8)
+        self.assertEqual(len(grid.changes), 9)
+
+    def test_clearing_the_last_written_rows_leaves_no_blank_frames(self):
+        # Reported: typing in A4 and clearing it kept rows 3-4 as TAB-only lines.
+        grid, pending, changes = self._navigation_grid("10\n1\t\t\tm-dd")
+        transformations = []
+        grid.on_transform = lambda before, after: transformations.append(after) or True
+        grid._ensure_visible = lambda: None
+        grid._move(3, 0)
+        with patch.object(self.module.tk, "Entry", EntryStub, create=True):
+            grid.begin_edit(initial="x")
+            self.assertTrue(grid.commit_edit())
+            self.assertEqual(grid.model.to_text(), "10\n1\t\t\tm-dd\n\nx")
+            grid.begin_edit()
+            grid._editor.value = ""
+            self.assertTrue(grid.commit_edit())
+        self.assertEqual(grid.model.to_text(), "10\n1\t\t\tm-dd\n")
+        self.assertEqual(changes, [])  # The tail trim is the same single bulk step.
+        self.assertEqual(transformations[-1], "10\n1\t\t\tm-dd\n")
+        work, _ = self._working_grid("10\n1\t\t\tm-dd\n\t\t\t\nx")
+        work.selected = (3, 0)
+        self.assertTrue(work.clear_selection())  # Delete key on the last written cell.
+        self.assertEqual(work.model.to_text(), "10\n1\t\t\tm-dd\n")
 
     def test_shift_click_drag_and_shift_arrow_extend_rectangle(self):
         grid, _ = self._working_grid("a\tb\tc\nd\te\tf")
