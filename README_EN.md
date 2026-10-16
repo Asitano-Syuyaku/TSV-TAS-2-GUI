@@ -76,7 +76,7 @@ Recovery remains after restoration. It is deleted after a successful Save / Save
 
 ### Built-in editor
 
-Use **Edit...／編集...** beside Input to open a `.tsv` or `.txt` file. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, Save & Convert, Save, Convert & Send, Validate, Analyze Frames, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, `F5`, `F6`, `F7`, and `F8`. New, Open, and Close ask what to do with unsaved changes.
+Use **Open Editor／エディターを開く**, left of the conversion button, to open the Input `.tsv` or `.txt` file in the editor. With no input selected, it opens an empty editor. After saving, the saved path appears in the converter's Input field. The File menu has New, Open, Save, Save As, Save & Convert, Save, Convert & Send, Validate, Analyze Frames, and Close. Shortcuts are `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S`, `F5`, `F6`, `F7`, and `F8`. New, Open, and Close ask what to do with unsaved changes.
 
 Before saving to the same path, the Editor compares disk content with the Open / last-save baseline using a hash. It asks before overwriting an externally changed file or recreating a deleted one. Choosing No keeps the buffer, Undo, and Recovery, and stops F5/F8 conversion and FTP sending. If the contents cannot be checked, saving stops with an error. The same protection uses the old baseline after Recovery restoration. Save As to a different path is unaffected by changes to the original; overwrite confirmation for an existing destination stays with the file dialog. Save As to the same path uses the normal save guard.
 

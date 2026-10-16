@@ -76,7 +76,7 @@ Recoveryは復元直後も残し、Save／Save As／F5／F8の保存成功、ま
 
 ### 内蔵エディター
 
-Input欄の **Edit...／編集...** から `.tsv`・`.txt` を開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、保存・変換してFTP送信、Validate、フレーム解析、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5`、`F6`、`F7`、`F8` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
+変換実行ボタンの左にある **Open Editor／エディターを開く** で、Input欄の `.tsv`・`.txt` をeditorで開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、保存・変換してFTP送信、Validate、フレーム解析、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5`、`F6`、`F7`、`F8` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
 
 同じpathへの保存前には、disk内容をOpen／最後の保存時の内容とhashで比較します。Editor外で変更されていた場合は上書き、削除されていた場合は再作成を確認します。「いいえ」ならbuffer・Undo・Recoveryを保持し、F5／F8の変換やFTP送信も開始しません。内容を確認できない場合は保存せず、エラーを表示します。Recovery復元後も旧baselineを使って同じ保護を行います。別pathへのSave Asは元ファイルの外部変更に妨げられず、既存の保存先の上書き確認はファイルダイアログに従います。同じpathのSave Asには通常の保存と同じ保護を適用します。
 

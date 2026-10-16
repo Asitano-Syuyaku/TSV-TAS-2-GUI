@@ -30,7 +30,7 @@ TEXT = {
     "en": {
         "title": "TAS Scripts Converter Tool", "input": "Input Script File (.txt or .tsv):",
         "output": "Output Directory:", "name": "Output File Name (without extension):",
-        "browse": "Browse...", "edit": "Edit...", "format": "Output format:",
+        "browse": "Browse...", "open_editor": "Open Editor", "format": "Output format:",
         "open_output": "Open Output Folder",
         "files": "Files", "settings": "Output settings", "log": "Log",
         "recovery_title": "Unsaved recovery",
@@ -57,7 +57,7 @@ TEXT = {
     "ja": {
         "title": "TAS scripts 変換ツール", "input": "入力スクリプトファイル (.txt または .tsv):",
         "output": "出力ディレクトリ:", "name": "出力ファイル名 (拡張子なし):",
-        "browse": "参照...", "edit": "編集...", "format": "出力形式:",
+        "browse": "参照...", "open_editor": "エディターを開く", "format": "出力形式:",
         "open_output": "出力フォルダーを開く",
         "files": "ファイル", "settings": "出力設定", "log": "ログ",
         "recovery_title": "未保存内容の復旧",
@@ -131,9 +131,6 @@ class TASConverterApp(tk.Tk):
         input_buttons.grid(row=1, column=2, sticky="w", **row)
         tk.Button(input_buttons, text=self.words["browse"], command=self.browse_input,
                   **button_options()).pack(side="left")
-        # The Editor is the other way in: softly emphasized, never the primary action.
-        tk.Button(input_buttons, text=self.words["edit"], command=self.open_editor,
-                  **button_options("palette")).pack(side="left", padx=(SPACING["gap"], 0))
 
         tk.Label(files, text=self.words["output"], **text).grid(row=2, column=0, sticky="w", **row)
         self.output_entry = tk.Entry(files, width=50, **entry)
@@ -189,12 +186,19 @@ class TASConverterApp(tk.Tk):
                                   (self.user_entry, "user"), (self.pass_entry, "passwd")):
             entry_widget.insert(0, str(config.get(key, "")))
 
-        # The one primary action: full width, bold.
-        self.convert_btn = tk.Button(self, text=self.words["start"], command=self.start_conversion,
-                                     **{**button_options("primary", fonts={"standard": FONTS["heading"]}),
-                                        "padx": 24, "pady": 6})
-        self.convert_btn.grid(row=2, column=0, sticky="ew", padx=SPACING["window"],
-                              pady=SPACING["gap"])
+        # What this window is for, side by side: write in the Editor, then convert.
+        # Same size; only conversion is the filled primary, the Editor is outlined.
+        actions = tk.Frame(self, background=COLORS["app_background"])
+        actions.grid(row=2, column=0, sticky="ew", padx=SPACING["window"], pady=SPACING["gap"])
+        bold = {"standard": FONTS["heading"]}
+        self.editor_btn = tk.Button(actions, text=self.words["open_editor"], command=self.open_editor,
+                                    **{**button_options("palette", fonts=bold), "padx": 18, "pady": 6,
+                                       "highlightthickness": 1,
+                                       "highlightbackground": COLORS["accent"]})
+        self.editor_btn.pack(side="left", padx=(0, SPACING["section"]))
+        self.convert_btn = tk.Button(actions, text=self.words["start"], command=self.start_conversion,
+                                     **{**button_options("primary", fonts=bold), "padx": 24, "pady": 6})
+        self.convert_btn.pack(side="left", fill="x", expand=True)
         log = self._card(3, self.words["log"], last=True)
         log.grid_columnconfigure(0, weight=1)
         self.log_text = tk.Text(log, height=10, width=80, state="disabled", font="TkFixedFont",
