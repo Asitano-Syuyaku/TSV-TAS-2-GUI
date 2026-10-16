@@ -94,7 +94,6 @@ class EditorActionTkTests(unittest.TestCase):
                 second.write_bytes(b"1\tx\n")
                 app = self.make_app(work, language)
                 editor = self.open_editor(app, first)
-                other = self.open_editor(app, second)
                 app._set_input_path(first)  # The typed name is for the first file.
                 app.output_entry.delete(0, "end")
                 app.output_entry.insert(0, str(work))
@@ -149,7 +148,7 @@ class EditorActionTkTests(unittest.TestCase):
                     self.assertEqual(editor.document.text, "1\tb\n")
                     self.assertFalse(editor.document.modified)
 
-                    other.save()  # Simulate another Editor taking over Input.
+                    app._editor_saved(second)  # Another tab's save takes over Input.
                     self.assertEqual(app.input_entry.get(), str(second))
                     self.assertEqual(app.outname_entry.get(), second.stem)
                     app.ftp_var.set(False)

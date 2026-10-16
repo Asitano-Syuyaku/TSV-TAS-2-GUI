@@ -242,7 +242,11 @@ class TASConverterApp(tk.Tk):
                     messagebox.showwarning(self.words["recovery_title"],
                                            self.words["recovery_" + status] + "\n\n" +
                                            self.words["recovery_warning"], parent=self)
-                self._create_editor(recovery=snapshot)
+                editor = self._editor_window()
+                if editor is not None:  # Each restored document is one more tab.
+                    editor.restore_tab(snapshot)
+                else:
+                    self._create_editor(recovery=snapshot)
             else:
                 self.recovery_store.delete(snapshot.document_id)
 
@@ -325,8 +329,25 @@ class TASConverterApp(tk.Tk):
         self._editor_saved(path)
         return self.start_conversion(ftp_override=send_ftp)
 
+    def _editor_window(self):
+        """The open Editor; files open there as tabs instead of in new windows."""
+        try:
+            children = self.winfo_children()
+        except Exception:  # No usable Tk window (startup, tests): no Editor either.
+            return None
+        for child in children:
+            if (getattr(child, "open_tab", None) is not None and not getattr(child, "_closed", False)
+                    and child.winfo_exists()):
+                return child
+        return None
+
     def open_editor(self):
-        return self._create_editor(initial_path=self.input_entry.get().strip() or None)
+        path = self.input_entry.get().strip() or None
+        editor = self._editor_window()
+        if editor is not None:
+            editor.open_tab(path)
+            return editor
+        return self._create_editor(initial_path=path)
 
     def _create_editor(self, initial_path=None, recovery=None):
         # Import on demand so conversion-only startup does not load editor widgets.

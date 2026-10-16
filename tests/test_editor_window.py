@@ -400,17 +400,14 @@ class EditorWindowHeadlessTests(unittest.TestCase):
                 "Canceling the file dialog must not ask to discard changes")
             self.assertFalse(window.open_file())
             fake_tk.messagebox.askyesnocancel = lambda *args, **kwargs: None
-            self.assertFalse(window.new_document())
-            self.assertEqual(window.text.value, "1\ta")
             self.assertFalse(window.close_editor())
             self.assertFalse(window.destroyed)
+            self.assertEqual(window.text.value, "1\ta")
 
-            fake_tk.messagebox.askyesnocancel = lambda *args, **kwargs: False
-            self.assertTrue(window.new_document())
-            self.assertFalse(window.document.modified)
-            self.assertEqual(window.text.value, "")
-            self.assertEqual(window.text.reset_count, 1)
-
+            # A modified document is never replaced (New/Open use another tab);
+            # a blank one, like a fresh Editor's tab, takes the opened file.
+            window.document = module.EditorDocument()
+            window.text.value = ""
             with tempfile.TemporaryDirectory() as folder:
                 source = Path(folder) / "example.txt"
                 source.write_text("0\tKEY_A", encoding="utf-8")

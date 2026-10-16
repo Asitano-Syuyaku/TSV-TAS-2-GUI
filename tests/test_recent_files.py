@@ -74,24 +74,27 @@ class RecentFilesTkTests(unittest.TestCase):
                               [file_menu.entrycget(i, "label") for i in range(file_menu.index("end") + 1)])
                 app.destroy()
 
-    def test_recent_open_uses_existing_modified_confirmation_and_cancel_is_safe(self):
+    def test_recent_open_uses_a_new_tab_and_keeps_the_modified_document(self):
         app = self.make_app()
         source, target = self.file("source.tsv"), self.file("target.tsv", "2\tb\n")
         editor = EditorWindow(app, initial_path=source)
         editor.text.insert("end-1c", "// unsaved")
         app.update()
-        before = self.state(editor)
-        with patch("python_to_exe.editor.window.messagebox.askyesnocancel", return_value=None) as ask:
-            self.assertFalse(editor._open_recent(str(target)))
-            ask.assert_called_once()
-        self.assertEqual(self.state(editor), before)
-        self.assertEqual(source.read_text(encoding="utf-8"), "1\ta\n")
-        with patch("python_to_exe.editor.window.messagebox.askyesnocancel", return_value=False) as ask:
+        source_tab = editor._tab
+        with patch("python_to_exe.editor.window.messagebox.askyesnocancel") as ask:
             self.assertTrue(editor._open_recent(str(target)))
-            ask.assert_called_once()
+            ask.assert_not_called()  # Nothing is discarded, so nothing to ask.
         self.assertEqual(editor.document.path, target)
         self.assertFalse(editor.document.modified)
+        self.assertEqual(len(editor._tabs), 2)
         self.assertEqual(app.settings.recent_files[0], str(target))
+        self.assertEqual(source.read_text(encoding="utf-8"), "1\ta\n")
+        # An already open file: its tab comes back with the unsaved text intact.
+        self.assertTrue(editor._open_recent(str(source)))
+        self.assertIs(editor._tab, source_tab)
+        self.assertEqual(len(editor._tabs), 2)
+        self.assertTrue(editor.document.modified)
+        self.assertIn("// unsaved", editor.text.get("1.0", "end-1c"))
 
     def test_missing_recent_removes_only_entry_without_touching_current_document(self):
         app = self.make_app()

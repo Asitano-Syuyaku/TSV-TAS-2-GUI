@@ -544,6 +544,8 @@ class TableWindowTests(unittest.TestCase):
             tsv.write_text("A\tB", encoding="utf-8")
             window = self._window(tsv)
             self.assertTrue(window.show_table())
+            # A fresh Editor's blank tab, restored to Table, takes the opened .txt.
+            window.document.new()
             self.assertTrue(window.open_file(source))
             self.assertEqual(window._view, "raw")
             self.assertEqual(window.document.path, source)

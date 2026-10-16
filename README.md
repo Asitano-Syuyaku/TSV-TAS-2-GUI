@@ -56,7 +56,7 @@ Converter画面は「ファイル」（入力・出力先・出力名）と「�
 | Skip empty frames／空フレームを省略 | nx-TASを選んだ場合だけ有効。upstreamの `-e` |
 | Debug output／Debug出力 | upstreamの `-d`。出力ファイル名に `-debug.csv` を加えたCSVを保存 |
 | Send via FTP／FTPで送信 | upstreamの `-f`。ローカル出力後、`SMO/tas/scripts/` へ送信 |
-| Open Editor／エディターを開く | 変換実行の左。Inputのファイル（未選択なら空の文書）を内蔵エディターで開く |
+| Open Editor／エディターを開く | 変換実行の左。Inputのファイル（未選択なら空の文書）を内蔵エディターで開く。エディターが開いていれば、そのウィンドウにタブを追加 |
 
 日本語版と英語版は表示言語以外、同じ変換処理を使います。`-l` は対話的に再生成するCLI専用オプションで、GUIにはありません。
 
@@ -64,7 +64,7 @@ Converter画面は「ファイル」（入力・出力先・出力名）と「�
 
 ### 最近使ったファイルと設定
 
-EditorのFile → **最近使ったファイル／Recent Files** は、開く・保存・名前を付けて保存・Editorからの変換・ConverterでのInput参照で使った `.tsv`／`.txt` を最大10件、新しい順に表示します。同じpathは先頭へ移動します。選ぶと現在のEditorで開き、未保存の変更があれば保存確認を行います。削除済みのファイルは選択時に通知して履歴から除き、**履歴を消去／Clear Recent Files** で全履歴を消せます。起動時にファイルを自動で開きません。
+EditorのFile → **最近使ったファイル／Recent Files** は、開く・保存・名前を付けて保存・Editorからの変換・ConverterでのInput参照で使った `.tsv`／`.txt` を最大10件、新しい順に表示します。同じpathは先頭へ移動します。選ぶとEditorの新しいタブで開きます（すでに開いているファイルならそのタブに切り替えます）。削除済みのファイルは選択時に通知して履歴から除き、**履歴を消去／Clear Recent Files** で全履歴を消せます。起動時にファイルを自動で開きません。
 
 履歴、出力形式、Debug、最後のInput／Output参照directoryは、次のuser configに `settings.json` として保存します。出力形式はラジオボタンで選んだものを記憶します。以前のバージョンが既定値として保存した `binary` は、一度だけSTASに切り替わります。参照ダイアログは保存されたdirectoryが存在する場合だけそこから開始します。
 
@@ -82,13 +82,15 @@ Editorは**最大化して開きます**。最大化を解除すると、保存�
 - Windows: `%APPDATA%/TSV-TAS-2-GUI/recovery/`。APPDATAが使えなければ `~/AppData/Roaming/TSV-TAS-2-GUI/recovery/`。
 - Linux／WSL: `$XDG_CONFIG_HOME/TSV-TAS-2-GUI/recovery/`。未設定なら `~/.config/TSV-TAS-2-GUI/recovery/`。
 
-異常終了後の起動時は、文書名と時刻を示して、各snapshotの**復元／破棄／キャンセル（次回まで保留）**を確認します。復元は元pathを保持した未保存のEditor bufferとして開くだけです。無題なら保存時にSave Asを求めます。元ファイルが保存基準から外部変更されていたり、見つからなかったりする場合は警告し、自動mergeや上書きを行いません。
+異常終了後の起動時は、文書名と時刻を示して、各snapshotの**復元／破棄／キャンセル（次回まで保留）**を確認します。復元は元pathを保持した未保存の文書を、Editorのタブとして開くだけです（複数あれば同じウィンドウのタブに並びます）。無題なら保存時にSave Asを求めます。元ファイルが保存基準から外部変更されていたり、見つからなかったりする場合は警告し、自動mergeや上書きを行いません。
 
-Recoveryは復元直後も残し、Save／Save As／F5／F8の保存成功、またはClose／New／Openでの明示的な破棄・置換が完了した時に削除します。キャンセル時は保持します。複数Editorは同じ元pathでも独立したsnapshotを持ちます。壊れたRecoveryや読み書きの失敗はログで通知し、編集を続けられます。文書内容とlocal pathは**local user configだけ**に保存され、Git repositoryには保存されません。FTP接続情報やUndo履歴はRecoveryへ含めません。
+Recoveryは復元直後も残し、Save／Save As／F5／F8の保存成功、またはタブやウィンドウを閉じる時の明示的な破棄が完了した時に削除します。キャンセル時は保持します。タブごとに、同じ元pathでも独立したsnapshotを持ちます。壊れたRecoveryや読み書きの失敗はログで通知し、編集を続けられます。文書内容とlocal pathは**local user configだけ**に保存され、Git repositoryには保存されません。FTP接続情報やUndo履歴はRecoveryへ含めません。
 
 ### 内蔵エディター
 
-変換実行ボタンの左にある **Open Editor／エディターを開く** で、Input欄の `.tsv`・`.txt` をeditorで開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、保存・変換してFTP送信、Validate、フレーム解析、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5`、`F6`、`F7`、`F8` も使えます。未保存の変更があるままNew・Open・Closeを選ぶと保存確認が出ます。
+変換実行ボタンの左にある **Open Editor／エディターを開く** で、Input欄の `.tsv`・`.txt` をeditorで開けます。入力ファイルが未選択なら空のeditorが開きます。保存すると、そのpathがconverterのInput欄に反映されます。Fileメニューには New、Open、Save、Save As、Save & Convert、保存・変換してFTP送信、Validate、フレーム解析、Close があり、`Ctrl+N`、`Ctrl+O`、`Ctrl+S`、`Ctrl+Shift+S`、`F5`、`F6`、`F7`、`F8` も使えます。未保存の変更があるタブやウィンドウを閉じると保存確認が出ます。
+
+Editorはブラウザのように**タブ**で複数のファイルを開けます。New（`Ctrl+N`）、Open（`Ctrl+O`）、最近使ったファイル、Converterの **エディターを開く** は、同じウィンドウに新しいタブを追加します。すでに開いているファイルならそのタブに切り替え、何も書いていない無題のタブはそのファイルに使います。タブをクリックすると切り替わり、`Ctrl+Tab`／`Ctrl+Shift+Tab` で次／前のタブ、`×`・中クリック・`Ctrl+W` でタブを閉じます。`+` またはタブ列の空いた所をダブルクリックすると新しいタブを開きます。未保存のタブには `●` が付きます。文書の内容、Undo履歴、テキスト／表の表示、フレーム情報、検証の結果はタブごとに保持し、保存・変換・検証（`Ctrl+S`、F5、F8、F6、F7）は表示中のタブに対して行います。裏のタブの検証結果は、そのタブに戻った時に表示します。最後のタブを閉じるとEditorのウィンドウも閉じます。
 
 同じpathへの保存前には、disk内容をOpen／最後の保存時の内容とhashで比較します。Editor外で変更されていた場合は上書き、削除されていた場合は再作成を確認します。「いいえ」ならbuffer・Undo・Recoveryを保持し、F5／F8の変換やFTP送信も開始しません。内容を確認できない場合は保存せず、エラーを表示します。Recovery復元後も旧baselineを使って同じ保護を行います。別pathへのSave Asは元ファイルの外部変更に妨げられず、既存の保存先の上書き確認はファイルダイアログに従います。同じpathのSave Asには通常の保存と同じ保護を適用します。
 

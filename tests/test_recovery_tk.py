@@ -47,6 +47,13 @@ class RecoveryTkTests(unittest.TestCase):
         return [child for child in app.winfo_children() if isinstance(child, EditorWindow)]
 
     @staticmethod
+    def tab_documents(editor):
+        """(document, recovery id) for every tab, active or in the background."""
+        return [(editor._tab_document(tab),
+                 editor._recovery_id if tab is editor._tab else tab.state["_recovery_id"])
+                for tab in editor._tabs]
+
+    @staticmethod
     def edit(editor, value="// 未保存\n"):
         editor.text.insert("end-1c", value)
         editor._sync_text()
@@ -193,11 +200,14 @@ class RecoveryTkTests(unittest.TestCase):
         self.assertEqual(warning.call_count, 2)
         self.assertIn("changed", warning.call_args.args[1])
         editors = self.editors(restarted)
-        self.assertEqual(len(editors), 2)
-        self.assertEqual({editor.document.text for editor in editors},
+        self.assertEqual(len(editors), 1)  # Restored documents open as tabs of one Editor.
+        documents = self.tab_documents(editors[0])
+        self.assertEqual(len(documents), 2)
+        self.assertEqual({document.text for document, _ in documents},
                          {snapshot.text.replace("\r\n", "\n") for snapshot in snapshots})
-        self.assertEqual(len({editor._recovery_id for editor in editors}), 2)
-        self.assertTrue(all(editor.document.path == source and editor.document.modified for editor in editors))
+        self.assertEqual(len({recovery_id for _, recovery_id in documents}), 2)
+        self.assertTrue(all(document.path == source and document.modified
+                            for document, _ in documents))
         self.assertEqual(source.read_bytes(), b"external change\n")
         self.assertEqual(len(self.records()), 2)
         restarted.destroy()
@@ -209,12 +219,14 @@ class RecoveryTkTests(unittest.TestCase):
         self.assertEqual(warning.call_count, 2)
         self.assertIn(missing_app.words["recovery_missing"], warning.call_args.args[1])
         self.assertFalse(source.exists())
-        self.assertTrue(all(editor.document.modified for editor in self.editors(missing_app)))
+        self.assertTrue(all(document.modified for editor in self.editors(missing_app)
+                            for document, _ in self.tab_documents(editor)))
 
     def test_close_new_open_save_discard_cancel_and_failed_open(self):
         app = self.make_app()
         target = self.file("target.txt", "0 KEY_A 0;0 0;0\n")
-        for action in ("close", "new", "open"):
+        # Closing the window or the edited tab asks; Save/Discard settle its recovery.
+        for action in ("close", "close_tab"):
             for choice in (True, False, None):
                 with self.subTest(action=action, choice=choice):
                     source = self.file(f"{action}-{choice}.tsv")
@@ -223,24 +235,47 @@ class RecoveryTkTests(unittest.TestCase):
                     self.edit(editor)
                     self.flush(editor)
                     old_id = editor._recovery_id
+                    edited = editor._tab
                     before = (editor.document.path, editor.document.text, editor.document.modified)
-                    operation = {"close": editor.close_editor, "new": editor.new_document,
-                                 "open": lambda: editor.open_file(target)}[action]
+                    if action == "close_tab":
+                        self.assertTrue(editor.new_document())  # Not the last tab.
+                    operation = (editor.close_editor if action == "close" else
+                                 lambda: editor.close_tab(edited))
                     with patch("python_to_exe.editor.window.messagebox.askyesnocancel", return_value=choice):
                         self.assertEqual(operation(), choice is not None)
                     if choice is None:
+                        self.assertIs(editor._tab, edited)  # Shown while asked, then kept.
                         self.assertEqual((editor.document.path, editor.document.text,
                                           editor.document.modified), before)
                         self.assertTrue(app.recovery_store._path(old_id).is_file())
                         app.recovery_store.delete(old_id)
                     else:
                         self.assertFalse(app.recovery_store._path(old_id).exists())
-                        if action != "close":
+                        if action == "close_tab":
+                            self.assertNotIn(edited, editor._tabs)
                             self.assertNotEqual(editor._recovery_id, old_id)
-                            self.assertFalse(editor.document.modified)
                     self.assertEqual(source.read_bytes() == original, choice is not True)
                     if editor.winfo_exists():
                         editor.destroy()
+
+        # New and Open use another tab: nothing is asked, nothing is discarded.
+        for action in ("new", "open"):
+            with self.subTest(action=action):
+                source = self.file(f"{action}-tab.tsv")
+                editor = app._create_editor(initial_path=source)
+                self.edit(editor)
+                self.flush(editor)
+                old_id = editor._recovery_id
+                with patch("python_to_exe.editor.window.messagebox.askyesnocancel") as ask:
+                    self.assertTrue(editor.new_document() if action == "new"
+                                    else editor.open_file(target))
+                    ask.assert_not_called()
+                self.assertEqual(len(editor._tabs), 2)
+                self.assertNotEqual(editor._recovery_id, old_id)
+                self.assertTrue(editor._tabs[0].state["document"].modified)
+                self.assertTrue(app.recovery_store._path(old_id).is_file())
+                app.recovery_store.delete(old_id)
+                editor.destroy()
 
         editor = app._create_editor(initial_path=source)
         self.edit(editor)
