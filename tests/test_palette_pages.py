@@ -20,7 +20,7 @@ class PalettePageDefinitionTests(unittest.TestCase):
     def test_pages_and_existing_advanced_templates(self):
         self.assertEqual(PALETTE_PAGES, (
             ("buttons", "left_stick", "right_stick", "stick_preview"),
-            ("commands", "cappy", "accel", "gyro", "notation"),
+            ("commands", "script_info", "cappy", "accel", "gyro", "notation"),
         ))
         self.assertEqual(PALETTE_CATEGORIES,
                          tuple(category for page in PALETTE_PAGES for category in page
@@ -33,6 +33,8 @@ class PalettePageDefinitionTests(unittest.TestCase):
             ("/absStick on", (10, 12)), ("/speed 2", (7, 8)),
             ("/pause", None), ("/loadFile 1", (10, 11)),
             ("/reloadFile", None), ("/demo on", (6, 8)),
+            ("/section TASer", (9, 14)),
+            ("$title = ", None), ("$author = ", None), ("$desc = ", None),
             ("ca", None), ("cb", None), ("cx", None), ("cy", None),
             ("cls(0)", (4, 5)), ("crs(0)", (4, 5)),
             ("la(0; 0; 0)", (3, 4)), ("ra(0; 0; 0)", (3, 4)),
@@ -95,7 +97,8 @@ class PalettePageTkTests(unittest.TestCase):
                     self.assertEqual(button.cget("text"), candidate.short_label
                                      if candidate.icon_key else candidate.display_label)
                     self.assertLessEqual(button.winfo_reqwidth(), button.winfo_width())
-                    if candidate.category in ("gyro", "notation"):
+                    if (candidate.category in ("gyro", "script_info", "notation") or
+                            candidate.text == "/section TASer"):
                         self.assertEqual(int(button.grid_info()["columnspan"]), 2)
                     if number == 2:
                         self.assertFalse(button.cget("image"))

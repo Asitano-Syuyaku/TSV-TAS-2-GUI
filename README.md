@@ -2,7 +2,7 @@
 
 [English](README_EN.md) | 日本語
 
-Super Mario Odyssey のTAS用スクリプトを変換する、[xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2/tree/stas-dev) のGUI forkです。converterはupstream **`stas-dev` の commit `245d5600c8ccc5dd97857b135341e6ba2cbe86e6`** を基準とし、GUIは同梱のPythonスクリプトをsubprocessで実行します。高度な書式は [TSV-TAS-2 Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing) を参照してください。
+Super Mario Odyssey のTAS用スクリプトを変換する、[xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2) のGUI forkです。converterは [MrKatzenGaming/TSV-TAS-2](https://github.com/MrKatzenGaming/TSV-TAS-2/tree/stas-dev) **`stas-dev` の commit `00bf6f6146eb4d9a455af5dd92157dc5c7bc532c`** を基準とし、GUIは同梱のPythonスクリプトをsubprocessで実行します。高度な書式は [TSV-TAS-2 Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing) を参照してください。
 
 ## 出力形式と必要環境
 
@@ -106,7 +106,7 @@ Frame表示のすぐ横にある常設の**移動**欄へ0-basedのframe番号�
 
 表のセルを編集中に `l` や `/` などを入力すると、ボタン、スティック、加速度／ジャイロ、2P入力、STAS commandなどの候補が表示されます。上下キーで候補を選び、Tab／Enterまたはクリックで挿入すると、セル編集を続けられます。Escapeはまず候補だけを閉じます。括弧や引数を含む候補は値を選択したtemplateとして入り、そのまま値を打ち替えられます。表の右側には **入力パレット** が常時表示され、よく使うボタン、左右スティック、STAS commandを選べます。選んだ項目は現在セルへ挿入され、編集中ならカーソル位置へ挿入されます。左右スティック候補はそれぞれ角度だけの形を先頭に表示します。`.tsv` のテキスト表示ではコメント・command・変数・入力を色で、表では先頭列をdurationの目安として薄い背景で区別し、行番号横の色で通常入力・コメント・command・変数・loop/control風・空行を見分けられます。commandやコメント行の先頭列をdurationとして扱いません。色や行分類は**入力支援**であり、構文の正否判定ではありません。STAS commandの実際の処理はSTAS出力時にconverterが行います。
 
-入力パレットは幅400pxの2列表示です。上部の◀／▶で、Page 1 **Basic**（Buttons／Left Stick／Right Stick／Stick Preview）とPage 2 **Advanced**（STAS Commands／Cappy／Accel／Gyro／Notation）を切り替えます。初回はPage 1で、次回は最後のページを復元します。切替は文書や選択範囲、Undo履歴に影響しません。各ページはパレット内のマウスホイールまたはスクロールバーで縦スクロールできます。左右スティックでは `ls(angle)`／`rs(angle)` が各カテゴリ最上段の大きなボタン、半径＋角度／XY形式が次段の左右に並びます。16種類のボタン候補にはコントローラーアイコンと文字を併記します。画像が読めない場合は文字だけで表示します。表示と挿入するTSV文字列は別に管理しています。
+入力パレットは幅400pxの2列表示です。上部の◀／▶で、Page 1 **Basic**（Buttons／Left Stick／Right Stick／Stick Preview）とPage 2 **Advanced**（STAS Commands／STAS Info／Cappy／Accel／Gyro／Notation）を切り替えます。初回はPage 1で、次回は最後のページを復元します。切替は文書や選択範囲、Undo履歴に影響しません。各ページはパレット内のマウスホイールまたはスクロールバーで縦スクロールできます。左右スティックでは `ls(angle)`／`rs(angle)` が各カテゴリ最上段の大きなボタン、半径＋角度／XY形式が次段の左右に並びます。STAS Infoの `$title`／`$author`／`$desc` はパレットからだけ挿入でき、`$` の入力補完には出ません（durationに変数を使う行でTabを押しても変数名が置き換わらないようにするため）。16種類のボタン候補にはコントローラーアイコンと文字を併記します。画像が読めない場合は文字だけで表示します。表示と挿入するTSV文字列は別に管理しています。
 
 Page 1下部の**Stick Preview**は1PのLS／RSを横並びの単位円で表示します。対象はactive rowの0-based StartFrameで、現在位置は赤、1～3f前は古いほど薄い赤です。x／y（32767基準のDebug値を単位円へ正規化）、radius、angle（度）も表示します。既存background解析の一回のconverter実行からsource-line mapとDebug CSVを取得し、selection変更ではcacheだけを参照します。編集中・更新中・解析失敗時は確定値を表示せず、存在しないframeの点も補いません。これは表示専用で、文書・Undo履歴・Converter設定を変更せず、保存・FTP送信も行いません。
 
@@ -144,8 +144,17 @@ commandはduration欄の先頭に `/` を付けて独立行に書きます。現
 | `/loadFile 1` | save-file IDを整数で指定してload commandを出力 |
 | `/reloadFile` | reload commandを出力。引数なし |
 | `/demo on`、`/demo off` | demo flagの有効／無効を指定 |
+| `/section TASer` | この位置からの担当TASer名を指定。名前は空白を含まない1語 |
 
 たとえば `1<TAB>a` の次に `/pause`、その次に `1<TAB>b` を書くと、2行目の入力開始時点にcommandが配置されます。`/absStick`、`/demo` の有効値として `true`、`1`、`on`、`y`、`yes` を受け付けます。commandのSwitch上での効果は対応するLunaKitで確認してください。
+
+STASファイルのヘッダーには、次の変数で題名・作者・説明を書けます。どれも独立行に置き、`=` の後ろからセルの終わりまでが値になります（空白を含められます）。省略時はそれぞれ入力ファイル名、`TSV-TAS-2`、`Description from TSV-TAS-2` です。STAS以外の出力では使われません。
+
+```text
+$title = 1-1 Any%
+$author = Tester
+$desc = Route notes
+```
 
 ## nx-TASからTSV-TASへ
 
@@ -196,7 +205,7 @@ python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/
 
 | path | 役割 |
 | --- | --- |
-| `tsv-tas.py` | `stas-dev` ベースのTSV-TAS converter。GUI固有のFTP変更ではremote名にローカルpathのbasenameだけを使用 |
+| `tsv-tas.py` | `stas-dev` ベースのTSV-TAS converter。GUI固有の変更は、Editor用の `-m`（line map）、FTPのremote名にローカルpathのbasenameだけを使う変更、STASの既定titleを入力pathのbasenameにする変更（Windowsでフルpathが入らないように）、`/section` の名前長をLunaKitが読むlittle-endianで書く変更（Python 3.10以前でも動くように） |
 | `nx-tas-to-tsv-tas.py` | upstreamと同じnx-TAS→TSV-TAS converter |
 | `python_to_exe/main_jp.py`、`main_en.py` | 日本語／Englishの起動スクリプト |
 | `python_to_exe/converter_gui.py`、`converter_logic.py` | 共通GUI、引数生成、Python探索、FTP設定 |

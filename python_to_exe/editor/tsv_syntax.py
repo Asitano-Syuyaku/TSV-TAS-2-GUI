@@ -69,6 +69,11 @@ CANDIDATES = (
     _template("commands", "/loadFile 1", "/loadFile 1", "1"),
     Candidate("commands", "/reloadFile", "/reloadFile"),
     _template("commands", "/demo on", "/demo on", "on"),
+    _template("commands", "/section TASer", "/section TASer", "TASer"),
+    # STAS header fields; the converter keeps the rest of the cell as the value.
+    Candidate("script_info", "$title = text", "$title = "),
+    Candidate("script_info", "$author = name", "$author = "),
+    Candidate("script_info", "$desc = text", "$desc = "),
     Candidate("notation", "// comment", "// "),
     Candidate("notation", "$name = value", "$name = "),
     Candidate("notation", "a/b (loop)", "a/b"),
@@ -79,7 +84,7 @@ CANDIDATES = (
 
 PALETTE_PAGES = (
     ("buttons", "left_stick", "right_stick", "stick_preview"),
-    ("commands", "cappy", "accel", "gyro", "notation"),
+    ("commands", "script_info", "cappy", "accel", "gyro", "notation"),
 )
 # Only insertable categories; the preview never supplies a Candidate.
 PALETTE_CATEGORIES = tuple(category for page in PALETTE_PAGES for category in page
@@ -145,9 +150,14 @@ def candidates_for(value, caret, column, limit=8):
         return ()
     fragment = span[2].casefold()
     if fragment.startswith("/"):
+        # A bare "/" reaches every STAS command; the 8-row popup scrolls.
         choices = (item for item in CANDIDATES if item.category == "commands")
+        limit = None
     elif fragment.startswith("$"):
-        choices = (item for item in CANDIDATES if item.text.startswith("$"))
+        # Header fields stay palette-only: `$t` + Tab in a duration cell must
+        # keep the user's variable instead of becoming `$title = `.
+        choices = (item for item in CANDIDATES if item.text.startswith("$")
+                   and item.category != "script_info")
     else:
         choices = (item for item in CANDIDATES if item.category != "commands")
     return tuple(item for item in choices if item.text.casefold().startswith(fragment))[:limit]

@@ -32,8 +32,16 @@ class SyntaxHintsTests(unittest.TestCase):
         commands = candidates_for("/", 1, 0)
         self.assertEqual({item.text.split()[0] for item in commands},
                          {"/tp", "/ctp", "/absStick", "/speed", "/pause",
-                          "/loadFile", "/reloadFile", "/demo"})
+                          "/loadFile", "/reloadFile", "/demo", "/section"})
         self.assertEqual(candidates_for("/", 1, 1), ())
+        section = candidates_for("/se", 3, 0)
+        self.assertEqual([(item.text, item.select) for item in section],
+                         [("/section TASer", (9, 14))])
+        # STAS header fields are palette-only; `$t` stays the user's variable.
+        self.assertEqual([item.text for item in candidates_for("$", 1, 0)], ["$name = "])
+        self.assertEqual(candidates_for("$t", 2, 0), ())
+        self.assertEqual(classify_cell("$title = My Run", 0), "variable")
+        self.assertEqual(classify_cell("/section TASer", 0), "command")
         self.assertEqual(completion_span("a/ls", 4, 1), (2, 4, "ls"))
 
     def test_template_replacement_and_placeholder_selection(self):

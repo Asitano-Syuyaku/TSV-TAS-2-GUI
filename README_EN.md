@@ -2,7 +2,7 @@
 
 English | [日本語](README.md)
 
-A GUI fork of [xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2/tree/stas-dev) for converting Super Mario Odyssey TAS scripts. The converters are based on upstream **`stas-dev` commit `245d5600c8ccc5dd97857b135341e6ba2cbe86e6`**. The GUI runs the companion Python scripts as subprocesses. For advanced syntax, see the [TSV-TAS-2 Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing).
+A GUI fork of [xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2) for converting Super Mario Odyssey TAS scripts. The converters are based on [MrKatzenGaming/TSV-TAS-2](https://github.com/MrKatzenGaming/TSV-TAS-2/tree/stas-dev) **`stas-dev` commit `00bf6f6146eb4d9a455af5dd92157dc5c7bc532c`**. The GUI runs the companion Python scripts as subprocesses. For advanced syntax, see the [TSV-TAS-2 Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing).
 
 ## Output formats and requirements
 
@@ -106,7 +106,7 @@ At the last row, Enter or Down moves to an unsaved virtual row. Moving alone add
 
 While editing a Table cell, typing `l` or `/` can show suggestions for buttons, sticks, acceleration/gyro, 2P input, and STAS commands. Use Up/Down to select, then Tab/Enter or a click to insert a suggestion and continue editing. Escape first closes only the popup. The **Input Palette** is always visible to the right of the table and offers common buttons, left/right sticks, and STAS commands. Selecting an item starts editing the selected cell or inserts at the caret while editing. Left and right stick suggestions each show the simple angle form first. Candidates with parentheses or arguments insert a template with its value selected, ready to replace. Raw Text for `.tsv` colors comments, commands, variables, and inputs. In Table, a subtle background hints that the first column is often duration, while a color beside row numbers distinguishes ordinary input, comment, command, variable, loop/control-like, and blank rows. The first cell of a command or comment row is not treated as duration. Colors and row categories are **editing aids**, not syntax validation. The converter processes STAS commands when producing STAS output.
 
-The Input Palette uses two columns in a 400px sidebar. Use the top ◀/▶ buttons to switch between Page 1 **Basic** (Buttons / Left Stick / Right Stick / Stick Preview) and Page 2 **Advanced** (STAS Commands / Cappy / Accel / Gyro / Notation). The first Editor starts on Page 1; later Editors restore the last page. Switching pages does not affect the document, selection, or Undo history. Scroll each page vertically with the mouse wheel inside the palette or its scrollbar. In each stick category, `ls(angle)` or `rs(angle)` occupies a wide first-row button; radius-plus-angle and XY forms sit left and right on the next row. The 16 button candidates show controller icons alongside text. If an image cannot be read, the button shows text alone. Display labels and inserted TSV text are managed separately.
+The Input Palette uses two columns in a 400px sidebar. Use the top ◀/▶ buttons to switch between Page 1 **Basic** (Buttons / Left Stick / Right Stick / Stick Preview) and Page 2 **Advanced** (STAS Commands / STAS Info / Cappy / Accel / Gyro / Notation). The first Editor starts on Page 1; later Editors restore the last page. Switching pages does not affect the document, selection, or Undo history. Scroll each page vertically with the mouse wheel inside the palette or its scrollbar. In each stick category, `ls(angle)` or `rs(angle)` occupies a wide first-row button; radius-plus-angle and XY forms sit left and right on the next row. STAS Info's `$title`/`$author`/`$desc` are inserted from the palette only and are not offered by `$` completion, so pressing Tab after a variable used as a duration keeps that variable. The 16 button candidates show controller icons alongside text. If an image cannot be read, the button shows text alone. Display labels and inserted TSV text are managed separately.
 
 **Stick Preview** at the bottom of Page 1 shows 1P LS/RS side by side on unit circles. It uses the active row's zero-based StartFrame: red marks the current position, and progressively lighter red marks the previous 1–3 frames. It also displays x/y (Debug coordinates normalized from the converter's 32767 scale), radius, and angle in degrees. A single run of the existing background converter analysis produces both the source-line map and Debug CSV; selection changes only read the cache. Pending edits, updates, and analysis failures show no confirmed values, and missing frames are not filled in. This is read-only: it does not change the document, Undo history, or Converter settings, save the source file, or send by FTP.
 
@@ -144,8 +144,17 @@ Put a command on its own row, beginning with `/` in the duration column. The cur
 | `/loadFile 1` | Supply an integer save-file ID and emit a load command |
 | `/reloadFile` | Emit a reload command; no arguments |
 | `/demo on`, `/demo off` | Enable/disable the demo flag |
+| `/section TASer` | Name the TASer for the part starting here. The name is one word without spaces |
 
 For example, placing `/pause` between `1<TAB>a` and `1<TAB>b` puts the command at the start of the second input row. `/absStick` and `/demo` accept `true`, `1`, `on`, `y`, or `yes` as enabled values. Check the effects of commands on a Switch with a compatible LunaKit version.
+
+The STAS file header takes a title, author, and description from the following variables. Put each on its own row; everything after `=` to the end of the cell is the value, spaces included. The defaults are the input file name, `TSV-TAS-2`, and `Description from TSV-TAS-2`. Other output formats ignore them.
+
+```text
+$title = 1-1 Any%
+$author = Tester
+$desc = A short description
+```
 
 ## Convert nx-TAS to TSV-TAS
 
@@ -196,7 +205,7 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 
 | Path | Role |
 | --- | --- |
-| `tsv-tas.py` | TSV-TAS converter based on `stas-dev`. The local FTP adjustment uses only the output path's basename as its remote name |
+| `tsv-tas.py` | TSV-TAS converter based on `stas-dev`. Local changes: `-m` (line map) for the Editor; FTP uses only the output path's basename as its remote name; the default STAS title is the input path's basename, so Windows paths are not stored whole; and `/section` writes its name length as the little-endian u16 LunaKit reads, which also runs on Python 3.10 and earlier |
 | `nx-tas-to-tsv-tas.py` | nx-TAS→TSV-TAS converter matching upstream |
 | `python_to_exe/main_jp.py`, `main_en.py` | Japanese/English launchers |
 | `python_to_exe/converter_gui.py`, `converter_logic.py` | Shared GUI, argument construction, Python discovery, and FTP settings |

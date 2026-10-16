@@ -82,7 +82,8 @@ HEAT_RAMP = ("#19d3f0", "#a35bff", "#ff2d8a", "#ff8a1f", "#ffe600")
 # Palette category bars (§8.3); unknown categories use muted text.
 CATEGORY_COLORS = {"buttons": "#ffe600", "left_stick": "#19d3f0",
                    "right_stick": "#ff2d8a", "commands": "#a35bff",
-                   "cappy": "#39ff14", "accel": "#ff8a1f", "gyro": "#ff8a1f",
+                   "script_info": "#a35bff", "cappy": "#39ff14",
+                   "accel": "#ff8a1f", "gyro": "#ff8a1f",
                    "notation": "#9a92bf", "stick_preview": "#9a92bf"}
 
 

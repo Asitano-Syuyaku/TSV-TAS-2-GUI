@@ -423,6 +423,7 @@ comboの節目でだけ出す。毎回は出さない。
   - 左スティック = CYAN
   - 右スティック = MAGENTA
   - STASコマンド = PURPLE
+  - STAS情報 = PURPLE（`$title`／`$author`／`$desc`。STAS専用の仲間なのでSTASコマンドと同色。ボタンは全幅）
   - Cappy = GREEN
   - 加速度／ジャイロ = ORANGE
   - 記法 = muted

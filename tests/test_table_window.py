@@ -270,13 +270,14 @@ class TableWindowTests(unittest.TestCase):
                                 if item.category == category]
             self.assertEqual({button.placement["column"] for button in category_buttons
                               if button.placement["columnspan"] == 1},
-                             set() if category in ("gyro", "notation") else {0, 1})
+                             set() if category in ("gyro", "script_info", "notation")
+                             else {0, 1})
         self.assertEqual({category: 1 + max(button.placement["row"]
                                             for button, item in zip(palette_buttons, expected)
                                             if item.category == category)
                           for category in PALETTE_CATEGORIES},
                          {"buttons": 8, "left_stick": 2,
-                          "right_stick": 2, "commands": 4,
+                          "right_stick": 2, "commands": 5, "script_info": 3,
                           "cappy": 3, "accel": 1, "gyro": 2, "notation": 6})
         self.assertEqual(icon_button.options["image"], icon)
         self.assertEqual(icon_button.options["compound"], "left")

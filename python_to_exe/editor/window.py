@@ -68,7 +68,7 @@ LABELS = {
         "left_stick": "Left Stick", "right_stick": "Right Stick",
         "stick_preview": "Stick Preview (1P)",
         "preview_updating": "Updating...", "preview_unavailable": "Unavailable",
-        "commands": "STAS Commands",
+        "commands": "STAS Commands", "script_info": "STAS Info",
         "cappy": "Cappy", "accel": "Accel", "gyro": "Gyro", "notation": "Notation",
         "validate": "Validate", "validating": "Validating...",
         "no_errors": "No errors", "problems": "Problems",
@@ -131,7 +131,7 @@ LABELS = {
         "left_stick": "左スティック", "right_stick": "右スティック",
         "stick_preview": "スティックプレビュー (1P)",
         "preview_updating": "更新中...", "preview_unavailable": "未確定",
-        "commands": "STASコマンド",
+        "commands": "STASコマンド", "script_info": "STAS情報",
         "cappy": "Cappy", "accel": "加速度", "gyro": "ジャイロ", "notation": "記法",
         "validate": "検証", "validating": "検証中...",
         "no_errors": "エラーなし", "problems": "問題",
@@ -978,8 +978,8 @@ class EditorWindow(tk.Toplevel):
 
     @staticmethod
     def _palette_span(candidate):
-        return 2 if (candidate.category in ("gyro", "notation") or
-                     candidate.label in ("ls(angle)", "rs(angle)")) else 1
+        return 2 if (candidate.category in ("gyro", "script_info", "notation") or
+                     candidate.label in ("ls(angle)", "rs(angle)", "/section TASer")) else 1
 
     def _palette_button(self, parent, candidate):
         image = getattr(self, "_palette_icons", {}).get(candidate.icon_key)
