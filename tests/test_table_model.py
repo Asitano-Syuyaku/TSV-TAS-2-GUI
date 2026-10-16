@@ -20,6 +20,28 @@ class TableModelTests(unittest.TestCase):
         model.insert_column(9)
         self.assertEqual(model.cell(0, 10), "J")
 
+    def test_blank_tail_is_trimmed_but_inner_blank_rows_and_final_newline_stay(self):
+        # The reported lava.tsv: rows 3-4 were typed in, then cleared (+2 frames).
+        for text, expected in (("10\n1\t\t\tm-dd\n\t\t\t\n\t\t\t", "10\n1\t\t\tm-dd\n"),
+                               ("10\n1\tm-dd\n\n", "10\n1\tm-dd\n"),
+                               ("10\n \t", "10\n"),
+                               ("\t\t\n\t", "")):
+            with self.subTest(text=text):
+                model = TableModel(text)
+                self.assertTrue(model.needs_tail_trim())
+                self.assertTrue(model.trim_blank_tail())
+                self.assertEqual(model.to_text(), expected)
+                self.assertFalse(model.trim_blank_tail())
+        for text in ("10\n1\tm-dd", "10\n1\tm-dd\n", "a\n\n\t\n/pause", ""):
+            with self.subTest(text=text):
+                model = TableModel(text)
+                self.assertFalse(model.needs_tail_trim())
+                self.assertFalse(model.trim_blank_tail())
+                self.assertEqual(model.to_text(), text)
+        model = TableModel("10\n1\tm-dd")
+        self.assertTrue(model.needs_tail_trim(1, "\t"))   # Preview: emptying the last row.
+        self.assertFalse(model.needs_tail_trim(0, ""))    # A blank row above m-dd stays.
+
     def test_round_trip_keeps_tabs_blank_rows_and_special_lines(self):
         for text in ("", "\n", "a\t\t\n\n/pause\n$angle = 90\n// comment\n日本語\t",
                      "a\tb\t\t\n\n最後\t"):
