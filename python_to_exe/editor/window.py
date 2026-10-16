@@ -29,10 +29,9 @@ else:
 
 
 HIGHLIGHT_COLORS = SYNTAX_COLORS
-# Folded Basic page (dopagaki3.md §8.3): face, shoulders, the whole D-pad, then
-# system buttons and stick clicks; each row is one physical group.
-FOLDED_BUTTONS = ("a", "b", "x", "y", "l", "r", "zl", "zr",
-                  "dp-u", "dp-d", "dp-l", "dp-r", "plus", "minus", "ls", "rs")
+# Folded Basic page (dopagaki3.md §8.3): face, shoulders, then system buttons and
+# stick clicks; each row is one physical group. Motion shakes have their own group.
+FOLDED_BUTTONS = ("a", "b", "x", "y", "l", "r", "zl", "zr", "plus", "minus", "ls", "rs")
 
 
 LABELS = {
@@ -64,7 +63,7 @@ LABELS = {
         "insert_column_right": "Insert Column Right",
         "delete_column": "Delete Column",
         "clear_cells": "Clear Cells",
-        "input_palette": "Input Palette", "buttons": "Buttons",
+        "input_palette": "Input Palette", "buttons": "Buttons", "motion": "Motion",
         "left_stick": "Left Stick", "right_stick": "Right Stick",
         "stick_preview": "Stick Preview (1P)",
         "preview_updating": "Updating...", "preview_unavailable": "Unavailable",
@@ -127,7 +126,7 @@ LABELS = {
         "insert_column_right": "右に列を追加",
         "delete_column": "列を削除",
         "clear_cells": "セルを消去",
-        "input_palette": "入力パレット", "buttons": "ボタン",
+        "input_palette": "入力パレット", "buttons": "ボタン", "motion": "モーション",
         "left_stick": "左スティック", "right_stick": "右スティック",
         "stick_preview": "スティックプレビュー (1P)",
         "preview_updating": "更新中...", "preview_unavailable": "未確定",
@@ -759,7 +758,7 @@ class EditorWindow(tk.Toplevel):
 
     def _load_palette_icons(self):
         for candidate in CANDIDATES:
-            if candidate.category != "buttons" or not candidate.icon_key:
+            if not candidate.icon_key:
                 continue
             path = neon_icon_path(palette_icon_path(candidate.icon_key))
             try:
@@ -854,6 +853,8 @@ class EditorWindow(tk.Toplevel):
 
     def _palette_placements(self, buttons, folded):
         """(button, row, column, span): wide 2 columns, or folded rows (§8.3)."""
+        if buttons[0][1].category == "motion":  # Always singles over doubles: u d l r.
+            return [(button, *divmod(index, 4), 1) for index, (button, _) in enumerate(buttons)]
         if folded and buttons[0][1].category == "buttons":
             order = {text: index for index, text in enumerate(FOLDED_BUTTONS)}
             return [(button, *divmod(order[item.text], 4), 1) for button, item in buttons]
@@ -881,7 +882,10 @@ class EditorWindow(tk.Toplevel):
         rows = 1 + max(row for _, row, _, _ in placements)
         for row in range(len(buttons) if previous is not None else rows):
             group.grid_rowconfigure(row, minsize=size if row < rows else 0)
-        if previous is not None and buttons[0][1].category != "buttons":
+        if buttons[0][1].category == "motion":
+            for button, _ in buttons:  # Four keys a row in either layout.
+                button.configure(anchor="center", padx=1)
+        elif previous is not None and buttons[0][1].category != "buttons":
             # Folded stick keys share one row in equal thirds: centered, with
             # less inner padding so the longest label still fits whole.
             for button, _ in buttons:

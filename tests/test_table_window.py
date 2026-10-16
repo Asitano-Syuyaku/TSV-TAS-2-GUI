@@ -271,12 +271,12 @@ class TableWindowTests(unittest.TestCase):
             self.assertEqual({button.placement["column"] for button in category_buttons
                               if button.placement["columnspan"] == 1},
                              set() if category in ("gyro", "script_info", "notation")
-                             else {0, 1})
+                             else {0, 1, 2, 3} if category == "motion" else {0, 1})
         self.assertEqual({category: 1 + max(button.placement["row"]
                                             for button, item in zip(palette_buttons, expected)
                                             if item.category == category)
                           for category in PALETTE_CATEGORIES},
-                         {"buttons": 8, "left_stick": 2,
+                         {"buttons": 6, "motion": 2, "left_stick": 2,
                           "right_stick": 2, "commands": 5, "script_info": 3,
                           "cappy": 3, "accel": 1, "gyro": 2, "notation": 6})
         self.assertEqual(icon_button.options["image"], icon)
@@ -284,11 +284,16 @@ class TableWindowTests(unittest.TestCase):
         self.assertEqual(icon_button.options["text"], "A")
         self.assertEqual(motion_button.options["text"], motion.display_label)
         self.assertNotIn("image", motion_button.options)
-        self.assertEqual([item.options["text"] for item in palette_buttons[16:19]],
+        self.assertEqual([item.options["text"] for item in palette_buttons[12:20]],
+                         ["m-u", "m-d", "m-l", "m-r", "m-uu", "m-dd", "m-ll", "m-rr"])
+        self.assertEqual([(item.placement["row"], item.placement["column"])
+                          for item in palette_buttons[12:20]],
+                         [divmod(index, 4) for index in range(8)])
+        self.assertEqual([item.options["text"] for item in palette_buttons[20:23]],
                          ["ls(angle)", "ls(radius; angle)", "lsx(x; y)"])
-        self.assertEqual([item.options["text"] for item in palette_buttons[19:22]],
+        self.assertEqual([item.options["text"] for item in palette_buttons[23:26]],
                          ["rs(angle)", "rs(radius; angle)", "rsx(x; y)"])
-        for first in (16, 19):
+        for first in (20, 23):
             self.assertEqual((palette_buttons[first].placement["row"],
                               palette_buttons[first].placement["column"],
                               palette_buttons[first].placement["columnspan"]), (0, 0, 2))

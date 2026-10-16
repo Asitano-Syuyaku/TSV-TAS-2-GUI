@@ -95,7 +95,8 @@ class TkDisplayTests(unittest.TestCase):
         root, editor = self.make_editor("1200x1000")
         preview, canvas = editor.stick_preview, editor.palette_canvas
         page = preview.master
-        (keys, key_buttons), (sticks, stick_buttons), _ = editor._palette_folds
+        (keys, key_buttons), (shakes, shake_buttons), (sticks, stick_buttons), _ = \
+            editor._palette_folds
         size = preview.plots[0].winfo_height()
         wide_key = key_buttons[0][0].winfo_height()
 
@@ -105,13 +106,16 @@ class TkDisplayTests(unittest.TestCase):
             places = {item.text: (int(button.grid_info()["row"]), int(button.grid_info()["column"]))
                       for button, item in key_buttons}
             self.assertEqual(max(column for _, column in places.values()), 3 if folded else 1)
-            if folded:  # The whole D-pad shares one row; each stick set is one row.
-                self.assertEqual({places[key][0] for key in ("dp-u", "dp-d", "dp-l", "dp-r")}, {2})
+            # Shakes keep singles over doubles, four a row, in both layouts.
+            self.assertEqual([(int(button.grid_info()["row"]), int(button.grid_info()["column"]))
+                              for button, _ in shake_buttons], [divmod(index, 4) for index in range(8)])
+            if folded:  # + − LS RS is the last key row; each stick set is one row.
+                self.assertEqual({places[key][0] for key in ("plus", "minus", "ls", "rs")}, {2})
                 self.assertEqual({int(button.grid_info()["row"]) for button, _ in stick_buttons}, {0})
                 widths = [button.winfo_width() for button, _ in stick_buttons]
                 self.assertLessEqual(max(widths) - min(widths), 1)  # Equal thirds (pixel rounding).
                 self.assertGreater(key_buttons[0][0].winfo_height(), wide_key)
-            for button, _ in key_buttons + stick_buttons:
+            for button, _ in key_buttons + shake_buttons + stick_buttons:
                 self.assertLessEqual(button.winfo_reqwidth(), button.winfo_width())
             self.assertLessEqual(preview.winfo_y() + preview.winfo_height(), page.winfo_height())
             self.assertEqual(preview.plots[0].winfo_height(), size)  # Never a smaller plot.

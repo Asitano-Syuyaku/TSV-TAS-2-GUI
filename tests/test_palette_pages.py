@@ -19,7 +19,7 @@ def descendants(widget):
 class PalettePageDefinitionTests(unittest.TestCase):
     def test_pages_and_existing_advanced_templates(self):
         self.assertEqual(PALETTE_PAGES, (
-            ("buttons", "left_stick", "right_stick", "stick_preview"),
+            ("buttons", "motion", "left_stick", "right_stick", "stick_preview"),
             ("commands", "script_info", "cappy", "accel", "gyro", "notation"),
         ))
         self.assertEqual(PALETTE_CATEGORIES,
@@ -94,7 +94,8 @@ class PalettePageTkTests(unittest.TestCase):
                             for item in CANDIDATES if item.category == category]
                 self.assertEqual(len(buttons), len(expected))
                 for button, candidate in zip(buttons, expected):
-                    self.assertEqual(button.cget("text"), candidate.short_label
+                    self.assertEqual(button.cget("text"),
+                                     (candidate.short_label or candidate.display_label)
                                      if candidate.icon_key else candidate.display_label)
                     self.assertLessEqual(button.winfo_reqwidth(), button.winfo_width())
                     if (candidate.category in ("gyro", "script_info", "notation") or
