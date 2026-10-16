@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from python_to_exe.app_settings import AppSettings
 from python_to_exe.converter_gui import TASConverterApp
+from python_to_exe.editor.window import EditorWindow
 
 
 class WorkspaceTkTests(unittest.TestCase):
@@ -18,6 +19,8 @@ class WorkspaceTkTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.folder = Path(temporary.name)
         self.settings = AppSettings(self.folder / "settings.json")
+        # Size persistence is about the restored window; maximizing has its own test.
+        self.settings.update(editor_maximized=False)
         self.callback_errors = []
 
     def make_app(self, language="en", settings=None):
@@ -75,6 +78,35 @@ class WorkspaceTkTests(unittest.TestCase):
                 editor.close_editor()
                 app.destroy()
                 self.settings.update(editor_width=1200, editor_height=700)
+
+    def test_opens_maximized_by_default_and_remembers_only_user_changes(self):
+        settings = AppSettings(self.folder / "maximized.json")
+        with patch.object(EditorWindow, "_set_maximized") as maximize:
+            app = self.make_app(settings=settings)
+            editor = app._create_editor()
+            app.update()
+        maximize.assert_called_once_with(True)
+        resized = lambda width, height: editor._workspace_resized(
+            SimpleNamespace(widget=editor, width=width, height=height))
+        editor._last_maximized = None
+        with patch.object(editor, "_is_maximized", return_value=True):
+            resized(1900, 1000)  # Opening state: not a change, and not a chosen size.
+        self.assertTrue(settings.get("editor_maximized"))
+        self.assertEqual(settings.get("editor_width"), 1200)
+        with patch.object(editor, "_is_maximized", return_value=False):
+            resized(1300, 760)  # The user restored the window.
+        self.assertFalse(settings.get("editor_maximized"))
+        self.assertEqual((settings.get("editor_width"), settings.get("editor_height")), (1300, 760))
+        with patch.object(editor, "_is_maximized", return_value=None):
+            resized(160, 30)  # Minimized: neither a choice nor a size.
+        self.assertFalse(settings.get("editor_maximized"))
+        self.assertEqual(settings.get("editor_width"), 1300)
+        self.assertTrue(editor.close_editor())
+        self.assertFalse(AppSettings(settings.path).get("editor_maximized"))
+        with patch.object(EditorWindow, "_set_maximized") as maximize:
+            app._create_editor()
+            app.update()
+        maximize.assert_not_called()
 
     def test_resize_writes_are_debounced_and_close_flushes_pending_size(self):
         app = self.make_app()

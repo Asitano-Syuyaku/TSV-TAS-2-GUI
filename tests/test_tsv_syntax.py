@@ -11,9 +11,19 @@ from python_to_exe.editor.tsv_syntax import (
 class SyntaxHintsTests(unittest.TestCase):
     def test_palette_metadata_does_not_change_inserted_syntax(self):
         dpad = next(item for item in CANDIDATES if item.text == "dp-u")
-        self.assertEqual((dpad.display_label, dpad.short_label, dpad.icon_key),
-                         ("dp-u", "Up", "dpad_up"))
+        self.assertEqual((dpad.category, dpad.display_label, dpad.short_label, dpad.icon_key),
+                         ("dpad", "dp-u", None, None))
         self.assertEqual(insert_template("", 0, 0, dpad), ("dp-u", 4, None))
+        self.assertNotIn("dpad", PALETTE_CATEGORIES)  # Completion only.
+        self.assertIn("dp-u", [item.text for item in candidates_for("dp", 2, 1)])
+        shake = next(item for item in CANDIDATES if item.text == "m-dd")
+        self.assertEqual((shake.category, shake.display_label, shake.short_label, shake.icon_key),
+                         ("motion", "m-dd", None, "motion_down_double"))
+        self.assertEqual(insert_template("", 0, 0, shake), ("m-dd", 4, None))
+        self.assertEqual([item.text for item in candidates_for("m-", 2, 1)],
+                         ["m-u", "m-d", "m-l", "m-r", "m-uu", "m-dd", "m-ll", "m-rr"])
+        for token in ("m-uu", "a/m-dd", "dp-l"):
+            self.assertEqual(classify_cell(token, 1), "input")
         accel = next(item for item in CANDIDATES if item.category == "accel")
         self.assertIsNone(accel.icon_key)
         self.assertEqual(accel.display_label, accel.label)
@@ -21,7 +31,7 @@ class SyntaxHintsTests(unittest.TestCase):
 
     def test_verified_candidate_categories_and_filtering(self):
         self.assertTrue(set(PALETTE_CATEGORIES) <= {item.category for item in CANDIDATES})
-        self.assertTrue({"buttons", "left_stick", "right_stick", "accel", "gyro",
+        self.assertTrue({"buttons", "motion", "left_stick", "right_stick", "accel", "gyro",
                          "cappy", "commands", "notation"} <=
                         {item.category for item in CANDIDATES})
         self.assertIn("a", [item.text for item in candidates_for("a", 1, 1)])
@@ -32,8 +42,16 @@ class SyntaxHintsTests(unittest.TestCase):
         commands = candidates_for("/", 1, 0)
         self.assertEqual({item.text.split()[0] for item in commands},
                          {"/tp", "/ctp", "/absStick", "/speed", "/pause",
-                          "/loadFile", "/reloadFile", "/demo"})
+                          "/loadFile", "/reloadFile", "/demo", "/section"})
         self.assertEqual(candidates_for("/", 1, 1), ())
+        section = candidates_for("/se", 3, 0)
+        self.assertEqual([(item.text, item.select) for item in section],
+                         [("/section TASer", (9, 14))])
+        # STAS header fields are palette-only; `$t` stays the user's variable.
+        self.assertEqual([item.text for item in candidates_for("$", 1, 0)], ["$name = "])
+        self.assertEqual(candidates_for("$t", 2, 0), ())
+        self.assertEqual(classify_cell("$title = My Run", 0), "variable")
+        self.assertEqual(classify_cell("/section TASer", 0), "command")
         self.assertEqual(completion_span("a/ls", 4, 1), (2, 4, "ls"))
 
     def test_template_replacement_and_placeholder_selection(self):

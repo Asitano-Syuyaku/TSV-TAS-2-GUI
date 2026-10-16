@@ -2,14 +2,14 @@
 
 English | [日本語](README.md)
 
-A GUI fork of [xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2/tree/stas-dev) for converting Super Mario Odyssey TAS scripts. The converters are based on upstream **`stas-dev` commit `245d5600c8ccc5dd97857b135341e6ba2cbe86e6`**. The GUI runs the companion Python scripts as subprocesses. For advanced syntax, see the [TSV-TAS-2 Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing).
+A GUI fork of [xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2) for converting Super Mario Odyssey TAS scripts. The converters are based on [MrKatzenGaming/TSV-TAS-2](https://github.com/MrKatzenGaming/TSV-TAS-2/tree/stas-dev) **`stas-dev` commit `00bf6f6146eb4d9a455af5dd92157dc5c7bc532c`**. The GUI runs the companion Python scripts as subprocesses. For advanced syntax, see the [TSV-TAS-2 Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing).
 
 ## Output formats and requirements
 
 | GUI choice | Output | Intended use |
 | --- | --- | --- |
+| STAS | `.stas` | STAS format for newer LunaKit; supports the script commands below. GUI default |
 | LunaKit binary | No extension | Binary for the earlier LunaKit format; CLI default |
-| STAS | `.stas` | STAS format for newer LunaKit; supports the script commands below |
 | nx-TAS | `.txt` | Text format for smo-practice; can skip empty frames |
 
 Python 3 and Tkinter are required. The GUI exe also requires a separate Python 3 installation to run the converter scripts. PyInstaller is needed only to build Windows executables. To use the generated file on a Switch, install the mod that supports the selected format. FTP transfer also requires an FTP server on the Switch and its connection settings.
@@ -30,7 +30,7 @@ Python 3 and Tkinter are required. The GUI exe also requires a separate Python 3
 
 2. From the repository root, run `python3 python_to_exe/main_en.py` (English) or `python3 python_to_exe/main_jp.py` (Japanese). On Windows, `python` or `py -3` also works.
 3. Select `sample.tsv` as Input. If Output Directory is empty, it fills with the input file's folder. Change it if needed, and set Output File Name to a name without an extension (for example, `sample`). Choose a format and click **Start Conversion／変換実行**.
-4. The destination will contain `sample`, `sample.stas`, or `sample.txt`, depending on the format. You can enable Debug first and inspect `sample-debug.csv` (or `sample.stas-debug.csv` for STAS) to see the frames.
+4. The destination will contain `sample.stas`, `sample`, or `sample.txt`, depending on the format. You can enable Debug first and inspect `sample.stas-debug.csv` (or `sample-debug.csv` for LunaKit binary) to see the frames.
 
 This example holds the left stick upward for five frames, then inputs A and the right stick for one frame, and waits three frames. The reference table below explains the loop and stick interpolation.
 
@@ -41,7 +41,7 @@ This example holds the left stick upward for five frames, then inputs A and the 
 | Input Script File／入力スクリプトファイル | `.tsv` compiles directly. `.txt` is treated as nx-TAS and converted to TSV first |
 | Output Directory／出力ディレクトリ | If empty, fills with the input file's folder when Input is selected. An existing destination is not overwritten. An intermediate `.tsv` from `.txt` input is also saved here |
 | Output File Name／出力ファイル名 | Enter a base name without an extension or folder. The GUI adds the format's extension |
-| Output format／出力形式 | Choose LunaKit binary, STAS, or nx-TAS |
+| Output format／出力形式 | Choose STAS (default), LunaKit binary, or nx-TAS |
 | Skip empty frames／空フレームを省略 | Available only for nx-TAS; upstream `-e` |
 | Debug output／Debug出力 | Upstream `-d`; writes a CSV by appending `-debug.csv` to the output filename |
 | Send via FTP／FTPで送信 | Upstream `-f`; uploads to `SMO/tas/scripts/` after creating local output |
@@ -54,12 +54,12 @@ After a successful conversion, the dialog and log show the output file path. The
 
 Editor File → **Recent Files／最近使ったファイル** lists up to 10 `.tsv`/`.txt` paths, newest first, from Open, Save, Save As, Editor conversion, and Converter Input Browse. Reusing a path moves it to the top. Selecting an entry opens it in the current Editor and asks about any unsaved changes. Selecting a deleted file shows an error and removes its entry; **Clear Recent Files／履歴を消去** clears the list. Startup does not open a file automatically.
 
-Recent files, output format, Debug, and the last Input/Output browse directories are saved to `settings.json` in the user config directory below. Browse dialogs start in a saved directory only if it still exists.
+Recent files, output format, Debug, and the last Input/Output browse directories are saved to `settings.json` in the user config directory below. The output format remembers what you pick with its radio buttons; a `binary` that an older version saved only as its default switches to STAS once. Browse dialogs start in a saved directory only if it still exists.
 
 - Windows: `%APPDATA%/TSV-TAS-2-GUI/settings.json`; if APPDATA is unavailable, `~/AppData/Roaming/TSV-TAS-2-GUI/settings.json`.
 - Linux/WSL: `$XDG_CONFIG_HOME/TSV-TAS-2-GUI/settings.json`; if unset, `~/.config/TSV-TAS-2-GUI/settings.json`.
 
-The Editor also saves its window size, resized table column widths, Raw/Table preference, and Input Palette Basic/Advanced page to the same user settings, restoring them when an Editor next opens. The first-run size is 1200×700. Size changes are saved after about 400 ms without another resize; column widths are saved when dragging ends. `.txt` always opens in Raw Text without clearing a Table preference. Workspace settings do not store screen position, document content, selection, cursor/scroll position, Undo history, or Frame data. They are separate from existing Recovery snapshots.
+The Editor **opens maximized**. Restoring it returns to the saved size (1200×700 at first, centered on Windows), which you can resize freely. If you close it restored, it opens restored next time; maximize it again to open maximized from then on. The Editor also saves its window size (the restored size), resized table column widths, Raw/Table preference, and Input Palette Basic/Advanced page to the same user settings, restoring them when an Editor next opens. Size changes are saved after about 400 ms without another resize; column widths are saved when dragging ends. `.txt` always opens in Raw Text without clearing a Table preference. Workspace settings do not store screen position, document content, selection, cursor/scroll position, Undo history, or Frame data. They are separate from existing Recovery snapshots.
 
 Corrupt JSON, unsupported schemas, and invalid values fall back to defaults; a settings save failure does not stop editing or conversion. Document contents, Undo history, analysis results, and FTP connection details are not stored in these settings. FTP credentials keep the existing `ftp_config.json` behavior. The FTP checkbox is not persisted and starts OFF each time. Explicit FTP sending with F8 remains available.
 
@@ -106,7 +106,7 @@ At the last row, Enter or Down moves to an unsaved virtual row. Moving alone add
 
 While editing a Table cell, typing `l` or `/` can show suggestions for buttons, sticks, acceleration/gyro, 2P input, and STAS commands. Use Up/Down to select, then Tab/Enter or a click to insert a suggestion and continue editing. Escape first closes only the popup. The **Input Palette** is always visible to the right of the table and offers common buttons, left/right sticks, and STAS commands. Selecting an item starts editing the selected cell or inserts at the caret while editing. Left and right stick suggestions each show the simple angle form first. Candidates with parentheses or arguments insert a template with its value selected, ready to replace. Raw Text for `.tsv` colors comments, commands, variables, and inputs. In Table, a subtle background hints that the first column is often duration, while a color beside row numbers distinguishes ordinary input, comment, command, variable, loop/control-like, and blank rows. The first cell of a command or comment row is not treated as duration. Colors and row categories are **editing aids**, not syntax validation. The converter processes STAS commands when producing STAS output.
 
-The Input Palette uses two columns in a 400px sidebar. Use the top ◀/▶ buttons to switch between Page 1 **Basic** (Buttons / Left Stick / Right Stick / Stick Preview) and Page 2 **Advanced** (STAS Commands / Cappy / Accel / Gyro / Notation). The first Editor starts on Page 1; later Editors restore the last page. Switching pages does not affect the document, selection, or Undo history. Scroll each page vertically with the mouse wheel inside the palette or its scrollbar. In each stick category, `ls(angle)` or `rs(angle)` occupies a wide first-row button; radius-plus-angle and XY forms sit left and right on the next row. The 16 button candidates show controller icons alongside text. If an image cannot be read, the button shows text alone. Display labels and inserted TSV text are managed separately.
+The Input Palette uses two columns in a 400px sidebar. Use the top ◀/▶ buttons to switch between Page 1 **Basic** (Buttons / Motion / Left Stick / Right Stick / Stick Preview) and Page 2 **Advanced** (STAS Commands / STAS Info / Cappy / Accel / Gyro / Notation). The first Editor starts on Page 1; later Editors restore the last page. Switching pages does not affect the document, selection, or Undo history. Scroll each page vertically with the mouse wheel inside the palette or its scrollbar. In each stick category, `ls(angle)` or `rs(angle)` occupies a wide first-row button; radius-plus-angle and XY forms sit left and right on the next row. STAS Info's `$title`/`$author`/`$desc` are inserted from the palette only and are not offered by `$` completion, so pressing Tab after a variable used as a duration keeps that variable. Motion takes the D-pad's place with Joy-Con shakes, always four a row: single `m-u`/`m-d`/`m-l`/`m-r` on top, double `m-uu`/`m-dd`/`m-ll`/`m-rr` below. The D-pad (`dp-u` and so on) leaves the palette but stays in completion and highlighting. The 12 buttons and 8 shakes show icons alongside text. If an image cannot be read, the button shows text alone. Display labels and inserted TSV text are managed separately.
 
 **Stick Preview** at the bottom of Page 1 shows 1P LS/RS side by side on unit circles. It uses the active row's zero-based StartFrame: red marks the current position, and progressively lighter red marks the previous 1–3 frames. It also displays x/y (Debug coordinates normalized from the converter's 32767 scale), radius, and angle in degrees. A single run of the existing background converter analysis produces both the source-line map and Debug CSV; selection changes only read the cache. Pending edits, updates, and analysis failures show no confirmed values, and missing frames are not filled in. This is read-only: it does not change the document, Undo history, or Converter settings, save the source file, or send by FTP.
 
@@ -144,8 +144,17 @@ Put a command on its own row, beginning with `/` in the duration column. The cur
 | `/loadFile 1` | Supply an integer save-file ID and emit a load command |
 | `/reloadFile` | Emit a reload command; no arguments |
 | `/demo on`, `/demo off` | Enable/disable the demo flag |
+| `/section TASer` | Name the TASer for the part starting here. The name is one word without spaces |
 
 For example, placing `/pause` between `1<TAB>a` and `1<TAB>b` puts the command at the start of the second input row. `/absStick` and `/demo` accept `true`, `1`, `on`, `y`, or `yes` as enabled values. Check the effects of commands on a Switch with a compatible LunaKit version.
+
+The STAS file header takes a title, author, and description from the following variables. Put each on its own row; everything after `=` to the end of the cell is the value, spaces included. The defaults are the input file name, `TSV-TAS-2`, and `Description from TSV-TAS-2`. Other output formats ignore them.
+
+```text
+$title = 1-1 Any%
+$author = Tester
+$desc = A short description
+```
 
 ## Convert nx-TAS to TSV-TAS
 
@@ -196,7 +205,7 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 
 | Path | Role |
 | --- | --- |
-| `tsv-tas.py` | TSV-TAS converter based on `stas-dev`. The local FTP adjustment uses only the output path's basename as its remote name |
+| `tsv-tas.py` | TSV-TAS converter based on `stas-dev`. Local changes: `-m` (line map) for the Editor; FTP uses only the output path's basename as its remote name; the default STAS title is the input path's basename, so Windows paths are not stored whole; and `/section` writes its name length as the little-endian u16 LunaKit reads, which also runs on Python 3.10 and earlier |
 | `nx-tas-to-tsv-tas.py` | nx-TAS→TSV-TAS converter matching upstream |
 | `python_to_exe/main_jp.py`, `main_en.py` | Japanese/English launchers |
 | `python_to_exe/converter_gui.py`, `converter_logic.py` | Shared GUI, argument construction, Python discovery, and FTP settings |

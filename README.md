@@ -2,14 +2,14 @@
 
 [English](README_EN.md) | 日本語
 
-Super Mario Odyssey のTAS用スクリプトを変換する、[xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2/tree/stas-dev) のGUI forkです。converterはupstream **`stas-dev` の commit `245d5600c8ccc5dd97857b135341e6ba2cbe86e6`** を基準とし、GUIは同梱のPythonスクリプトをsubprocessで実行します。高度な書式は [TSV-TAS-2 Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing) を参照してください。
+Super Mario Odyssey のTAS用スクリプトを変換する、[xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2) のGUI forkです。converterは [MrKatzenGaming/TSV-TAS-2](https://github.com/MrKatzenGaming/TSV-TAS-2/tree/stas-dev) **`stas-dev` の commit `00bf6f6146eb4d9a455af5dd92157dc5c7bc532c`** を基準とし、GUIは同梱のPythonスクリプトをsubprocessで実行します。高度な書式は [TSV-TAS-2 Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing) を参照してください。
 
 ## 出力形式と必要環境
 
 | GUIの選択肢 | 出力 | 用途 |
 | --- | --- | --- |
+| STAS | `.stas` | 新しいLunaKit用のSTAS形式。後述のscript commandを出力可能。GUIの既定値 |
 | LunaKit binary | 拡張子なし | 従来のLunaKit用バイナリ。CLIの既定値 |
-| STAS | `.stas` | 新しいLunaKit用のSTAS形式。後述のscript commandを出力可能 |
 | nx-TAS | `.txt` | smo-practice用のテキスト形式。空フレームの省略に対応 |
 
 Python 3とTkinterが必要です。GUI exeもconverterを動かすために別途Python 3が必要です。Windows exeを作る場合だけPyInstallerが必要です。生成ファイルをSwitchで使うには、選んだ形式に対応するmodが必要です。FTP送信にはSwitch側のFTPサーバーと接続情報が必要です。
@@ -30,7 +30,7 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 
 2. repositoryのルートで `python3 python_to_exe/main_jp.py`（日本語）または `python3 python_to_exe/main_en.py`（English）を起動します。Windowsでは `python` または `py -3` でも実行できます。
 3. Inputに `sample.tsv` を選びます。Output Directoryが空なら入力ファイルと同じフォルダーが自動設定されます。必要なら変更し、Output File Nameに拡張子なしの名前（例: `sample`）を指定します。形式を選び、**Start Conversion／変換実行**を押します。
-4. 選んだ形式に応じて `sample`、`sample.stas`、または `sample.txt` が保存先にできます。まずはDebugを有効にして `sample-debug.csv`（STASなら `sample.stas-debug.csv`）でフレームを確認できます。
+4. 選んだ形式に応じて `sample.stas`、`sample`、または `sample.txt` が保存先にできます。まずはDebugを有効にして `sample.stas-debug.csv`（LunaKit binaryなら `sample-debug.csv`）でフレームを確認できます。
 
 この例は最初に左スティックを5フレーム上方向へ倒し、次にAボタンと右スティックを1フレーム入力し、3フレーム待機します。ループとスティック補間の詳細は下の早見表にあります。
 
@@ -41,7 +41,7 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 | Input Script File／入力スクリプトファイル | `.tsv` は直接コンパイル。`.txt` はnx-TAS入力として先にTSVへ変換 |
 | Output Directory／出力ディレクトリ | 空欄ならInput選択時にそのファイルのフォルダーを自動設定。指定済みの出力先は上書きしない。`.txt` 入力の中間 `.tsv` もここに保存 |
 | Output File Name／出力ファイル名 | 拡張子やフォルダーを含まないベース名。形式に応じた拡張子をGUIが付加 |
-| Output format／出力形式 | LunaKit binary、STAS、nx-TASから選択 |
+| Output format／出力形式 | STAS（既定）、LunaKit binary、nx-TASから選択 |
 | Skip empty frames／空フレームを省略 | nx-TASを選んだ場合だけ有効。upstreamの `-e` |
 | Debug output／Debug出力 | upstreamの `-d`。出力ファイル名に `-debug.csv` を加えたCSVを保存 |
 | Send via FTP／FTPで送信 | upstreamの `-f`。ローカル出力後、`SMO/tas/scripts/` へ送信 |
@@ -54,12 +54,12 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 
 EditorのFile → **最近使ったファイル／Recent Files** は、開く・保存・名前を付けて保存・Editorからの変換・ConverterでのInput参照で使った `.tsv`／`.txt` を最大10件、新しい順に表示します。同じpathは先頭へ移動します。選ぶと現在のEditorで開き、未保存の変更があれば保存確認を行います。削除済みのファイルは選択時に通知して履歴から除き、**履歴を消去／Clear Recent Files** で全履歴を消せます。起動時にファイルを自動で開きません。
 
-履歴、出力形式、Debug、最後のInput／Output参照directoryは、次のuser configに `settings.json` として保存します。参照ダイアログは保存されたdirectoryが存在する場合だけそこから開始します。
+履歴、出力形式、Debug、最後のInput／Output参照directoryは、次のuser configに `settings.json` として保存します。出力形式はラジオボタンで選んだものを記憶します。以前のバージョンが既定値として保存した `binary` は、一度だけSTASに切り替わります。参照ダイアログは保存されたdirectoryが存在する場合だけそこから開始します。
 
 - Windows: `%APPDATA%/TSV-TAS-2-GUI/settings.json`。APPDATAが使えなければ `~/AppData/Roaming/TSV-TAS-2-GUI/settings.json`。
 - Linux／WSL: `$XDG_CONFIG_HOME/TSV-TAS-2-GUI/settings.json`。未設定なら `~/.config/TSV-TAS-2-GUI/settings.json`。
 
-Editorのウィンドウサイズ、変更した表の列幅、Raw／Tableの表示preference、Input PaletteのBasic／Advancedページも同じuser settingsへ保存し、次回Editor起動時に復元します。初回サイズは1200×700です。サイズ変更は約400ms待って保存し、列幅はdrag終了時に保存します。`.txt`は常にRaw表示となりますが、そのためにTable preferenceは消しません。画面上の位置、文書内容、選択・cursor・scroll位置、Undo履歴、Frame情報はworkspace設定に保存しません。既存のRecovery snapshotとは別の仕組みです。
+Editorは**最大化して開きます**。最大化を解除すると、保存したサイズ（初回は1200×700。Windowsでは画面中央）に戻り、そこから自由にサイズを変えられます。解除したまま閉じると次回も解除した状態で開き、もう一度最大化すると次回からまた最大化で開きます。Editorのウィンドウサイズ（最大化を解除した時のサイズ）、変更した表の列幅、Raw／Tableの表示preference、Input PaletteのBasic／Advancedページも同じuser settingsへ保存し、次回Editor起動時に復元します。サイズ変更は約400ms待って保存し、列幅はdrag終了時に保存します。`.txt`は常にRaw表示となりますが、そのためにTable preferenceは消しません。画面上の位置、文書内容、選択・cursor・scroll位置、Undo履歴、Frame情報はworkspace設定に保存しません。既存のRecovery snapshotとは別の仕組みです。
 
 壊れたJSON・非対応schema・不正な値は既定値へ戻し、設定の保存に失敗しても操作を続けられます。文書内容、Undo履歴、解析結果、FTP接続情報はこの設定に保存しません。FTP credentialは従来の `ftp_config.json` のままで、FTPチェックは保存せず起動ごとにOFFになります。F8による明示的なFTP送信は従来どおり利用できます。
 
@@ -106,7 +106,7 @@ Frame表示のすぐ横にある常設の**移動**欄へ0-basedのframe番号�
 
 表のセルを編集中に `l` や `/` などを入力すると、ボタン、スティック、加速度／ジャイロ、2P入力、STAS commandなどの候補が表示されます。上下キーで候補を選び、Tab／Enterまたはクリックで挿入すると、セル編集を続けられます。Escapeはまず候補だけを閉じます。括弧や引数を含む候補は値を選択したtemplateとして入り、そのまま値を打ち替えられます。表の右側には **入力パレット** が常時表示され、よく使うボタン、左右スティック、STAS commandを選べます。選んだ項目は現在セルへ挿入され、編集中ならカーソル位置へ挿入されます。左右スティック候補はそれぞれ角度だけの形を先頭に表示します。`.tsv` のテキスト表示ではコメント・command・変数・入力を色で、表では先頭列をdurationの目安として薄い背景で区別し、行番号横の色で通常入力・コメント・command・変数・loop/control風・空行を見分けられます。commandやコメント行の先頭列をdurationとして扱いません。色や行分類は**入力支援**であり、構文の正否判定ではありません。STAS commandの実際の処理はSTAS出力時にconverterが行います。
 
-入力パレットは幅400pxの2列表示です。上部の◀／▶で、Page 1 **Basic**（Buttons／Left Stick／Right Stick／Stick Preview）とPage 2 **Advanced**（STAS Commands／Cappy／Accel／Gyro／Notation）を切り替えます。初回はPage 1で、次回は最後のページを復元します。切替は文書や選択範囲、Undo履歴に影響しません。各ページはパレット内のマウスホイールまたはスクロールバーで縦スクロールできます。左右スティックでは `ls(angle)`／`rs(angle)` が各カテゴリ最上段の大きなボタン、半径＋角度／XY形式が次段の左右に並びます。16種類のボタン候補にはコントローラーアイコンと文字を併記します。画像が読めない場合は文字だけで表示します。表示と挿入するTSV文字列は別に管理しています。
+入力パレットは幅400pxの2列表示です。上部の◀／▶で、Page 1 **Basic**（Buttons／Motion／Left Stick／Right Stick／Stick Preview）とPage 2 **Advanced**（STAS Commands／STAS Info／Cappy／Accel／Gyro／Notation）を切り替えます。初回はPage 1で、次回は最後のページを復元します。切替は文書や選択範囲、Undo履歴に影響しません。各ページはパレット内のマウスホイールまたはスクロールバーで縦スクロールできます。左右スティックでは `ls(angle)`／`rs(angle)` が各カテゴリ最上段の大きなボタン、半径＋角度／XY形式が次段の左右に並びます。STAS Infoの `$title`／`$author`／`$desc` はパレットからだけ挿入でき、`$` の入力補完には出ません（durationに変数を使う行でTabを押しても変数名が置き換わらないようにするため）。Motionには十字キーの代わりにJoy-Conを振る入力を並べます。上段が片手の `m-u`／`m-d`／`m-l`／`m-r`、下段が両手の `m-uu`／`m-dd`／`m-ll`／`m-rr` で、常に4列です。十字キーの `dp-u` などはパレットには出ませんが、入力補完と色分けには残っています。12種類のボタンと8種類のモーションにはアイコンと文字を併記します。画像が読めない場合は文字だけで表示します。表示と挿入するTSV文字列は別に管理しています。
 
 Page 1下部の**Stick Preview**は1PのLS／RSを横並びの単位円で表示します。対象はactive rowの0-based StartFrameで、現在位置は赤、1～3f前は古いほど薄い赤です。x／y（32767基準のDebug値を単位円へ正規化）、radius、angle（度）も表示します。既存background解析の一回のconverter実行からsource-line mapとDebug CSVを取得し、selection変更ではcacheだけを参照します。編集中・更新中・解析失敗時は確定値を表示せず、存在しないframeの点も補いません。これは表示専用で、文書・Undo履歴・Converter設定を変更せず、保存・FTP送信も行いません。
 
@@ -144,8 +144,17 @@ commandはduration欄の先頭に `/` を付けて独立行に書きます。現
 | `/loadFile 1` | save-file IDを整数で指定してload commandを出力 |
 | `/reloadFile` | reload commandを出力。引数なし |
 | `/demo on`、`/demo off` | demo flagの有効／無効を指定 |
+| `/section TASer` | この位置からの担当TASer名を指定。名前は空白を含まない1語 |
 
 たとえば `1<TAB>a` の次に `/pause`、その次に `1<TAB>b` を書くと、2行目の入力開始時点にcommandが配置されます。`/absStick`、`/demo` の有効値として `true`、`1`、`on`、`y`、`yes` を受け付けます。commandのSwitch上での効果は対応するLunaKitで確認してください。
+
+STASファイルのヘッダーには、次の変数で題名・作者・説明を書けます。どれも独立行に置き、`=` の後ろからセルの終わりまでが値になります（空白を含められます）。省略時はそれぞれ入力ファイル名、`TSV-TAS-2`、`Description from TSV-TAS-2` です。STAS以外の出力では使われません。
+
+```text
+$title = 1-1 Any%
+$author = Tester
+$desc = Route notes
+```
 
 ## nx-TASからTSV-TASへ
 
@@ -196,7 +205,7 @@ python -m PyInstaller --noconsole --onefile --add-data "assets/icons/png:assets/
 
 | path | 役割 |
 | --- | --- |
-| `tsv-tas.py` | `stas-dev` ベースのTSV-TAS converter。GUI固有のFTP変更ではremote名にローカルpathのbasenameだけを使用 |
+| `tsv-tas.py` | `stas-dev` ベースのTSV-TAS converter。GUI固有の変更は、Editor用の `-m`（line map）、FTPのremote名にローカルpathのbasenameだけを使う変更、STASの既定titleを入力pathのbasenameにする変更（Windowsでフルpathが入らないように）、`/section` の名前長をLunaKitが読むlittle-endianで書く変更（Python 3.10以前でも動くように） |
 | `nx-tas-to-tsv-tas.py` | upstreamと同じnx-TAS→TSV-TAS converter |
 | `python_to_exe/main_jp.py`、`main_en.py` | 日本語／Englishの起動スクリプト |
 | `python_to_exe/converter_gui.py`、`converter_logic.py` | 共通GUI、引数生成、Python探索、FTP設定 |

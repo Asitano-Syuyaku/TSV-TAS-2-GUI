@@ -1170,7 +1170,8 @@ class TableGridTests(unittest.TestCase):
             grid.selected = (0, 0)
             grid._type_to_edit(types.SimpleNamespace(char="/", state=0))
             editor = grid._editor
-            self.assertEqual(len(grid._completion.items), 8)
+            # A bare "/" lists every STAS command, beyond the 8 visible rows.
+            self.assertEqual(len(grid._completion.items), 9)
             grid._popup.selection_clear(0, "end")
             grid._popup.selection_set(4)
             grid._popup.bindings["<ButtonRelease-1>"](types.SimpleNamespace())

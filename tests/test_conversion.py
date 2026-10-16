@@ -17,7 +17,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python_to_exe"))
 
-from converter_logic import build_commands, load_ftp_config, python_command, save_ftp_config, scripts_dir
+from converter_logic import (FORMATS, build_commands, load_ftp_config, python_command,
+                             save_ftp_config, scripts_dir)
 from app_settings import AppSettings
 
 
@@ -46,6 +47,9 @@ class ConversionTests(unittest.TestCase):
         return build_commands(self.input, self.work, "output with spaces", format_name,
                               base_dir=ROOT, interpreter=[sys.executable], **options)
 
+    def test_gui_lists_stas_first(self):
+        self.assertEqual(FORMATS, ("stas", "binary", "nxtas"))
+
     def test_binary_output_and_source_python(self):
         self.assertEqual(python_command(), [sys.executable])
         self.assertEqual(scripts_dir(), ROOT)
@@ -61,6 +65,42 @@ class ConversionTests(unittest.TestCase):
         data = (self.work / "output with spaces.stas").read_bytes()
         self.assertEqual(data[:4], b"STAS")
         self.assertEqual(struct.unpack_from("<I", data, 24)[0], 1)
+
+    @staticmethod
+    def read_stas(data):
+        """(author, title, description, [(type, payload)]) from an STAS file."""
+        offset, header = 40, []
+        for length_format in ("<H", "<I", "<I"):
+            length = struct.unpack_from(length_format, data, offset)[0]
+            offset += struct.calcsize(length_format)
+            header.append(data[offset:offset + length])
+            offset = (offset + length + 3) // 4 * 4
+        commands = []
+        while offset < len(data):
+            kind = struct.unpack_from("<H", data, offset)[0]
+            size = int.from_bytes(data[offset + 2:offset + 8], "little")
+            commands.append((kind, data[offset + 8:offset + 8 + size]))
+            offset += 8 + size
+        return (*header, commands)
+
+    def test_stas_header_variables_and_section_command(self):
+        self.input.write_text("$title = My Run\n$author = Tester\n$desc = Any% route\n"
+                              "1\ta\n/section Tester2\n1\tb\n", encoding="utf-8")
+        self.run_command(self.build("stas")[0])
+        author, title, description, commands = self.read_stas(
+            (self.work / "output with spaces.stas").read_bytes())
+        self.assertEqual((author, title, description),
+                         (b"Tester\x00", b"My Run\x00", b"Any% route\x00"))
+        # LunaKit reads the name length as a little-endian u16, then aligns to 4.
+        self.assertIn((0xC008, b"\x08\x00Tester2\x00\x00\x00"), commands)
+
+    def test_stas_default_title_is_input_file_name(self):
+        self.run_command(self.build("stas")[0])
+        author, title, description, _ = self.read_stas(
+            (self.work / "output with spaces.stas").read_bytes())
+        self.assertEqual((author, title, description),
+                         (b"TSV-TAS-2\x00", b"input with spaces.tsv\x00",
+                          b"Description from TSV-TAS-2\x00"))
 
     def test_nxtas_and_reverse_conversion(self):
         self.run_command(self.build("nxtas", skip_empty=True)[0])
@@ -215,6 +255,7 @@ class GuiStartupTests(unittest.TestCase):
             en_app = english.TASConverterApp("en", settings=AppSettings(Path(settings_dir.name) / "en.json"))
             ja_app = japanese.TASConverterApp("ja", settings=AppSettings(Path(settings_dir.name) / "ja.json"))
             self.assertEqual(en_app.format_var.get(), ja_app.format_var.get())
+            self.assertEqual(en_app.format_var.get(), "stas")
             self.assertEqual(en_app.skip_check.state, "disabled")
             en_app.format_var.set("nxtas")
             en_app.toggle_skip()
@@ -420,7 +461,9 @@ class EditorConverterFlowTests(unittest.TestCase):
                     run.side_effect = mock_generated_files
                     self.assertTrue(app.start_conversion())
                     command = run.call_args.args[0]
-                    self.assertEqual("-f" in command, checked)
+                    # FTP is the "f" in the option flags, whichever format is chosen.
+                    options = next((arg for arg in command[2:-2] if arg.startswith("-")), "")
+                    self.assertEqual("f" in options, checked)
                 app._drain_events()
                 self.assertEqual(app.ftp_var.get(), checked)
 

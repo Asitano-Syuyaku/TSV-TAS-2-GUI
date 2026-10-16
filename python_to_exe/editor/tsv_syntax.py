@@ -25,15 +25,18 @@ _BUTTON_ICONS = {
     "l": ("L", "button_l"), "r": ("R", "button_r"),
     "zl": ("ZL", "button_zl"), "zr": ("ZR", "button_zr"),
     "plus": ("Plus", "button_plus"), "minus": ("Minus", "button_minus"),
-    "dp-u": ("Up", "dpad_up"), "dp-d": ("Down", "dpad_down"),
-    "dp-l": ("Left", "dpad_left"), "dp-r": ("Right", "dpad_right"),
     "ls": ("stick", "stick_left_click"), "rs": ("stick", "stick_right_click"),
+    # Shakes keep their TSV name as the label: m-u is what the user types.
+    **{f"m-{key * count}": (None, f"motion_{name}{'_double' if count == 2 else ''}")
+       for count in (1, 2)
+       for key, name in (("u", "up"), ("d", "down"), ("l", "left"), ("r", "right"))},
 }
+ICON_CATEGORIES = ("buttons", "motion")
 
 
 def _button(name, category="buttons"):
     short_label, icon_key = (_BUTTON_ICONS.get(name, (None, None))
-                             if category == "buttons" else (None, None))
+                             if category in ICON_CATEGORIES else (None, None))
     return Candidate(category, name, name, short_label=short_label, icon_key=icon_key)
 
 
@@ -46,8 +49,12 @@ def _template(category, label, text, placeholder="0"):
 # command writer. Names shown here are suggestions, not a grammar definition.
 CANDIDATES = (
     *(_button(name) for name in
-      ("a", "b", "x", "y", "l", "r", "zl", "zr", "plus", "minus",
-       "dp-l", "dp-u", "dp-r", "dp-d", "ls", "rs")),
+      ("a", "b", "x", "y", "l", "r", "zl", "zr", "plus", "minus", "ls", "rs")),
+    # Single, then double Joy-Con shakes; the palette shows them in place of the D-pad.
+    *(_button(name, "motion") for name in
+      ("m-u", "m-d", "m-l", "m-r", "m-uu", "m-dd", "m-ll", "m-rr")),
+    # Completion and highlighting only; no palette page lists the D-pad.
+    *(_button(name, "dpad") for name in ("dp-u", "dp-d", "dp-l", "dp-r")),
     _template("left_stick", "ls(angle)", "ls(0)"),
     _template("left_stick", "ls(radius; angle)", "ls(0; 0)"),
     _template("left_stick", "lsx(x; y)", "lsx(0; 0)"),
@@ -69,6 +76,11 @@ CANDIDATES = (
     _template("commands", "/loadFile 1", "/loadFile 1", "1"),
     Candidate("commands", "/reloadFile", "/reloadFile"),
     _template("commands", "/demo on", "/demo on", "on"),
+    _template("commands", "/section TASer", "/section TASer", "TASer"),
+    # STAS header fields; the converter keeps the rest of the cell as the value.
+    Candidate("script_info", "$title = text", "$title = "),
+    Candidate("script_info", "$author = name", "$author = "),
+    Candidate("script_info", "$desc = text", "$desc = "),
     Candidate("notation", "// comment", "// "),
     Candidate("notation", "$name = value", "$name = "),
     Candidate("notation", "a/b (loop)", "a/b"),
@@ -78,8 +90,8 @@ CANDIDATES = (
 )
 
 PALETTE_PAGES = (
-    ("buttons", "left_stick", "right_stick", "stick_preview"),
-    ("commands", "cappy", "accel", "gyro", "notation"),
+    ("buttons", "motion", "left_stick", "right_stick", "stick_preview"),
+    ("commands", "script_info", "cappy", "accel", "gyro", "notation"),
 )
 # Only insertable categories; the preview never supplies a Candidate.
 PALETTE_CATEGORIES = tuple(category for page in PALETTE_PAGES for category in page
@@ -91,7 +103,8 @@ _FUNCTION_NAMES = sorted({item.text.split("(", 1)[0] for item in CANDIDATES
                                                "gyro", "cappy") and "(" in item.text},
                          key=len, reverse=True)
 _BUTTON_NAMES = sorted({item.text for item in CANDIDATES
-                        if item.category in ("buttons", "cappy") and "(" not in item.text},
+                        if item.category in ("buttons", "motion", "dpad", "cappy")
+                        and "(" not in item.text},
                        key=len, reverse=True)
 _INPUT = re.compile(
     r"(?:^|[/|&\s>])(?:(?:" + "|".join(map(re.escape, _FUNCTION_NAMES)) +
@@ -145,9 +158,14 @@ def candidates_for(value, caret, column, limit=8):
         return ()
     fragment = span[2].casefold()
     if fragment.startswith("/"):
+        # A bare "/" reaches every STAS command; the 8-row popup scrolls.
         choices = (item for item in CANDIDATES if item.category == "commands")
+        limit = None
     elif fragment.startswith("$"):
-        choices = (item for item in CANDIDATES if item.text.startswith("$"))
+        # Header fields stay palette-only: `$t` + Tab in a duration cell must
+        # keep the user's variable instead of becoming `$title = `.
+        choices = (item for item in CANDIDATES if item.text.startswith("$")
+                   and item.category != "script_info")
     else:
         choices = (item for item in CANDIDATES if item.category != "commands")
     return tuple(item for item in choices if item.text.casefold().startswith(fragment))[:limit]

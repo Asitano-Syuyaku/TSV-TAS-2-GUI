@@ -17,9 +17,12 @@ BUTTON_KEYS = {
     "a": "button_a", "b": "button_b", "x": "button_x", "y": "button_y",
     "l": "button_l", "r": "button_r", "zl": "button_zl", "zr": "button_zr",
     "plus": "button_plus", "minus": "button_minus",
-    "dp-u": "dpad_up", "dp-d": "dpad_down",
-    "dp-l": "dpad_left", "dp-r": "dpad_right",
     "ls": "stick_left_click", "rs": "stick_right_click",
+}
+MOTION_KEYS = {
+    "m-u": "motion_up", "m-d": "motion_down", "m-l": "motion_left", "m-r": "motion_right",
+    "m-uu": "motion_up_double", "m-dd": "motion_down_double",
+    "m-ll": "motion_left_double", "m-rr": "motion_right_double",
 }
 
 
@@ -42,8 +45,16 @@ class PaletteAssetTests(unittest.TestCase):
         self.assertEqual({item.text: item.short_label for item in buttons
                           if item.text in ("ls", "rs")},
                          {"ls": "stick", "rs": "stick"})
+        shakes = [item for item in CANDIDATES if item.category == "motion"]
+        self.assertEqual({item.text: item.icon_key for item in shakes}, MOTION_KEYS)
+        for item in shakes:
+            self.assertEqual(insert_template("", 0, 0, item)[0], item.text)
+            self.assertIsNone(item.short_label)  # The label is the TSV token.
+            path = palette_icon_path(item.icon_key)
+            self.assertTrue(path.is_file())
+            self.assertTrue((path.parents[1] / "source" / f"{item.icon_key}.svg").is_file())
         self.assertTrue(all(item.icon_key is None for item in CANDIDATES
-                            if item.category != "buttons"))
+                            if item.category not in ("buttons", "motion")))
 
     def test_source_and_frozen_paths_are_independent_of_cwd(self):
         source = Path(__file__).resolve().parents[1] / "assets/icons/png/button_a.png"
@@ -81,12 +92,13 @@ class PaletteTkTests(unittest.TestCase):
         self.addCleanup(root.destroy)
         return root
 
-    def test_japanese_and_english_show_all_sixteen_icons_in_two_columns(self):
+    def test_japanese_and_english_show_button_and_motion_icons(self):
         root = self.make_root()
         for language in ("ja", "en"):
             editor = EditorWindow(root, language=language)
             try:
-                self.assertEqual(set(editor._palette_icons), set(BUTTON_KEYS.values()))
+                self.assertEqual(set(editor._palette_icons),
+                                 set(BUTTON_KEYS.values()) | set(MOTION_KEYS.values()))
                 self.assertTrue(editor.show_table())
                 root.update()
                 self.assertEqual(editor.input_palette.cget("width"), 400)
@@ -104,13 +116,21 @@ class PaletteTkTests(unittest.TestCase):
                     self.assertIn(int(button.grid_info()["column"]), (0, 1))
                     self.assertGreaterEqual(button.winfo_height(), 24)
                 self.assertEqual(len({button.winfo_height() for button in icon_buttons}), 1)
+                shakes = [item for item in CANDIDATES if item.category == "motion"]
+                for index, item in enumerate(shakes):  # Singles over doubles, four a row.
+                    button = next(button for button in palette_buttons
+                                  if button.cget("image") == str(editor._palette_icons[item.icon_key]))
+                    self.assertEqual(button.cget("text"), item.text)
+                    self.assertEqual((int(button.grid_info()["row"]),
+                                      int(button.grid_info()["column"])), divmod(index, 4))
+                    self.assertLessEqual(button.winfo_reqwidth(), button.winfo_width())
                 self.assertTrue(all(icon.width() == icon.height() == 24
                                     for icon in editor._palette_icons.values()))
                 self.assertTrue(any(isinstance(child, tk.Scrollbar)
                                     for child in editor.palette_canvas.master.winfo_children()))
                 self.assertTrue(editor.show_raw())
                 self.assertTrue(editor.show_table())
-                self.assertEqual(len(editor._palette_icons), 16)
+                self.assertEqual(len(editor._palette_icons), 20)
             finally:
                 editor.destroy()
 

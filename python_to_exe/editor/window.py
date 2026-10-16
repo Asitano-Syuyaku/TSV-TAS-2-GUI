@@ -1,5 +1,6 @@
 """Text editor with a literal TSV table view, shared by both GUI languages."""
 
+import sys
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -56,11 +57,11 @@ LABELS = {
         "insert_column_right": "Insert Column Right",
         "delete_column": "Delete Column",
         "clear_cells": "Clear Cells",
-        "input_palette": "Input Palette", "buttons": "Buttons",
+        "input_palette": "Input Palette", "buttons": "Buttons", "motion": "Motion",
         "left_stick": "Left Stick", "right_stick": "Right Stick",
         "stick_preview": "Stick Preview (1P)",
         "preview_updating": "Updating...", "preview_unavailable": "Unavailable",
-        "commands": "STAS Commands",
+        "commands": "STAS Commands", "script_info": "STAS Info",
         "cappy": "Cappy", "accel": "Accel", "gyro": "Gyro", "notation": "Notation",
         "validate": "Validate", "validating": "Validating...",
         "no_errors": "No errors", "problems": "Problems",
@@ -112,11 +113,11 @@ LABELS = {
         "insert_column_right": "右に列を追加",
         "delete_column": "列を削除",
         "clear_cells": "セルを消去",
-        "input_palette": "入力パレット", "buttons": "ボタン",
+        "input_palette": "入力パレット", "buttons": "ボタン", "motion": "モーション",
         "left_stick": "左スティック", "right_stick": "右スティック",
         "stick_preview": "スティックプレビュー (1P)",
         "preview_updating": "更新中...", "preview_unavailable": "未確定",
-        "commands": "STASコマンド",
+        "commands": "STASコマンド", "script_info": "STAS情報",
         "cappy": "Cappy", "accel": "加速度", "gyro": "ジャイロ", "notation": "記法",
         "validate": "検証", "validating": "検証中...",
         "no_errors": "エラーなし", "problems": "問題",
@@ -196,8 +197,12 @@ class EditorWindow(tk.Toplevel):
         self._workspace_job = None
         self._workspace_size = (self.settings.get("editor_width"),
                                 self.settings.get("editor_height"))
-        self.geometry(f"{self._workspace_size[0]}x{self._workspace_size[1]}")
+        # The saved size is the restored (un-maximized) size; maximized is a separate choice.
+        self.geometry(self._restored_geometry(*self._fitted_size(*self._workspace_size)))
         self.minsize(*EDITOR_SIZE_MIN)
+        self._last_maximized = None
+        if self.settings.get("editor_maximized"):
+            self._set_maximized(True)
         self.configure(background=COLORS["app_background"])
         self._theme_fonts = editor_fonts(self)
 
@@ -396,9 +401,52 @@ class EditorWindow(tk.Toplevel):
             self._position_document_changed()
             self._restore_editor_view()
 
+    def _fitted_size(self, width, height):
+        """Always fit the screen on Windows; X11 window managers constrain on their own."""
+        if not sys.platform.startswith("win"):
+            return width, height
+        try:
+            screen_w, screen_h = self.winfo_screenwidth(), self.winfo_screenheight()
+        except tk.TclError:
+            return width, height
+        return min(width, max(640, screen_w - 40)), min(height, max(400, screen_h - 80))
+
+    def _restored_geometry(self, width, height):
+        """Centered on Windows, whose default placement can push a large window off-screen."""
+        if not sys.platform.startswith("win"):
+            return f"{width}x{height}"  # X11 window managers place on their own.
+        try:
+            screen_w, screen_h = self.winfo_screenwidth(), self.winfo_screenheight()
+        except tk.TclError:
+            return f"{width}x{height}"
+        # Center above a typical taskbar; the screen position is never saved.
+        return "{}x{}+{}+{}".format(width, height, max(0, (screen_w - width) // 2),
+                                    max(0, (screen_h - 40 - height) // 2))
+
+    def _set_maximized(self, maximized):
+        try:
+            if self.tk.call("tk", "windowingsystem") == "x11":
+                self.attributes("-zoomed", maximized)
+            else:
+                self.state("zoomed" if maximized else "normal")
+        except tk.TclError:
+            pass  # A window manager without maximize keeps the restored size.
+
+    def _is_maximized(self):
+        """True/False for a shown window; None while minimized or withdrawn."""
+        try:
+            state = self.state()
+            if state not in ("normal", "zoomed"):
+                return None
+            if self.tk.call("tk", "windowingsystem") == "x11":
+                return bool(self.attributes("-zoomed"))
+            return state == "zoomed"
+        except tk.TclError:
+            return None
+
     def _load_palette_icons(self):
         for candidate in CANDIDATES:
-            if candidate.category != "buttons" or not candidate.icon_key:
+            if not candidate.icon_key:
                 continue
             path = palette_icon_path(candidate.icon_key)
             try:
@@ -461,7 +509,9 @@ class EditorWindow(tk.Toplevel):
                     pady=(SPACING["category_top"], SPACING["category_bottom"]))
                 group = tk.Frame(content, background=COLORS["panel_background"])
                 group.pack(fill="x", padx=SPACING["gap"])
-                for column in (0, 1):
+                # Shakes are four keys a row: singles over doubles, u d l r.
+                columns = 4 if category == "motion" else 2
+                for column in range(columns):
                     group.grid_columnconfigure(column, weight=1, uniform="palette")
                 slot = 0
                 candidates = (item for item in CANDIDATES if item.category == category)
@@ -469,11 +519,14 @@ class EditorWindow(tk.Toplevel):
                     span = self._palette_span(candidate)
                     if span == 2 and slot % 2:
                         slot += 1
-                    row, column = divmod(slot, 2)
+                    row, column = divmod(slot, columns)
                     group.grid_rowconfigure(row, minsize=SIZES["palette_row"])
-                    self._palette_button(group, candidate).grid(
-                        row=row, column=column, columnspan=span,
-                        sticky="ew", padx=SPACING["button_gap"], pady=SPACING["palette_grid_y"])
+                    button = self._palette_button(group, candidate)
+                    if columns == 4:
+                        button.configure(anchor="center", padx=1)
+                    button.grid(row=row, column=column, columnspan=span,
+                                sticky="ew", padx=SPACING["button_gap"],
+                                pady=SPACING["palette_grid_y"])
                     slot += span
             self._bind_palette_scroll(page, canvas)
             self._palette_pages.append((page, canvas))
@@ -517,6 +570,18 @@ class EditorWindow(tk.Toplevel):
     def _workspace_resized(self, event):
         if event.widget is not self or self._closed:
             return
+        maximized = self._is_maximized()
+        if maximized is None:
+            return
+        if maximized != self._last_maximized:
+            # Remember only a change seen in this window, not the opening state:
+            # X11 reports the restored size first, before the WM maximizes.
+            if self._last_maximized is not None:
+                self.settings.update(editor_maximized=maximized, persist=False)
+                self._schedule_workspace_flush()
+            self._last_maximized = maximized
+        if maximized:
+            return  # The screen's size, not one the user chose for the restored window.
         size = event.width, event.height
         if (size == self._workspace_size or
                 not all(low <= value <= high for value, low, high in
@@ -526,6 +591,9 @@ class EditorWindow(tk.Toplevel):
         # Keep only the changed fields in the shared state now. Debounce the disk
         # write, not a stale per-window copy of all workspace preferences.
         self.settings.update(editor_width=size[0], editor_height=size[1], persist=False)
+        self._schedule_workspace_flush()
+
+    def _schedule_workspace_flush(self):
         if self._workspace_job is not None:
             self.after_cancel(self._workspace_job)
         self._workspace_job = self.after(400, self._flush_workspace)
@@ -566,8 +634,8 @@ class EditorWindow(tk.Toplevel):
 
     @staticmethod
     def _palette_span(candidate):
-        return 2 if (candidate.category in ("gyro", "notation") or
-                     candidate.label in ("ls(angle)", "rs(angle)")) else 1
+        return 2 if (candidate.category in ("gyro", "script_info", "notation") or
+                     candidate.label in ("ls(angle)", "rs(angle)", "/section TASer")) else 1
 
     def _palette_button(self, parent, candidate):
         image = getattr(self, "_palette_icons", {}).get(candidate.icon_key)

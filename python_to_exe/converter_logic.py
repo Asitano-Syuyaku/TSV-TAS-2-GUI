@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Optional
 
 
-FORMATS = ("binary", "stas", "nxtas")
+# Also the GUI display order; STAS is the default for new settings.
+FORMATS = ("stas", "binary", "nxtas")
 
 
 def utf8_subprocess_kwargs():

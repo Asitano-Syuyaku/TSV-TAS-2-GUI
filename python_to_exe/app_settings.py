@@ -49,15 +49,22 @@ def _path(value, relative=False):
 
 
 def _clean(values):
-    defaults = dict(version=VERSION, recent_files=[], output_format="binary",
+    defaults = dict(version=VERSION, recent_files=[], output_format="stas",
+                    output_format_chosen=False,
                     debug_enabled=False, last_input_directory="", last_output_directory="",
                     editor_width=EDITOR_SIZE_DEFAULT[0], editor_height=EDITOR_SIZE_DEFAULT[1],
+                    editor_maximized=True,
                     editor_view="raw", editor_palette_page=0, editor_column_widths={})
     if (not isinstance(values, dict) or type(values.get("version")) is not int
             or values["version"] != VERSION):
         return defaults
-    if values.get("output_format") in FORMATS:
-        defaults["output_format"] = values["output_format"]
+    output_format = values.get("output_format")
+    # Older files saved the former "binary" default with every preference write,
+    # so only an explicit radio choice keeps binary; stas/nxtas were always chosen.
+    if output_format in FORMATS and (values.get("output_format_chosen") is True
+                                     or output_format != "binary"):
+        defaults["output_format"] = output_format
+        defaults["output_format_chosen"] = True
     if type(values.get("debug_enabled")) is bool:
         defaults["debug_enabled"] = values["debug_enabled"]
     for key in ("last_input_directory", "last_output_directory"):
@@ -67,6 +74,8 @@ def _clean(values):
         value = values.get(key)
         if type(value) is int and low <= value <= high:
             defaults[key] = value
+    if type(values.get("editor_maximized")) is bool:
+        defaults["editor_maximized"] = values["editor_maximized"]
     if values.get("editor_view") in ("raw", "table"):
         defaults["editor_view"] = values["editor_view"]
     page = values.get("editor_palette_page")
