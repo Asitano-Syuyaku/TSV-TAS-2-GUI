@@ -160,6 +160,10 @@ class TableModel:
         settled = start == len(self.rows) or (start == last and cells(last) == [""])
         return start, settled
 
+    def first_free_row(self):
+        """First row of the blank tail: nothing is written there or below."""
+        return self._blank_tail()[0]
+
     def needs_tail_trim(self, row=None, line=None):
         return not self._blank_tail(row, line)[1]
 

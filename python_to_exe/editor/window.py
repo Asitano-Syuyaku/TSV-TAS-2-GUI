@@ -19,7 +19,7 @@ from .text_ops import (file_kind, find_next as next_match, find_previous as prev
                        line_column, replace_all as replace_every, replace_current as replace_match)
 from .theme import (CATEGORY_COLORS, COLORS, FONTS, SIZES, SPACING, SYNTAX_COLORS,
                     button_options, editor_fonts, entry_options, label_options, px)
-from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
+from .tsv_syntax import CANDIDATES, PALETTE_PAGES, palette_items, syntax_spans
 
 if __package__ == "editor":
     from app_settings import AppSettings, EDITOR_SIZE_DEFAULT, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
@@ -66,7 +66,7 @@ LABELS = {
         "left_stick": "Left Stick", "right_stick": "Right Stick",
         "stick_preview": "Stick Preview (1P)",
         "preview_updating": "Updating...", "preview_unavailable": "Unavailable",
-        "commands": "STAS Commands", "script_info": "STAS Info",
+        "commands": "STAS Commands", "script_info": "STAS Settings",
         "cappy": "Cappy", "accel": "Accel", "gyro": "Gyro", "notation": "Notation",
         "validate": "Validate", "validating": "Validating...",
         "no_errors": "No errors", "problems": "Problems",
@@ -123,7 +123,7 @@ LABELS = {
         "left_stick": "左スティック", "right_stick": "右スティック",
         "stick_preview": "スティックプレビュー (1P)",
         "preview_updating": "更新中...", "preview_unavailable": "未確定",
-        "commands": "STASコマンド", "script_info": "STAS情報",
+        "commands": "STASコマンド", "script_info": "STAS設定",
         "cappy": "Cappy", "accel": "加速度", "gyro": "ジャイロ", "notation": "記法",
         "validate": "検証", "validating": "検証中...",
         "no_errors": "エラーなし", "problems": "問題",
@@ -801,8 +801,7 @@ class EditorWindow(tk.Toplevel):
                 for column in range(columns):
                     group.grid_columnconfigure(column, weight=1, uniform="palette")
                 slot = 0
-                candidates = (item for item in CANDIDATES if item.category == category)
-                for candidate in candidates:
+                for candidate in palette_items(category):
                     span = self._palette_span(candidate)
                     if span == 2 and slot % 2:
                         slot += 1
@@ -921,8 +920,9 @@ class EditorWindow(tk.Toplevel):
 
     @staticmethod
     def _palette_span(candidate):
-        return 2 if (candidate.category in ("gyro", "script_info", "notation") or
-                     candidate.label in ("ls(angle)", "rs(angle)", "/section TASer")) else 1
+        return 2 if (candidate.category in ("gyro", "notation") or
+                     candidate.label in ("ls(angle)", "rs(angle)", "/tp x y z",
+                                         "$stage = StageName", "$entrance = EntranceName")) else 1
 
     def _palette_button(self, parent, candidate):
         image = getattr(self, "_palette_icons", {}).get(candidate.icon_key)

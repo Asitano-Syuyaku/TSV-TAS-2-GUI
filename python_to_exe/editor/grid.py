@@ -480,8 +480,10 @@ class TableGrid(tk.Frame):
         target = self._hit_target(event)
         if target is None:
             return
+        pending = getattr(self, "_pending_row", None)
         if not self.commit_edit():
             return
+        target = self._after_pending(target, pending)
         self._select_target(target, extend=bool(getattr(event, "state", 0) & 0x0001))
         self._drag_ready = True
         self._drag_axis = target[0]
@@ -566,8 +568,10 @@ class TableGrid(tk.Frame):
 
     def _right_click(self, event):
         target = self._hit_target(event)
+        pending = getattr(self, "_pending_row", None)
         if target is None or not self.commit_edit():
             return "break"
+        target = self._after_pending(target, pending)
         kind, value = target
         top, bottom, left, right = self._selection_bounds()
         if kind == "cell":
@@ -687,6 +691,7 @@ class TableGrid(tk.Frame):
         if editor is None:
             return
         self._editor = None
+        self._drop_pending_row()  # Closed without a commit: the new row never existed.
         self._notify_edit_change()
         self._close_popup()
         editor.place_forget()
@@ -789,6 +794,8 @@ class TableGrid(tk.Frame):
 
     def insert_candidate(self, candidate):
         """Palette insertion replaces a selected cell or inserts at the Entry caret."""
+        if candidate.own_row:
+            return self._insert_own_row(candidate)
         if self._editor is None:
             self.begin_edit(initial="")
         editor = self._editor
@@ -797,6 +804,50 @@ class TableGrid(tk.Frame):
         else:
             start = end = editor.index("insert")
         self._insert_candidate(candidate, start, end)
+
+    def _insert_own_row(self, candidate):
+        """A STAS command or setting gets column A of a row of its own.
+
+        A free row (the blank tail) takes it in place. Below a written row the
+        new row exists only in this view until commit, so Escape or an empty
+        value leaves no blank row behind (the converter counts one as a frame).
+        """
+        if not self.commit_edit():
+            return False
+        origin = self.selected
+        row = origin[0]
+        if row < self.model.first_free_row():
+            row += 1
+            base = self.model
+            self.model = base.copy()
+            self.model.insert_row(row)
+            self._pending_row = row, base, origin
+        self.selection.move_to(row, 0)
+        self._selection_axis = None
+        self._update_region()
+        self._ensure_visible()
+        self.begin_edit(initial="")
+        self._insert_candidate(candidate, 0, 0)
+        return True
+
+    def _drop_pending_row(self):
+        pending, self._pending_row = getattr(self, "_pending_row", None), None
+        if pending is not None:
+            _row, self.model, origin = pending
+            self.selection.move_to(*origin)
+            self._update_region()
+            self._schedule_draw()
+
+    def _after_pending(self, target, pending):
+        """Re-aim a click hit while a pending row was shown, if that row was dropped."""
+        if pending is None or self.model is not pending[1]:
+            return target
+        kind, value = target
+        if kind == "cell" and value[0] > pending[0]:
+            return kind, (value[0] - 1, value[1])
+        if kind == "row" and value > pending[0]:
+            return kind, value - 1
+        return target
 
     def _entry_paste(self, _event=None):
         try:
@@ -833,6 +884,19 @@ class TableGrid(tk.Frame):
         if "\t" in value or "\n" in value or "\r" in value:
             self._editor.bell()
             return False
+        pending = getattr(self, "_pending_row", None)
+        if pending is not None:
+            if not value.strip():
+                return True  # Closing the editor drops the row; nothing to write.
+            index, base, _origin = pending
+            updated = base.copy()
+            updated.insert_row(index)
+            updated.update_line(index, value)
+            view, self.model, self._pending_row = self.model, base, None
+            if not self._apply_model(updated):  # One Undo step.
+                self.model, self._pending_row = view, pending
+                return False
+            return True
         if row >= self.model.row_count:
             if not value:
                 return True
@@ -871,8 +935,10 @@ class TableGrid(tk.Frame):
         if self._editor is None:
             return self.model.to_text()
         value = self._editor.get()
-        if any(separator in value for separator in ("\t", "\n", "\r")):
-            return self.model.to_text()
+        pending = getattr(self, "_pending_row", None)
+        if any(separator in value for separator in ("\t", "\n", "\r")) or (
+                pending is not None and not value.strip()):
+            return (self.model if pending is None else pending[1]).to_text()
         row, column = self.selected
         preview = self.model.copy()
         if row >= preview.row_count:

@@ -1196,9 +1196,9 @@ class TableGridTests(unittest.TestCase):
             grid._type_to_edit(types.SimpleNamespace(char="/", state=0))
             editor = grid._editor
             # A bare "/" lists every STAS command, beyond the 8 visible rows.
-            self.assertEqual(len(grid._completion.items), 9)
+            self.assertEqual(len(grid._completion.items), 10)
             grid._popup.selection_clear(0, "end")
-            grid._popup.selection_set(4)
+            grid._popup.selection_set(5)
             grid._popup.bindings["<ButtonRelease-1>"](types.SimpleNamespace())
             self.assertEqual(editor.value, "/pause")
             self.assertIs(grid._editor, editor)
@@ -1226,7 +1226,7 @@ class TableGridTests(unittest.TestCase):
         with patch.object(self.module.tk, "Entry", EntryStub, create=True):
             grid._type_to_edit(types.SimpleNamespace(char="/", state=0))
             editor = grid._editor
-            for _ in range(4):
+            for _ in range(5):
                 editor.bindings["<Down>"](types.SimpleNamespace(widget=editor))
             self.assertEqual(grid._completion.current.text, "/pause")
             self.assertEqual(editor.bindings["<Return>"](
@@ -1287,9 +1287,9 @@ class TableGridTests(unittest.TestCase):
             self.assertEqual(source.read_bytes(), b"A\ta")
 
     def test_advanced_palette_reuses_text_and_placeholder_insertion(self):
-        from python_to_exe.editor.tsv_syntax import CANDIDATES, PALETTE_PAGES
+        from python_to_exe.editor.tsv_syntax import PALETTE_PAGES, palette_items
 
-        for candidate in (item for item in CANDIDATES if item.category in PALETTE_PAGES[1]):
+        for candidate in (item for category in PALETTE_PAGES[1] for item in palette_items(category)):
             with self.subTest(candidate=candidate.label):
                 grid, _, _ = self._navigation_grid("1\told\tkeep")
                 grid.selected = (0, 1)
@@ -1298,6 +1298,14 @@ class TableGridTests(unittest.TestCase):
                     editor = grid._editor
                     self.assertEqual(editor.value, candidate.text)
                     self.assertEqual(editor.selected_range, candidate.select)
+                    if candidate.own_row:
+                        # Column A of a new row below, written only on commit.
+                        grid.on_transform = lambda previous, current: True
+                        self.assertEqual(grid.selected, (1, 0))
+                        self.assertEqual(grid.model.to_text(), "1\told\tkeep\n")
+                        self.assertTrue(grid.commit_edit())
+                        self.assertEqual(grid.model.to_text(), "1\told\tkeep\n" + candidate.text)
+                        continue
                     self.assertEqual(grid.selected, (0, 1))
                     self.assertEqual(grid.model.to_text(), "1\told\tkeep")
                     self.assertTrue(grid.commit_edit())

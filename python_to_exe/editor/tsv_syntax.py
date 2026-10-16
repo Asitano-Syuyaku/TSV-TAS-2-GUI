@@ -13,10 +13,16 @@ class Candidate:
     select: Optional[Tuple[int, int]] = None
     short_label: Optional[str] = None
     icon_key: Optional[str] = None
+    palette: bool = True  # False: completion and highlighting only.
 
     @property
     def display_label(self):
         return self.label
+
+    @property
+    def own_row(self):
+        """STAS commands and settings: the converter reads them only from column A."""
+        return self.category in ROW_CATEGORIES
 
 
 _BUTTON_ICONS = {
@@ -32,6 +38,7 @@ _BUTTON_ICONS = {
        for key, name in (("u", "up"), ("d", "down"), ("l", "left"), ("r", "right"))},
 }
 ICON_CATEGORIES = ("buttons", "motion")
+ROW_CATEGORIES = ("commands", "script_info")
 
 
 def _button(name, category="buttons"):
@@ -40,9 +47,9 @@ def _button(name, category="buttons"):
     return Candidate(category, name, name, short_label=short_label, icon_key=icon_key)
 
 
-def _template(category, label, text, placeholder="0"):
+def _template(category, label, text, placeholder="0", palette=True):
     start = text.index(placeholder)
-    return Candidate(category, label, text, (start, start + len(placeholder)))
+    return Candidate(category, label, text, (start, start + len(placeholder)), palette=palette)
 
 
 # Keep this list tied to tsv-tas.py's getButtonBin, addToFrameRange and STAS
@@ -68,19 +75,26 @@ CANDIDATES = (
     *(_button(name, "cappy") for name in ("ca", "cb", "cx", "cy")),
     _template("cappy", "cls(angle)", "cls(0)"),
     _template("cappy", "crs(angle)", "crs(0)"),
-    _template("commands", "/tp x y z", "/tp 0 0 0"),
-    _template("commands", "/ctp x y z", "/ctp 0 0 0"),
+    # The palette shows five commands; palette=False ones stay in "/" completion.
+    _template("commands", "/tp x y z", "/tp 0 0 0", "0 0 0"),
+    _template("commands", "/ctp x y z", "/ctp 0 0 0", palette=False),
     _template("commands", "/absStick on", "/absStick on", "on"),
-    _template("commands", "/speed 2", "/speed 2", "2"),
-    Candidate("commands", "/pause", "/pause"),
-    _template("commands", "/loadFile 1", "/loadFile 1", "1"),
-    Candidate("commands", "/reloadFile", "/reloadFile"),
-    _template("commands", "/demo on", "/demo on", "on"),
+    _template("commands", "/absStick off", "/absStick off", "off"),
+    _template("commands", "/speed 10", "/speed 10", "10"),
+    Candidate("commands", "/pause", "/pause", palette=False),
+    _template("commands", "/loadFile 1", "/loadFile 1", "1", palette=False),
+    Candidate("commands", "/reloadFile", "/reloadFile", palette=False),
+    _template("commands", "/demo on", "/demo on", "on", palette=False),
     _template("commands", "/section TASer", "/section TASer", "TASer"),
-    # STAS header fields; the converter keeps the rest of the cell as the value.
-    Candidate("script_info", "$title = text", "$title = "),
-    Candidate("script_info", "$author = name", "$author = "),
-    Candidate("script_info", "$desc = text", "$desc = "),
+    # Script settings read by the converter; the rest of the cell is the value.
+    # $title and $desc still convert when typed; they are no longer on the palette.
+    _template("script_info", "$stage = StageName", "$stage = StageName", "StageName"),
+    _template("script_info", "$entrance = EntranceName", "$entrance = EntranceName",
+              "EntranceName"),
+    _template("script_info", "$scenario = 1", "$scenario = 1", "1"),
+    _template("script_info", "$pos = (0;0;0)", "$pos = (0;0;0)", "0;0;0"),
+    _template("script_info", "$is2p = true", "$is2p = true", "true"),
+    _template("script_info", "$author = name", "$author = name", "name"),
     Candidate("notation", "// comment", "// "),
     Candidate("notation", "$name = value", "$name = "),
     Candidate("notation", "a/b (loop)", "a/b"),
@@ -96,6 +110,12 @@ PALETTE_PAGES = (
 # Only insertable categories; the preview never supplies a Candidate.
 PALETTE_CATEGORIES = tuple(category for page in PALETTE_PAGES for category in page
                            if category != "stick_preview")
+
+
+def palette_items(category):
+    """The buttons one palette category shows, in order."""
+    return tuple(item for item in CANDIDATES if item.category == category and item.palette)
+
 _FRAGMENT = re.compile(r"(?:/[A-Za-z]*|\$[A-Za-z_]*|[A-Za-z][A-Za-z0-9_-]*)$")
 _DURATION = re.compile(r"\s*(?:\d+(?:\.\d+)?|\$[A-Za-z_][A-Za-z0-9_]*)\s*$")
 _FUNCTION_NAMES = sorted({item.text.split("(", 1)[0] for item in CANDIDATES
