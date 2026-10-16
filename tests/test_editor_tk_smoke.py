@@ -62,7 +62,11 @@ class RealTkSmokeTests(unittest.TestCase):
                 self.assertIsNone(inspector_ref())
                 self.assertIsNone(frames_ref())
                 self.assertIsNone(editor._inspector_snapshot)
+                # Closing a document's tab releases its caches; a blank tab stays.
+                source_tab = editor._tab
                 self.assertTrue(editor.new_document())
+                self.assertTrue(editor.close_tab(source_tab))
+                self.assertEqual(len(editor._tabs), 1)
                 app.update()
                 gc.collect()
                 self.assertIsNone(sticks_ref())
@@ -415,8 +419,10 @@ class RealTkSmokeTests(unittest.TestCase):
             self.assertTrue(editor.redo())
             self.assertTrue(editor.document.modified)
 
-            with patch("python_to_exe.editor.window.messagebox.askyesnocancel", return_value=False):
-                self.assertTrue(editor.new_document())
+            # New opens a blank tab; the modified document stays in its own tab.
+            self.assertTrue(editor.new_document())
+            self.assertEqual(len(editor._tabs), 2)
+            grid = editor.table_grid
             self.assertTrue(editor.show_table())
             app.update()
             self.assertGreaterEqual(grid.display_column_count, 7)

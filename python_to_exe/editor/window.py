@@ -1,11 +1,13 @@
 """Text editor with a literal TSV table view, shared by both GUI languages."""
 
+import os
 import sys
 import threading
 import tkinter as tk
 from pathlib import Path
 import traceback
 from queue import Empty, SimpleQueue
+from types import SimpleNamespace
 from tkinter import filedialog, font as tkfont, messagebox
 
 from .document import EditorDocument
@@ -42,7 +44,8 @@ LABELS = {
         "save_convert_send": "Save, Convert & Send",
         "recent_files": "Recent Files", "clear_recent": "Clear Recent Files",
         "no_recent": "(Empty)", "missing_recent": "File no longer exists:",
-        "close": "Close", "unsaved": "Save changes before continuing?",
+        "close": "Close", "close_tab": "Close Tab", "new_tab": "New Tab",
+        "unsaved": "Save changes before continuing?",
         "external_title": "File changed outside the Editor",
         "external_changed": "This file has changed outside the Editor.\nOverwrite it with the current Editor contents?",
         "external_missing": "The original file has been deleted.\nRecreate it at the same location?",
@@ -104,7 +107,8 @@ LABELS = {
         "save_convert_send": "保存・変換してFTP送信",
         "recent_files": "最近使ったファイル", "clear_recent": "履歴を消去",
         "no_recent": "（履歴なし）", "missing_recent": "ファイルが見つかりません:",
-        "close": "閉じる", "unsaved": "変更を保存してから続行しますか？",
+        "close": "閉じる", "close_tab": "タブを閉じる", "new_tab": "新しいタブ",
+        "unsaved": "変更を保存してから続行しますか？",
         "external_title": "Editor外のファイル変更",
         "external_changed": "このファイルはEditor外で変更されています。\n現在のEditor内容で上書きしますか？",
         "external_missing": "元ファイルが削除されています。\n同じ場所へ再作成しますか？",
@@ -161,6 +165,31 @@ LABELS = {
 }
 
 
+# One document per tab. The window holds the active tab's values as its own
+# attributes, so every editing method keeps working on "the" document; switching
+# tabs stores these and loads the other tab's (EditorWindow._activate_tab).
+# The 1F FEVER round (COMBO, HEAT, DOPA) belongs to the window, not to a tab.
+TAB_STATE = (
+    "document", "raw_frame", "line_numbers", "text", "table_grid", "_view",
+    "_recovery_id", "_recovery_job", "_validation_pending", "_analysis_pending",
+    "_frame_inspector", "_inspector_snapshot", "_positions", "_stick_frames",
+    "_position_key", "_position_revision", "_document_revision", "_position_job",
+    "_position_poll_job", "_position_worker_active", "_position_waiting",
+    "_position_due", "_frame_edit_pending", "_position_queue", "_gutter_job",
+    "_highlight_job", "_highlight_range", "_problem_rows", "_problem_snapshot",
+    "_problems_state", "_deferred", "_cursor_line",
+)
+TAB_NAME_LIMIT = 24
+
+
+class EditorTab:
+    """One open document. `state` holds TAB_STATE while the tab is in the background."""
+
+    def __init__(self, state):
+        self.state = state
+        self.chip = None  # Tab bar widgets.
+
+
 class EditorWindow(tk.Toplevel):
     def __init__(self, master, language="en", initial_path=None, on_saved=None,
                  on_convert=None, can_convert=None, on_validate=None, can_validate=None,
@@ -173,15 +202,13 @@ class EditorWindow(tk.Toplevel):
             self.settings = getattr(master, "_tas_app_settings", None)
             if self.settings is None:
                 self.settings = master._tas_app_settings = AppSettings()
-        self.document = EditorDocument()
         self._recovery_store = getattr(master, "recovery_store", None)
         if self._recovery_store is None:
             self._recovery_store = getattr(master, "_tas_recovery_store", None)
             if self._recovery_store is None:
                 self._recovery_store = master._tas_recovery_store = RecoveryStore.from_settings(self.settings)
-        self._recovery_id = recovery.document_id if recovery is not None else self._recovery_store.new_id()
-        self._recovery_store.active_ids.add(self._recovery_id)
-        self._recovery_job = None
+        self._tabs = []
+        self._tab = None
         self.on_saved = on_saved
         self.on_convert = on_convert
         self.can_convert = can_convert
@@ -189,30 +216,11 @@ class EditorWindow(tk.Toplevel):
         self.can_validate = can_validate
         self.on_analyze = on_analyze
         self.can_analyze = can_analyze
-        self._validation_pending = False
-        self._analysis_pending = False
-        self._frame_inspector = None
-        self._inspector_snapshot = None
-        self._positions = None
-        self._stick_frames = None
-        self._position_key = None
-        self._position_revision = 0
-        self._document_revision = 0
         self._closed = False
-        self._position_job = None
-        self._position_poll_job = None
-        self._position_worker_active = False
-        self._position_waiting = False
-        self._frame_edit_pending = False
-        self._position_queue = SimpleQueue()
         self.find_query = tk.StringVar(self)
         self.replace_value = tk.StringVar(self)
         self._find_dialog = None
-        self._gutter_job = None
-        self._highlight_job = None
-        self._highlight_range = None
         self._palette_icons = {}  # Keep PhotoImage references alive for Tk buttons.
-        self._view = "raw"
         self._workspace_job = None
         self._workspace_size = (self.settings.get("editor_width"),
                                 self.settings.get("editor_height"))
@@ -236,6 +244,7 @@ class EditorWindow(tk.Toplevel):
             ("save_convert_send", self.save_convert_and_send, "F8"),
             ("validate", self.validate, "F6"),
             ("analyze", self.analyze_frames, "F7"),
+            ("close_tab", self.close_tab, "Ctrl+W"),
             ("close", self.close_editor, ""),
         ):
             file_menu.add_command(label=self.words[key], command=command, accelerator=shortcut)
@@ -283,6 +292,7 @@ class EditorWindow(tk.Toplevel):
 
         from .widgets import scrollbar
 
+        self._build_tab_bar()  # Browser order: tabs on top, then the deck.
         self._build_command_deck()
         # FEVER HUD (§6): left FRAME METER (data) over the factual readout and Go
         # field; right REWARD canvas (game numbers, shouts, background motion).
@@ -325,48 +335,12 @@ class EditorWindow(tk.Toplevel):
                              highlightthickness=SPACING["rim"],
                              highlightbackground=HEAT_RAMP[0], highlightcolor=HEAT_RAMP[0])
         self._rim.pack(fill="both", expand=True, padx=SPACING["outer"], pady=(SPACING["gap"], 0))
-        frame = tk.Frame(self._rim, background=COLORS["app_background"])
-        frame.pack(fill="both", expand=True)
-        self.raw_frame = frame
         fixed_font = tkfont.nametofont("TkFixedFont")
         self._fixed_font = fixed_font
-        self.line_numbers = tk.Canvas(frame, width=40, highlightthickness=0,
-                                       background=COLORS["panel_background"])
-        self.text = tk.Text(frame, wrap="none", font=fixed_font, undo=True,
-                            exportselection=False,
-                            tabs=(fixed_font.measure(" " * 8),), **entry_options())
-        self.text.configure(highlightthickness=0)
-        vertical = scrollbar(frame, orient="vertical", command=self.text.yview)
-        horizontal = scrollbar(frame, orient="horizontal", command=self.text.xview)
-        self.text.configure(yscrollcommand=lambda first, last: self._on_scroll(vertical, first, last),
-                            xscrollcommand=horizontal.set)
-        for kind, color in HIGHLIGHT_COLORS.items():
-            self.text.tag_configure("syntax_" + kind, foreground=color)
-        # Cursor line (§8.2) sits below selection; syntax tags only set foreground.
-        self.text.tag_configure("cursor_line", background=COLORS["cursor_line"])
-        self.text.tag_lower("cursor_line")
-        self._cursor_line = None
-        self.line_numbers.grid(row=0, column=0, sticky="ns")
-        self.text.grid(row=0, column=1, sticky="nsew")
-        vertical.grid(row=0, column=2, sticky="ns")
-        horizontal.grid(row=1, column=1, sticky="ew")
-        frame.grid_rowconfigure(0, weight=1)
-        frame.grid_columnconfigure(1, weight=1)
-
-        # Import lazily so file/document logic remains usable without Tk widgets.
-        from .grid import TableGrid
+        # Shared by every tab: the palette on the right, the active tab's table beside it.
         self.table_area = tk.Frame(self._rim, background=COLORS["app_background"])
-        self.table_grid = TableGrid(self.table_area, fixed_font, self._table_cell_changed,
-                                    self._table_text_changed, self._update_status,
-                                    self.undo, self.redo, self.words,
-                                    on_edit_change=self._table_edit_pending,
-                                    on_column_resize=self._remember_column_width,
-                                    on_effect=self._table_effect)
-        self.table_grid.columns.import_widths(self.settings.get("editor_column_widths"))
-        self.table_grid._update_region()
         self._load_palette_icons()
         self._build_input_palette()
-        self.table_grid.pack(side="left", fill="both", expand=True)
         status_row = tk.Frame(self, background=COLORS["panel_background"])
         # Reserved from the bottom before the expanding work area: a short window
         # shrinks the Table, never the status row (mute / effects chips).
@@ -411,36 +385,9 @@ class EditorWindow(tk.Toplevel):
         self._problems_text.configure(highlightthickness=0)
         self._problems_text.tag_configure("jump", foreground=COLORS["accent"], underline=True)
         self._problems_text.bind("<Double-Button-1>", self._problem_double_click)
-        self._problem_rows = {}
-        self._problem_snapshot = None
-        self._update_view_button()
+        self._activate_tab(self._create_tab(
+            recovery.document_id if recovery is not None else None))
 
-        self.text.bind("<<Modified>>", self._on_modified)
-        self.text.bind("<KeyRelease>", self._update_status)
-        self.text.bind("<ButtonRelease-1>", self._update_status)
-        self.text.bind("<Configure>", self._on_text_configure)
-        for sequence in ("<KeyPress-Return>", "<KeyPress-KP_Enter>"):
-            self.text.bind(sequence, self._raw_return, add="+")
-        for sequence, command in (
-            ("<Control-n>", self.new_document), ("<Control-o>", self.open_file),
-            ("<Control-s>", self.save), ("<Control-Shift-S>", self.save_as),
-            ("<Control-Shift-s>", self.save_as),
-            ("<F5>", self.save_and_convert),
-            ("<F8>", self.save_convert_and_send),
-            ("<F6>", self.validate),
-            ("<F7>", self.analyze_frames),
-            ("<Control-z>", self.undo), ("<Control-y>", self.redo),
-            ("<Control-x>", self.cut), ("<Control-c>", self.copy),
-            ("<Control-v>", self.paste), ("<Control-a>", self.select_all),
-            ("<Control-f>", self.show_find), ("<Control-h>", self.show_replace),
-            ("<Control-g>", self.focus_frame_entry),
-            ("<F3>", self.find_next), ("<Shift-F3>", self.find_previous),
-            ("<Control-Shift-D>", self._cycle_dopa_motion),
-            ("<Control-Shift-d>", self._cycle_dopa_motion),
-            ("<Control-Shift-M>", self._toggle_sound),
-            ("<Control-Shift-m>", self._toggle_sound),
-        ):
-            self.text.bind(sequence, lambda event, action=command: self._shortcut(action))
         for sequence, command in (
             ("<Control-n>", self.new_document),
             ("<Control-o>", self.open_file),
@@ -460,6 +407,7 @@ class EditorWindow(tk.Toplevel):
             ("<Control-Shift-d>", self._cycle_dopa_motion),
             ("<Control-Shift-M>", self._toggle_sound),
             ("<Control-Shift-m>", self._toggle_sound),
+            *self._tab_shortcuts(),
         ):
             self.bind(sequence, lambda event, action=command: self._shortcut(action))
         self.protocol("WM_DELETE_WINDOW", self.close_editor)
@@ -755,6 +703,340 @@ class EditorWindow(tk.Toplevel):
             self._problems_tape.pack(fill="x", before=self._problems_header)
         else:
             self._problems_tape.pack_forget()
+
+    # Tabs ---------------------------------------------------------------------
+
+    def _build_tab_bar(self):
+        """Browser-style strip: one chip per document, "+" for a new tab."""
+        bar = tk.Frame(self, background=COLORS["app_background"])
+        bar.pack(fill="x", padx=SPACING["outer"], pady=(SPACING["gap"], 0))
+        self._tab_strip = bar
+        self._new_tab_button = tk.Label(bar, text="+", padx=SPACING["outer"],
+                                        cursor="hand2",
+                                        **label_options("app_background", "heading",
+                                                        self._theme_fonts))
+        self._new_tab_button.configure(foreground=COLORS["muted_text"])
+        self._new_tab_button.pack(side="left")
+        self._new_tab_button.bind("<Button-1>", lambda event: self._shortcut(self.new_document))
+        self._new_tab_button.bind("<Enter>", lambda event: self._new_tab_button.configure(
+            foreground=COLORS["accent"]))
+        self._new_tab_button.bind("<Leave>", lambda event: self._new_tab_button.configure(
+            foreground=COLORS["muted_text"]))
+        bar.bind("<Double-Button-1>", lambda event: self._shortcut(self.new_document))
+
+    def _build_tab_chip(self, tab):
+        chip = tk.Frame(self._tab_strip, background=COLORS["secondary_background"])
+        stripe = tk.Frame(chip, height=2, background=COLORS["secondary_background"])
+        stripe.pack(fill="x", side="top")
+        body = tk.Frame(chip, background=COLORS["secondary_background"])
+        body.pack(fill="both", expand=True)
+        dot = tk.Label(body, **label_options("secondary_background", fonts=self._theme_fonts))
+        dot.configure(foreground=COLORS["neon_magenta"], padx=0)
+        dot.pack(side="left", padx=(SPACING["outer"], 0), pady=SPACING["gap"])
+        name = tk.Label(body, **label_options("secondary_background", fonts=self._theme_fonts))
+        name.pack(side="left", padx=(SPACING["gap"], 0), pady=SPACING["gap"])
+        close = tk.Label(body, text="×", cursor="hand2",
+                         **label_options("secondary_background", fonts=self._theme_fonts))
+        close.configure(foreground=COLORS["muted_text"])
+        close.pack(side="left", padx=(SPACING["gap"], SPACING["section"]), pady=SPACING["gap"])
+        chip.pack(side="left", padx=(0, 2), before=self._new_tab_button)
+        for widget in (chip, stripe, body, dot, name):
+            widget.bind("<Button-1>", lambda event, item=tab: self._shortcut(
+                lambda: self._activate_tab(item)))
+            widget.bind("<Button-2>", lambda event, item=tab: self._shortcut(
+                lambda: self.close_tab(item)))  # Middle click, as in browsers.
+        close.bind("<Button-1>", lambda event, item=tab: self._shortcut(lambda: self.close_tab(item)))
+        close.bind("<Enter>", lambda event: close.configure(foreground=COLORS["neon_orange"]))
+        close.bind("<Leave>", lambda event: close.configure(foreground=COLORS["muted_text"]))
+        tab.chip = SimpleNamespace(frame=chip, stripe=stripe, body=body, dot=dot, name=name,
+                                   close=close)
+
+    def _refresh_tabs(self):
+        for tab in getattr(self, "_tabs", ()):
+            if tab.chip is None:
+                continue
+            active = tab is self._tab
+            document = self.document if active else tab.state["document"]
+            name = document.path.name if document.path else self.words["untitled"]
+            if len(name) > TAB_NAME_LIMIT:
+                name = name[:TAB_NAME_LIMIT - 1] + "…"
+            surface = COLORS["panel_background" if active else "secondary_background"]
+            chip = tab.chip
+            for widget in (chip.frame, chip.body, chip.dot, chip.name, chip.close):
+                widget.configure(background=surface)
+            chip.stripe.configure(background=COLORS["accent"] if active else surface)
+            chip.name.configure(text=name, foreground=COLORS["text" if active else "muted_text"])
+            chip.dot.configure(text="●" if document.modified else "")
+
+    def _tab_shortcuts(self):
+        return (("<Control-w>", self.close_tab),
+                ("<Control-Tab>", lambda: self._next_tab(1)),
+                ("<Control-Shift-Tab>", lambda: self._next_tab(-1)),
+                ("<Control-ISO_Left_Tab>", lambda: self._next_tab(-1)))  # X11 Shift+Tab.
+
+    def _bind_text(self, text):
+        text.bind("<<Modified>>", self._on_modified)
+        text.bind("<KeyRelease>", self._update_status)
+        text.bind("<ButtonRelease-1>", self._update_status)
+        text.bind("<Configure>", self._on_text_configure)
+        for sequence in ("<KeyPress-Return>", "<KeyPress-KP_Enter>"):
+            text.bind(sequence, self._raw_return, add="+")
+        for sequence, command in (
+            ("<Control-n>", self.new_document), ("<Control-o>", self.open_file),
+            ("<Control-s>", self.save), ("<Control-Shift-S>", self.save_as),
+            ("<Control-Shift-s>", self.save_as),
+            ("<F5>", self.save_and_convert),
+            ("<F8>", self.save_convert_and_send),
+            ("<F6>", self.validate),
+            ("<F7>", self.analyze_frames),
+            ("<Control-z>", self.undo), ("<Control-y>", self.redo),
+            ("<Control-x>", self.cut), ("<Control-c>", self.copy),
+            ("<Control-v>", self.paste), ("<Control-a>", self.select_all),
+            ("<Control-f>", self.show_find), ("<Control-h>", self.show_replace),
+            ("<Control-g>", self.focus_frame_entry),
+            ("<F3>", self.find_next), ("<Shift-F3>", self.find_previous),
+            ("<Control-Shift-D>", self._cycle_dopa_motion),
+            ("<Control-Shift-d>", self._cycle_dopa_motion),
+            ("<Control-Shift-M>", self._toggle_sound),
+            ("<Control-Shift-m>", self._toggle_sound),
+            # Before Text's own Control-Tab focus traversal.
+            *self._tab_shortcuts(),
+        ):
+            text.bind(sequence, lambda event, action=command: self._shortcut(action))
+
+    def _create_tab(self, recovery_id=None):
+        """A new, not yet shown document tab with its own Text and table."""
+        from .grid import TableGrid
+        from .widgets import scrollbar
+
+        fixed_font = self._fixed_font
+        frame = tk.Frame(self._rim, background=COLORS["app_background"])
+        line_numbers = tk.Canvas(frame, width=40, highlightthickness=0,
+                                 background=COLORS["panel_background"])
+        text = tk.Text(frame, wrap="none", font=fixed_font, undo=True, exportselection=False,
+                       tabs=(fixed_font.measure(" " * 8),), **entry_options())
+        text.configure(highlightthickness=0)
+        vertical = scrollbar(frame, orient="vertical", command=text.yview)
+        horizontal = scrollbar(frame, orient="horizontal", command=text.xview)
+        text.configure(yscrollcommand=lambda first, last: self._on_scroll(vertical, first, last),
+                       xscrollcommand=horizontal.set)
+        for kind, color in HIGHLIGHT_COLORS.items():
+            text.tag_configure("syntax_" + kind, foreground=color)
+        # Cursor line (§8.2) sits below selection; syntax tags only set foreground.
+        text.tag_configure("cursor_line", background=COLORS["cursor_line"])
+        text.tag_lower("cursor_line")
+        line_numbers.grid(row=0, column=0, sticky="ns")
+        text.grid(row=0, column=1, sticky="nsew")
+        vertical.grid(row=0, column=2, sticky="ns")
+        horizontal.grid(row=1, column=1, sticky="ew")
+        frame.grid_rowconfigure(0, weight=1)
+        frame.grid_columnconfigure(1, weight=1)
+        self._bind_text(text)
+        grid = TableGrid(self.table_area, fixed_font, self._table_cell_changed,
+                         self._table_text_changed, self._update_status,
+                         self.undo, self.redo, self.words,
+                         on_edit_change=self._table_edit_pending,
+                         on_column_resize=self._remember_column_width,
+                         on_effect=self._table_effect)
+        grid.columns.import_widths(self.settings.get("editor_column_widths"))
+        grid._update_region()
+        if recovery_id is None:
+            recovery_id = self._recovery_store.new_id()
+        self._recovery_store.active_ids.add(recovery_id)
+        tab = EditorTab(dict(
+            document=EditorDocument(), raw_frame=frame, line_numbers=line_numbers, text=text,
+            table_grid=grid, _view="raw", _recovery_id=recovery_id, _recovery_job=None,
+            _validation_pending=False, _analysis_pending=False, _frame_inspector=None,
+            _inspector_snapshot=None, _positions=None, _stick_frames=None, _position_key=None,
+            _position_revision=0, _document_revision=0, _position_job=None,
+            _position_poll_job=None, _position_worker_active=False, _position_waiting=False,
+            _position_due=False, _frame_edit_pending=False, _position_queue=SimpleQueue(),
+            _gutter_job=None, _highlight_job=None, _highlight_range=None, _problem_rows={},
+            _problem_snapshot=None, _problems_state=None, _deferred=[], _cursor_line=None))
+        self._tabs.append(tab)
+        if hasattr(self, "_tab_strip"):
+            self._build_tab_chip(tab)
+        return tab
+
+    def _activate_tab(self, tab, *, keep_current=True):
+        """Show `tab`. The current tab's pending cell is committed and its timers paused."""
+        current = self._tab
+        if tab is current:
+            return True
+        if current is not None and keep_current:
+            if not self._commit_table_edit():
+                return False
+            self._on_modified()  # Pending Text edits reach the document now.
+            self._suspend_active()
+            self.raw_frame.pack_forget()
+            self.table_grid.pack_forget()
+            current.state = {name: getattr(self, name) for name in TAB_STATE}
+        self._tab = tab
+        for name, value in tab.state.items():
+            setattr(self, name, value)
+        tab.state = None
+        # Column widths are shared: a width dragged in another tab applies here too.
+        self.table_grid.columns.import_widths(self.settings.get("editor_column_widths"))
+        self.table_grid._update_region()
+        self.table_grid.pack(side="left", fill="both", expand=True)
+        self._problems_panel.pack_forget()
+        self._set_problem_badge(None)
+        self._show_view()
+        self._resume_active()
+        self._update_title()
+        self._update_status()
+        self._update_view_button()
+        if self._view == "table":
+            self.table_grid.canvas.focus_set()
+        else:
+            self.text.focus_set()
+        return True
+
+    def _show_view(self):
+        if self._view == "table":
+            self.raw_frame.pack_forget()
+            self.table_area.pack(fill="both", expand=True)
+            self.table_tools.pack(side="left", padx=(SPACING["gap"], 0),
+                                  after=getattr(self, "_view_toggle", self._table_button))
+        else:
+            self.table_area.pack_forget()
+            self.table_tools.pack_forget()
+            self.raw_frame.pack(fill="both", expand=True)
+
+    def _suspend_active(self):
+        """Background tabs run no timers: save recovery now, resume analysis later."""
+        if self._recovery_job is not None:
+            self.after_cancel(self._recovery_job)
+            self._recovery_job = None
+            self._write_recovery()
+        if self._position_job is not None:
+            self.after_cancel(self._position_job)
+            self._position_job = None
+            self._position_due = True
+        for name in ("_position_poll_job", "_gutter_job", "_highlight_job"):
+            job = getattr(self, name)
+            if job is not None:
+                self.after_cancel(job)
+                setattr(self, name, None)
+
+    def _resume_active(self):
+        if self._position_due:
+            self._position_due = False
+            self._position_job = self.after(500, self._start_position_analysis)
+        if self._position_worker_active and self._position_poll_job is None:
+            self._position_poll_job = self.after(50, self._poll_position_analysis)
+        self._schedule_line_numbers()
+        self._schedule_highlight()
+        self._replay_problems()
+        # Results that arrived while this tab was in the background.
+        deferred, self._deferred = self._deferred, []
+        for callback in deferred:
+            callback()
+
+    def _next_tab(self, step):
+        if len(self._tabs) > 1:
+            index = self._tabs.index(self._tab)
+            self._activate_tab(self._tabs[(index + step) % len(self._tabs)])
+
+    def _tab_document(self, tab):
+        return self.document if tab is self._tab else tab.state["document"]
+
+    def _tab_for_path(self, path):
+        target = os.path.normcase(os.path.abspath(path))
+        for tab in getattr(self, "_tabs", ()):
+            document = self._tab_document(tab)
+            if document.path is not None and os.path.normcase(os.path.abspath(document.path)) == target:
+                return tab
+        return None
+
+    def _tab_is_blank(self):
+        """The active tab holds an untouched untitled document (a fresh Editor's tab)."""
+        return (self.document.path is None and not self.document.modified and
+                not self.document.text and not getattr(self, "_frame_edit_pending", False))
+
+    def open_tab(self, path=None):
+        """Converter entry: bring this Editor forward and show `path` in a tab."""
+        self.deiconify()
+        self.lift()
+        if path:
+            return self.open_file(path)
+        return True if self._tab_is_blank() else self.new_document()
+
+    def restore_tab(self, recovery):
+        """Startup recovery: one more tab holding the unsaved snapshot."""
+        if self._tab_is_blank():
+            self._recovery_store.delete(self._recovery_id)
+            self._recovery_store.release(self._recovery_id)
+            self._recovery_id = recovery.document_id
+            self._recovery_store.active_ids.add(self._recovery_id)
+        elif not self._commit_table_edit():
+            return False
+        else:
+            tab = self._create_tab(recovery.document_id)
+            if not self._activate_tab(tab):
+                self._drop_tab(tab)
+                return False
+        self.deiconify()
+        self.lift()
+        recovery.restore(self.document)
+        self._show_document()
+        self._schedule_recovery()
+        return True
+
+    def _drop_tab(self, tab):
+        """Remove a background tab's widgets; its recovery must already be settled."""
+        state = tab.state
+        self._tabs.remove(tab)
+        state["raw_frame"].destroy()
+        state["table_grid"].destroy()
+        inspector = state["_frame_inspector"]
+        if inspector is not None and inspector.winfo_exists():
+            inspector.destroy()
+        if tab.chip is not None:
+            tab.chip.frame.destroy()
+        # A closed tab keeps nothing alive, even if something still refers to it.
+        tab.state = tab.chip = None
+
+    def close_tab(self, tab=None):
+        """Close one tab after the usual unsaved-changes question; the last closes the Editor."""
+        tab = tab or self._tab
+        if len(self._tabs) <= 1:
+            return self.close_editor()
+        if not self._activate_tab(tab):  # Show what is about to close.
+            return False
+        if not self._confirm_discard():
+            return False
+        self._discard_recovery()
+        self._recovery_store.release(self._recovery_id)
+        self._suspend_active()
+        index = self._tabs.index(tab)
+        tab.state = {name: getattr(self, name) for name in TAB_STATE}
+        self._drop_tab(tab)
+        self._tab = None
+        self._activate_tab(self._tabs[min(index, len(self._tabs) - 1)], keep_current=False)
+        self._refresh_tabs()
+        return True
+
+    def _hide_problems(self):
+        panel = getattr(self, "_problems_panel", None)
+        if panel is not None:
+            panel.pack_forget()
+            self._set_problem_badge(None)
+        self._problem_rows = {}
+        self._problem_snapshot = None
+        self._problems_state = None
+
+    def _replay_problems(self):
+        state = self._problems_state
+        if state is None:
+            return
+        kind, value = state[0], state[1:]
+        if kind == "title":
+            self._show_problem_title(*value)
+        elif kind == "stale":
+            self._show_stale_result(*value)
+        else:
+            self._show_validation_result(*value)
 
     def _load_palette_icons(self):
         for candidate in CANDIDATES:
@@ -1126,6 +1408,9 @@ class EditorWindow(tk.Toplevel):
             if getattr(self, "_recovery_store", None) is not None:
                 # Direct destruction/forced shutdown cancels timers but retains recovery.
                 self._recovery_store.release(self._recovery_id)
+                for tab in getattr(self, "_tabs", ()):
+                    if tab is not self._tab:  # Background tabs run no timers.
+                        self._recovery_store.release(tab.state["_recovery_id"])
 
     def _draw_line_numbers(self):
         self._gutter_job = None
@@ -1416,6 +1701,7 @@ class EditorWindow(tk.Toplevel):
         name = self.document.path.name if self.document.path else self.words["untitled"]
         mark = " *" if self.document.modified else ""
         self.title(f"{name}{mark} — {self.words['title']}")
+        self._refresh_tabs()
 
     def _sync_text(self):
         before = self.document.text
@@ -1529,9 +1815,7 @@ class EditorWindow(tk.Toplevel):
             self._sync_text()
             if (getattr(self, "_problem_snapshot", None) is not None and
                     self.document.text != self._problem_snapshot):
-                self._problems_panel.pack_forget()
-                self._problem_rows = {}
-                self._problem_snapshot = None
+                self._hide_problems()
             if (getattr(self, "_inspector_snapshot", None) is not None and
                     self.document.text != self._inspector_snapshot and
                     self._frame_inspector is not None and self._frame_inspector.winfo_exists()):
@@ -1544,9 +1828,7 @@ class EditorWindow(tk.Toplevel):
     def _show_document(self):
         self._document_revision = getattr(self, "_document_revision", 0) + 1
         if hasattr(self, "_problems_panel"):
-            self._problems_panel.pack_forget()
-            self._problem_rows = {}
-            self._problem_snapshot = None
+            self._hide_problems()
         if (getattr(self, "_frame_inspector", None) is not None and
                 self._frame_inspector.winfo_exists()):
             self._frame_inspector.mark_stale()
@@ -1790,10 +2072,14 @@ class EditorWindow(tk.Toplevel):
         return self.save() if choice else True
 
     def new_document(self):
-        if not self._confirm_discard():
+        """An untitled document in a new tab; the other tabs stay as they are."""
+        if not self._commit_table_edit():
             return False
-        self.document.new()
-        self._discard_recovery(replace_document=True)
+        tab = self._create_tab()
+        if not self._activate_tab(tab):
+            self._recovery_store.release(tab.state["_recovery_id"])
+            self._drop_tab(tab)
+            return False
         self._show_document()
         return True
 
@@ -1838,14 +2124,26 @@ class EditorWindow(tk.Toplevel):
             path = filedialog.askopenfilename(parent=self, filetypes=[("TSV/TXT", "*.tsv *.txt")])
         if not path:
             return False
-        if not self._confirm_discard():
+        existing = self._tab_for_path(path)
+        if existing is not None:  # Already open: show that tab.
+            return self._activate_tab(existing)
+        if not self._commit_table_edit():
             return False
+        document = EditorDocument()
         try:
-            self.document.open(path)
+            document.open(path)
         except (OSError, UnicodeError, ValueError) as error:
             messagebox.showerror(self.words["error"], str(error), parent=self)
             return False
-        self._discard_recovery(replace_document=True)
+        if self._tab_is_blank():  # A fresh Editor's empty tab becomes this file.
+            self._discard_recovery(replace_document=True)
+        else:
+            tab = self._create_tab()
+            if not self._activate_tab(tab):
+                self._recovery_store.release(tab.state["_recovery_id"])
+                self._drop_tab(tab)
+                return False
+        self.document = document
         self._show_document()
         self._record_recent(self.document.path)
         return True
@@ -1875,6 +2173,7 @@ class EditorWindow(tk.Toplevel):
         started = bool(self.on_convert(self.document.path, send_ftp=send_ftp))
         if started and director is not None:
             self._conversion_send = send_ftp
+            self._conversion_tab = getattr(self, "_tab", None)
             director.conversion_started(send_ftp)
         return started
 
@@ -1905,8 +2204,13 @@ class EditorWindow(tk.Toplevel):
             if stderr:
                 lines.append(stderr.rstrip())
             from .validation import ValidationResult
-            self._show_validation_result(ValidationResult(
-                False, stdout=stdout or "", stderr="\n".join(line for line in lines if line)))
+            report = ValidationResult(
+                False, stdout=stdout or "", stderr="\n".join(line for line in lines if line))
+            tab = getattr(self, "_conversion_tab", None)
+            if tab is not None and tab is not self._tab and tab in self._tabs:
+                tab.state["_deferred"].append(lambda: self._show_validation_result(report))
+            else:
+                self._show_validation_result(report)
         return True
 
     def save_convert_and_send(self):
@@ -1922,9 +2226,17 @@ class EditorWindow(tk.Toplevel):
         snapshot, identity = self._inspection_snapshot()
         self._validation_pending = True
         self._show_problem_title(self.words["validating"])
+        tab = getattr(self, "_tab", None)
 
-        def receive(result):
+        def receive(result, replay=False):
             if getattr(self, "_closed", False) or not self.winfo_exists():
+                return
+            director = getattr(self, "_dopa", None)
+            if tab is not None and tab is not self._tab:
+                if director is not None:  # The check really ended: SCAN stops, no shout.
+                    director.validation_result(result.success, False)
+                if tab in self._tabs:
+                    tab.state["_deferred"].append(lambda: receive(result, replay=True))
                 return
             self._validation_pending = False
             self._sync_text()
@@ -1933,19 +2245,18 @@ class EditorWindow(tk.Toplevel):
                 self._show_validation_result(result)
             else:
                 self._show_stale_result(self.words["stale_validation"])
-            director = getattr(self, "_dopa", None)
-            if director is not None:
+            if director is not None and not replay:
                 director.validation_result(result.success, current)
 
         try:
             started = self.on_validate(snapshot, receive)
         except Exception:
             self._validation_pending = False
-            self._problems_panel.pack_forget()
+            self._hide_problems()
             raise
         if not started:
             self._validation_pending = False
-            self._problems_panel.pack_forget()
+            self._hide_problems()
         elif self._validation_pending and getattr(self, "_dopa", None) is not None:
             self._dopa.check_started()
         return bool(started)
@@ -1963,23 +2274,28 @@ class EditorWindow(tk.Toplevel):
         self._show_problem_title(self.words["analyzing"])
         if self._frame_inspector is not None and self._frame_inspector.winfo_exists():
             self._frame_inspector.mark_stale()
+        tab = getattr(self, "_tab", None)
 
-        def receive(result):
+        def receive(result, replay=False):
             if getattr(self, "_closed", False) or not self.winfo_exists():
+                return
+            director = getattr(self, "_dopa", None)
+            if tab is not None and tab is not self._tab:
+                if director is not None:  # The analysis really ended: SCAN stops, no shout.
+                    director.analysis_result(result.success, False)
+                if tab in self._tabs:
+                    tab.state["_deferred"].append(lambda: receive(result, replay=True))
                 return
             self._analysis_pending = False
             self._sync_text()
             current = self._inspection_is_current(identity)
-            director = getattr(self, "_dopa", None)
-            if director is not None:
+            if director is not None and not replay:
                 director.analysis_result(result.success, current,
                                          result.frames.total_frames if result.success else None)
             if not current:
                 self._show_stale_result(self.words["stale_analysis"])
             elif result.success:
-                self._problems_panel.pack_forget()
-                self._problem_rows = {}
-                self._problem_snapshot = None
+                self._hide_problems()
                 from .frame_inspector import FrameInspector
                 if self._frame_inspector is None or not self._frame_inspector.winfo_exists():
                     self._frame_inspector = FrameInspector(
@@ -2003,11 +2319,11 @@ class EditorWindow(tk.Toplevel):
             started = self.on_analyze(snapshot, receive)
         except Exception:
             self._analysis_pending = False
-            self._problems_panel.pack_forget()
+            self._hide_problems()
             raise
         if not started:
             self._analysis_pending = False
-            self._problems_panel.pack_forget()
+            self._hide_problems()
         elif self._analysis_pending and getattr(self, "_dopa", None) is not None:
             self._dopa.check_started()
         return bool(started)
@@ -2031,6 +2347,7 @@ class EditorWindow(tk.Toplevel):
     def _show_problem_title(self, title, badge=None):
         self._problems_title.config(text=title)
         self._set_problem_badge(badge)
+        self._problems_state = ("title", title, badge)
         rim = getattr(self, "_rim", None)
         if rim is not None:  # Above the status row, also reserved before the work area.
             self._problems_panel.pack(side="bottom", fill="x", before=rim)
@@ -2042,6 +2359,7 @@ class EditorWindow(tk.Toplevel):
         self._problem_snapshot = None
         self._problems_text.pack_forget()
         self._show_problem_title(title)
+        self._problems_state = ("stale", title)
 
     def _show_validation_result(self, result):
         self._problem_snapshot = self.document.text
@@ -2064,6 +2382,7 @@ class EditorWindow(tk.Toplevel):
                                                 f"{display_row}.0 lineend")
             self._problems_text.pack(fill="x")
         self._problems_text.config(state="disabled")
+        self._problems_state = ("result", result)
 
     def _problem_double_click(self, event):
         if self._problem_snapshot != self.document.text:
@@ -2136,11 +2455,21 @@ class EditorWindow(tk.Toplevel):
         return True
 
     def close_editor(self):
-        if self._confirm_discard():
-            self._discard_recovery()
-            if self._gutter_job is not None:
-                self.after_cancel(self._gutter_job)
-                self._gutter_job = None
-            self.destroy()
-            return True
-        return False
+        """Close the window: each modified tab is shown and asked about; Cancel keeps all."""
+        for tab in list(getattr(self, "_tabs", ())) or [None]:
+            if tab is not None and tab is not self._tab:
+                if not self._tab_document(tab).modified:
+                    continue
+                if not self._activate_tab(tab):
+                    return False
+            if not self._confirm_discard():
+                return False
+        for tab in getattr(self, "_tabs", ()):
+            if tab is not self._tab:
+                self._recovery_store.delete(tab.state["_recovery_id"])
+        self._discard_recovery()
+        if self._gutter_job is not None:
+            self.after_cancel(self._gutter_job)
+            self._gutter_job = None
+        self.destroy()
+        return True
