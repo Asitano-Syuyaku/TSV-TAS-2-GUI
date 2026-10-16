@@ -2,7 +2,7 @@
 
 import tkinter as tk
 
-from .theme import COLORS, SIZES, SPACING, TRAIL_COLORS, label_options
+from .theme import COLORS, SIZES, SPACING, TRAIL_COLORS, label_options, px
 
 
 STICK_SCALE = 32767.0
@@ -36,7 +36,8 @@ class StickPreview(tk.Frame):
         for column, name in enumerate(("LS", "RS")):
             self.grid_columnconfigure(column, weight=1, uniform="sticks")
             tk.Label(self, text=name, **label_options(role="heading", fonts=fonts)).grid(row=1, column=column)
-            canvas = tk.Canvas(self, width=SIZES["plot_width"], height=PLOT_HEIGHT, highlightthickness=0,
+            canvas = tk.Canvas(self, width=px(SIZES["plot_width"]), height=px(PLOT_HEIGHT),
+                               highlightthickness=0,
                                background=COLORS["panel_background"])
             canvas.grid(row=2, column=column, sticky="ew", padx=SPACING["button_gap"])
             values = tk.Label(self, text="x: —  y: —\nr: —  θ: —", **label_options(role="small", fonts=fonts))
@@ -63,15 +64,17 @@ class StickPreview(tk.Frame):
     def _draw(self, column):
         canvas = self.plots[column]
         canvas.delete("all")
-        width = max(canvas.winfo_width(), SIZES["plot_width"])
-        height = PLOT_HEIGHT
+        width = max(canvas.winfo_width(), px(SIZES["plot_width"]))
+        height = px(PLOT_HEIGHT)
         cx, cy = width / 2, height / 2
-        radius = min(width, height) / 2 - 10
+        radius = min(width, height) / 2 - px(10)
         canvas.create_line(cx - radius, cy, cx + radius, cy, fill=COLORS["preview_axis"])
         canvas.create_line(cx, cy - radius, cx, cy + radius, fill=COLORS["preview_axis"])
         canvas.create_oval(cx - radius, cy - radius, cx + radius, cy + radius,
                            outline=COLORS["preview_circle"])
-        canvas.create_oval(cx - 2, cy - 2, cx + 2, cy + 2, fill=COLORS["preview_center"], outline="")
+        dot = px(2)
+        canvas.create_oval(cx - dot, cy - dot, cx + dot, cy + dot, fill=COLORS["preview_center"],
+                           outline="")
         current = None
         for sample in reversed(self.samples):
             age = self.frame - sample.frame
@@ -81,7 +84,7 @@ class StickPreview(tk.Frame):
             point = point_position(state, cx, cy, radius)
             if point is not None:
                 x, y = point
-                size = 4 if age == 0 else 3
+                size = px(4 if age == 0 else 3)
                 canvas.create_oval(x - size, y - size, x + size, y + size,
                                    fill=TRAIL_COLORS[age], outline="",
                                    tags=("sample", f"age{age}"))

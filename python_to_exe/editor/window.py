@@ -16,13 +16,13 @@ from .snapshot import ScriptSnapshot
 from .text_ops import (file_kind, find_next as next_match, find_previous as previous_match,
                        line_column, replace_all as replace_every, replace_current as replace_match)
 from .theme import (CATEGORY_COLORS, COLORS, FONTS, SIZES, SPACING, SYNTAX_COLORS,
-                    button_options, editor_fonts, entry_options, label_options)
+                    button_options, editor_fonts, entry_options, label_options, px)
 from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
 
 if __package__ == "editor":
-    from app_settings import AppSettings, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
+    from app_settings import AppSettings, EDITOR_SIZE_DEFAULT, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
 else:
-    from ..app_settings import AppSettings, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
+    from ..app_settings import AppSettings, EDITOR_SIZE_DEFAULT, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
 
 
 HIGHLIGHT_COLORS = SYNTAX_COLORS
@@ -199,7 +199,7 @@ class EditorWindow(tk.Toplevel):
                                 self.settings.get("editor_height"))
         # The saved size is the restored (un-maximized) size; maximized is a separate choice.
         self.geometry(self._restored_geometry(*self._fitted_size(*self._workspace_size)))
-        self.minsize(*EDITOR_SIZE_MIN)
+        self.minsize(*self._fitted_size(px(EDITOR_SIZE_MIN[0]), px(EDITOR_SIZE_MIN[1])))
         self._last_maximized = None
         if self.settings.get("editor_maximized"):
             self._set_maximized(True)
@@ -402,7 +402,9 @@ class EditorWindow(tk.Toplevel):
             self._restore_editor_view()
 
     def _fitted_size(self, width, height):
-        """Always fit the screen on Windows; X11 window managers constrain on their own."""
+        """Scale the never-saved default with the display, and always fit the screen."""
+        if (width, height) == EDITOR_SIZE_DEFAULT:
+            width, height = px(width), px(height)
         if not sys.platform.startswith("win"):
             return width, height
         try:
@@ -461,7 +463,7 @@ class EditorWindow(tk.Toplevel):
         from .stick_preview import StickPreview
 
         fonts = getattr(self, "_theme_fonts", FONTS)
-        self.input_palette = tk.Frame(self.table_area, width=SIZES["palette_width"],
+        self.input_palette = tk.Frame(self.table_area, width=px(SIZES["palette_width"]),
                                       background=COLORS["panel_background"],
                                       highlightthickness=1, highlightbackground=COLORS["subtle_border"])
         self.input_palette.pack_propagate(False)
@@ -525,7 +527,7 @@ class EditorWindow(tk.Toplevel):
                     if span == 2 and slot % 2:
                         slot += 1
                     row, column = divmod(slot, columns)
-                    group.grid_rowconfigure(row, minsize=SIZES["palette_row"])
+                    group.grid_rowconfigure(row, minsize=px(SIZES["palette_row"]))
                     button = self._palette_button(group, candidate)
                     if columns == 4:
                         button.configure(anchor="center", padx=1)

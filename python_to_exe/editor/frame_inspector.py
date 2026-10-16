@@ -3,6 +3,8 @@
 import tkinter as tk
 from pathlib import Path
 
+from .theme import px
+
 
 # Display labels are intentionally separate from the converter's exact CSV fields.
 MAIN_COLUMNS = (
@@ -28,8 +30,10 @@ class FrameInspector(tk.Toplevel):
         self._draw_job = None
         self._column_edges = [0]
         for _, _, width in MAIN_COLUMNS:
-            self._column_edges.append(self._column_edges[-1] + width)
-        self.geometry("1050x550")
+            self._column_edges.append(self._column_edges[-1] + px(width))
+        # Sizes are defined at 96 DPI and follow the Windows display scale.
+        self.row_height, self.header_height = px(ROW_HEIGHT), px(HEADER_HEIGHT)
+        self.geometry(f"{px(1050)}x{px(550)}")
 
         top = tk.Frame(self)
         top.pack(fill="x")
@@ -106,40 +110,40 @@ class FrameInspector(tk.Toplevel):
         y0 = canvas.canvasy(0)
         x0 = canvas.canvasx(0)
         x1 = x0 + canvas.winfo_width()
-        first = max(0, int((y0 - HEADER_HEIGHT) // ROW_HEIGHT))
+        first = max(0, int((y0 - self.header_height) // self.row_height))
         last = min(len(self.frames.rows),
-                   int((y0 + canvas.winfo_height() - HEADER_HEIGHT) // ROW_HEIGHT) + 2)
+                   int((y0 + canvas.winfo_height() - self.header_height) // self.row_height) + 2)
         for row in range(first, max(first, last)):
             values = self.frames.summary(row)
-            y = HEADER_HEIGHT + row * ROW_HEIGHT
+            y = self.header_height + row * self.row_height
             background = ("#cde1fa" if row == self.selected_row else
                           "#f7f9fc" if row % 2 else "#ffffff")
             for column, value in enumerate(values):
                 left, right = self._column_edges[column:column + 2]
                 if right < x0 or left > x1:
                     continue
-                canvas.create_rectangle(left, y, right, y + ROW_HEIGHT,
+                canvas.create_rectangle(left, y, right, y + self.row_height,
                                         fill=background, outline="#d5dce6", tags="inspector")
-                limit = max(1, (right - left - 10) // 7)
+                limit = max(1, (right - left - px(10)) // px(7))
                 shown = str(value)
                 if len(shown) > limit:
                     shown = shown[:limit - 1] + "…"
-                canvas.create_text(left + 4, y + ROW_HEIGHT / 2, text=shown,
+                canvas.create_text(left + 4, y + self.row_height / 2, text=shown,
                                    anchor="w",
                                    fill="#243447", tags="inspector")
         for column, (label, _, _) in enumerate(MAIN_COLUMNS):
             left, right = self._column_edges[column:column + 2]
             if right < x0 or left > x1:
                 continue
-            canvas.create_rectangle(left, y0, right, y0 + HEADER_HEIGHT,
+            canvas.create_rectangle(left, y0, right, y0 + self.header_height,
                                     fill="#e4ebf3", outline="#78889c", tags="inspector")
-            canvas.create_text(left + 4, y0 + HEADER_HEIGHT / 2, text=label,
+            canvas.create_text(left + 4, y0 + self.header_height / 2, text=label,
                                anchor="w", fill="#26384d", tags="inspector")
 
     def _click(self, event):
-        if event.y < HEADER_HEIGHT:
+        if event.y < self.header_height:
             return
-        row = int((self.canvas.canvasy(event.y) - HEADER_HEIGHT) // ROW_HEIGHT)
+        row = int((self.canvas.canvasy(event.y) - self.header_height) // self.row_height)
         self.select_row(row)
 
     def _wheel(self, event):
@@ -178,8 +182,8 @@ class FrameInspector(tk.Toplevel):
             return False
         self.feedback.configure(text="")
         self.select_row(row)
-        height = HEADER_HEIGHT + max(1, len(self.frames.rows)) * ROW_HEIGHT
-        self.canvas.yview_moveto((HEADER_HEIGHT + row * ROW_HEIGHT) / height)
+        height = self.header_height + max(1, len(self.frames.rows)) * self.row_height
+        self.canvas.yview_moveto((self.header_height + row * self.row_height) / height)
         self._schedule_draw()
         return True
 
@@ -194,7 +198,7 @@ class FrameInspector(tk.Toplevel):
         self.feedback.configure(text="")
         self.selected_row = None
         self.canvas.configure(scrollregion=(0, 0, self._column_edges[-1],
-                                            HEADER_HEIGHT + max(1, len(frames.rows)) * ROW_HEIGHT))
+                                            self.header_height + max(1, len(frames.rows)) * self.row_height))
         self.canvas.xview_moveto(0)
         self.canvas.yview_moveto(0)
         self.detail_text.configure(state="normal")

@@ -5,7 +5,7 @@ import tkinter as tk
 from .column_layout import ColumnLayout
 from .table_model import CellSelection, TableModel, visible_span
 from .theme import (COLORS, LINE_WIDTHS, ROW_HINTS, SIZES, SYNTAX_COLORS,
-                    TABLE_COLUMN_WIDTHS, entry_options)
+                    TABLE_COLUMN_WIDTHS, entry_options, px)
 from .tsv_syntax import (CompletionState, candidates_for, classify_cell, classify_row,
                          completion_span, insert_template)
 
@@ -56,12 +56,13 @@ class TableGrid(tk.Frame):
         self.on_edit_change = on_edit_change
         self.on_column_resize = on_column_resize
         self.labels = labels or {}
-        self.row_height = max(font.metrics("linespace") + 8, 24)
+        self.row_height = max(font.metrics("linespace") + px(8), px(24))
         self.column_width = max(font.measure("0" * 18) + 12, 160)
         # A-G guide widths; H and later keep the font-based default.
         # ColumnLayout's saved/manual overrides take precedence over these.
         self._columns = ColumnLayout(
-            self.column_width, default_widths=dict(enumerate(TABLE_COLUMN_WIDTHS)))
+            self.column_width,
+            default_widths={index: px(width) for index, width in enumerate(TABLE_COLUMN_WIDTHS)})
         self.header_height = self.row_height
         self.gutter_width = max(font.measure("00000") + 12, 48)
         self.model = TableModel("")

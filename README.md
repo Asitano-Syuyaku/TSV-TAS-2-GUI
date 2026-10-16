@@ -226,6 +226,7 @@ python -m PyInstaller --noconsole --onefile --paths python_to_exe --add-data "as
 | `python_to_exe/editor/` | テキスト／表の編集画面、ファイル状態、検索・置換、入力支援、Validation、Debug CSV解析とFrame Inspector |
 | `python_to_exe/editor/recovery.py` | user config内の文書別Recovery snapshot、復元、元ファイルの変更検出 |
 | `python_to_exe/editor/theme.py` | EditorとConverter画面で共通のlight theme。色、system font、余白、罫線、widget style、パレットのカテゴリ色を集約 |
+| `python_to_exe/display.py` | Windowsの高DPI対応とfont設定。125%・150%などの拡大表示でも文字がぼやけないようにし、Meiryo UIを使う。Windows以外では何もしない |
 | `ftp_config.json` | FTP接続設定。実credentialをcommitしないこと |
 | `tests/test_conversion.py` | ローカル変換とGUI引数のテスト |
 

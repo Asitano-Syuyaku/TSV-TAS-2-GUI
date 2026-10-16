@@ -226,6 +226,7 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 | `python_to_exe/editor/` | Raw Text/Table editor, file state, find/replace, input hints, validation, Debug CSV parsing, and Frame Inspector |
 | `python_to_exe/editor/recovery.py` | Per-document Recovery snapshots in user config, restoration, and original-file change detection |
 | `python_to_exe/editor/theme.py` | Light theme shared by the Editor and the Converter window: colors, system fonts, spacing, grid lines, widget styles, and palette category colors |
+| `python_to_exe/display.py` | Windows high-DPI awareness and font setup: text stays sharp at 125%, 150%, and other scales, using Meiryo UI. Does nothing elsewhere |
 | `ftp_config.json` | FTP connection settings; do not commit real credentials |
 | `tests/test_conversion.py` | Local conversion and GUI argument tests |
 
