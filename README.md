@@ -8,8 +8,8 @@ Super Mario Odyssey のTAS用スクリプトを変換する、[xiivler/TSV-TAS-2
 
 | GUIの選択肢 | 出力 | 用途 |
 | --- | --- | --- |
+| STAS | `.stas` | 新しいLunaKit用のSTAS形式。後述のscript commandを出力可能。GUIの既定値 |
 | LunaKit binary | 拡張子なし | 従来のLunaKit用バイナリ。CLIの既定値 |
-| STAS | `.stas` | 新しいLunaKit用のSTAS形式。後述のscript commandを出力可能 |
 | nx-TAS | `.txt` | smo-practice用のテキスト形式。空フレームの省略に対応 |
 
 Python 3とTkinterが必要です。GUI exeもconverterを動かすために別途Python 3が必要です。Windows exeを作る場合だけPyInstallerが必要です。生成ファイルをSwitchで使うには、選んだ形式に対応するmodが必要です。FTP送信にはSwitch側のFTPサーバーと接続情報が必要です。
@@ -30,7 +30,7 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 
 2. repositoryのルートで `python3 python_to_exe/main_jp.py`（日本語）または `python3 python_to_exe/main_en.py`（English）を起動します。Windowsでは `python` または `py -3` でも実行できます。
 3. Inputに `sample.tsv` を選びます。Output Directoryが空なら入力ファイルと同じフォルダーが自動設定されます。必要なら変更し、Output File Nameに拡張子なしの名前（例: `sample`）を指定します。形式を選び、**Start Conversion／変換実行**を押します。
-4. 選んだ形式に応じて `sample`、`sample.stas`、または `sample.txt` が保存先にできます。まずはDebugを有効にして `sample-debug.csv`（STASなら `sample.stas-debug.csv`）でフレームを確認できます。
+4. 選んだ形式に応じて `sample.stas`、`sample`、または `sample.txt` が保存先にできます。まずはDebugを有効にして `sample.stas-debug.csv`（LunaKit binaryなら `sample-debug.csv`）でフレームを確認できます。
 
 この例は最初に左スティックを5フレーム上方向へ倒し、次にAボタンと右スティックを1フレーム入力し、3フレーム待機します。ループとスティック補間の詳細は下の早見表にあります。
 
@@ -41,7 +41,7 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 | Input Script File／入力スクリプトファイル | `.tsv` は直接コンパイル。`.txt` はnx-TAS入力として先にTSVへ変換 |
 | Output Directory／出力ディレクトリ | 空欄ならInput選択時にそのファイルのフォルダーを自動設定。指定済みの出力先は上書きしない。`.txt` 入力の中間 `.tsv` もここに保存 |
 | Output File Name／出力ファイル名 | 拡張子やフォルダーを含まないベース名。形式に応じた拡張子をGUIが付加 |
-| Output format／出力形式 | LunaKit binary、STAS、nx-TASから選択 |
+| Output format／出力形式 | STAS（既定）、LunaKit binary、nx-TASから選択 |
 | Skip empty frames／空フレームを省略 | nx-TASを選んだ場合だけ有効。upstreamの `-e` |
 | Debug output／Debug出力 | upstreamの `-d`。出力ファイル名に `-debug.csv` を加えたCSVを保存 |
 | Send via FTP／FTPで送信 | upstreamの `-f`。ローカル出力後、`SMO/tas/scripts/` へ送信 |
@@ -54,12 +54,12 @@ Python 3とTkinterが必要です。GUI exeもconverterを動かすために別�
 
 EditorのFile → **最近使ったファイル／Recent Files** は、開く・保存・名前を付けて保存・Editorからの変換・ConverterでのInput参照で使った `.tsv`／`.txt` を最大10件、新しい順に表示します。同じpathは先頭へ移動します。選ぶと現在のEditorで開き、未保存の変更があれば保存確認を行います。削除済みのファイルは選択時に通知して履歴から除き、**履歴を消去／Clear Recent Files** で全履歴を消せます。起動時にファイルを自動で開きません。
 
-履歴、出力形式、Debug、最後のInput／Output参照directoryは、次のuser configに `settings.json` として保存します。参照ダイアログは保存されたdirectoryが存在する場合だけそこから開始します。
+履歴、出力形式、Debug、最後のInput／Output参照directoryは、次のuser configに `settings.json` として保存します。出力形式はラジオボタンで選んだものを記憶します。以前のバージョンが既定値として保存した `binary` は、一度だけSTASに切り替わります。参照ダイアログは保存されたdirectoryが存在する場合だけそこから開始します。
 
 - Windows: `%APPDATA%/TSV-TAS-2-GUI/settings.json`。APPDATAが使えなければ `~/AppData/Roaming/TSV-TAS-2-GUI/settings.json`。
 - Linux／WSL: `$XDG_CONFIG_HOME/TSV-TAS-2-GUI/settings.json`。未設定なら `~/.config/TSV-TAS-2-GUI/settings.json`。
 
-Editorのウィンドウサイズ、変更した表の列幅、Raw／Tableの表示preference、Input PaletteのBasic／Advancedページも同じuser settingsへ保存し、次回Editor起動時に復元します。初回サイズは1200×700です。サイズ変更は約400ms待って保存し、列幅はdrag終了時に保存します。`.txt`は常にRaw表示となりますが、そのためにTable preferenceは消しません。画面上の位置、文書内容、選択・cursor・scroll位置、Undo履歴、Frame情報はworkspace設定に保存しません。既存のRecovery snapshotとは別の仕組みです。
+Editorは**最大化して開きます**。最大化を解除すると、保存したサイズ（初回は1200×700。Windowsでは画面中央）に戻り、そこから自由にサイズを変えられます。解除したまま閉じると次回も解除した状態で開き、もう一度最大化すると次回からまた最大化で開きます。Editorのウィンドウサイズ（最大化を解除した時のサイズ）、変更した表の列幅、Raw／Tableの表示preference、Input PaletteのBasic／Advancedページも同じuser settingsへ保存し、次回Editor起動時に復元します。サイズ変更は約400ms待って保存し、列幅はdrag終了時に保存します。`.txt`は常にRaw表示となりますが、そのためにTable preferenceは消しません。画面上の位置、文書内容、選択・cursor・scroll位置、Undo履歴、Frame情報はworkspace設定に保存しません。既存のRecovery snapshotとは別の仕組みです。
 
 壊れたJSON・非対応schema・不正な値は既定値へ戻し、設定の保存に失敗しても操作を続けられます。文書内容、Undo履歴、解析結果、FTP接続情報はこの設定に保存しません。FTP credentialは従来の `ftp_config.json` のままで、FTPチェックは保存せず起動ごとにOFFになります。F8による明示的なFTP送信は従来どおり利用できます。
 

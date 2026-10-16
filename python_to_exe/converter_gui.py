@@ -19,7 +19,7 @@ if __package__:
                                label_options)
     from .editor.dopa.outcome import FAILED, SEND_UNVERIFIED, classify_conversion
     from .editor.dopa.words import WORDS as DOPA_WORDS
-    from .converter_logic import (build_commands, conversion_outputs, load_ftp_config,
+    from .converter_logic import (FORMATS, build_commands, conversion_outputs, load_ftp_config,
                                   open_output_folder, save_ftp_config, scripts_dir,
                                   utf8_subprocess_kwargs)
 else:
@@ -29,7 +29,7 @@ else:
     from editor.theme import COLORS, button_options, choice_options, entry_options, label_options
     from editor.dopa.outcome import FAILED, SEND_UNVERIFIED, classify_conversion
     from editor.dopa.words import WORDS as DOPA_WORDS
-    from converter_logic import (build_commands, conversion_outputs, load_ftp_config,
+    from converter_logic import (FORMATS, build_commands, conversion_outputs, load_ftp_config,
                                  open_output_folder, save_ftp_config, scripts_dir,
                                  utf8_subprocess_kwargs)
 
@@ -161,7 +161,7 @@ class TASConverterApp(tk.Tk):
         self.format_var = tk.StringVar(value=self.settings.get("output_format"))
         format_frame = tk.Frame(self, **ground)
         format_frame.grid(row=3, column=1, columnspan=2, sticky="w")
-        for key in ("binary", "stas", "nxtas"):
+        for key in FORMATS:
             tk.Radiobutton(format_frame, text=self.words[key], value=key,
                            variable=self.format_var, command=self._format_changed,
                            **choice_options()).pack(side="left", padx=(0, 8))
@@ -240,12 +240,13 @@ class TASConverterApp(tk.Tk):
             else:
                 self.recovery_store.delete(snapshot.document_id)
 
-    def _save_preferences(self):
-        self.settings.update(output_format=self.format_var.get(), debug_enabled=self.debug_var.get())
+    def _save_preferences(self, **chosen):
+        self.settings.update(output_format=self.format_var.get(), debug_enabled=self.debug_var.get(),
+                             **chosen)
 
     def _format_changed(self):
         self.toggle_skip()
-        self._save_preferences()
+        self._save_preferences(output_format_chosen=True)
 
     def _close_app(self):
         for child in tuple(self.winfo_children()):

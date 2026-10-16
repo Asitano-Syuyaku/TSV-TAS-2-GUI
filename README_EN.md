@@ -8,8 +8,8 @@ A GUI fork of [xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2) for conv
 
 | GUI choice | Output | Intended use |
 | --- | --- | --- |
+| STAS | `.stas` | STAS format for newer LunaKit; supports the script commands below. GUI default |
 | LunaKit binary | No extension | Binary for the earlier LunaKit format; CLI default |
-| STAS | `.stas` | STAS format for newer LunaKit; supports the script commands below |
 | nx-TAS | `.txt` | Text format for smo-practice; can skip empty frames |
 
 Python 3 and Tkinter are required. The GUI exe also requires a separate Python 3 installation to run the converter scripts. PyInstaller is needed only to build Windows executables. To use the generated file on a Switch, install the mod that supports the selected format. FTP transfer also requires an FTP server on the Switch and its connection settings.
@@ -30,7 +30,7 @@ Python 3 and Tkinter are required. The GUI exe also requires a separate Python 3
 
 2. From the repository root, run `python3 python_to_exe/main_en.py` (English) or `python3 python_to_exe/main_jp.py` (Japanese). On Windows, `python` or `py -3` also works.
 3. Select `sample.tsv` as Input. If Output Directory is empty, it fills with the input file's folder. Change it if needed, and set Output File Name to a name without an extension (for example, `sample`). Choose a format and click **Start Conversion／変換実行**.
-4. The destination will contain `sample`, `sample.stas`, or `sample.txt`, depending on the format. You can enable Debug first and inspect `sample-debug.csv` (or `sample.stas-debug.csv` for STAS) to see the frames.
+4. The destination will contain `sample.stas`, `sample`, or `sample.txt`, depending on the format. You can enable Debug first and inspect `sample.stas-debug.csv` (or `sample-debug.csv` for LunaKit binary) to see the frames.
 
 This example holds the left stick upward for five frames, then inputs A and the right stick for one frame, and waits three frames. The reference table below explains the loop and stick interpolation.
 
@@ -41,7 +41,7 @@ This example holds the left stick upward for five frames, then inputs A and the 
 | Input Script File／入力スクリプトファイル | `.tsv` compiles directly. `.txt` is treated as nx-TAS and converted to TSV first |
 | Output Directory／出力ディレクトリ | If empty, fills with the input file's folder when Input is selected. An existing destination is not overwritten. An intermediate `.tsv` from `.txt` input is also saved here |
 | Output File Name／出力ファイル名 | Enter a base name without an extension or folder. The GUI adds the format's extension |
-| Output format／出力形式 | Choose LunaKit binary, STAS, or nx-TAS |
+| Output format／出力形式 | Choose STAS (default), LunaKit binary, or nx-TAS |
 | Skip empty frames／空フレームを省略 | Available only for nx-TAS; upstream `-e` |
 | Debug output／Debug出力 | Upstream `-d`; writes a CSV by appending `-debug.csv` to the output filename |
 | Send via FTP／FTPで送信 | Upstream `-f`; uploads to `SMO/tas/scripts/` after creating local output |
@@ -54,12 +54,12 @@ After a successful conversion, the dialog and log show the output file path. The
 
 Editor File → **Recent Files／最近使ったファイル** lists up to 10 `.tsv`/`.txt` paths, newest first, from Open, Save, Save As, Editor conversion, and Converter Input Browse. Reusing a path moves it to the top. Selecting an entry opens it in the current Editor and asks about any unsaved changes. Selecting a deleted file shows an error and removes its entry; **Clear Recent Files／履歴を消去** clears the list. Startup does not open a file automatically.
 
-Recent files, output format, Debug, and the last Input/Output browse directories are saved to `settings.json` in the user config directory below. Browse dialogs start in a saved directory only if it still exists.
+Recent files, output format, Debug, and the last Input/Output browse directories are saved to `settings.json` in the user config directory below. The output format remembers what you pick with its radio buttons; a `binary` that an older version saved only as its default switches to STAS once. Browse dialogs start in a saved directory only if it still exists.
 
 - Windows: `%APPDATA%/TSV-TAS-2-GUI/settings.json`; if APPDATA is unavailable, `~/AppData/Roaming/TSV-TAS-2-GUI/settings.json`.
 - Linux/WSL: `$XDG_CONFIG_HOME/TSV-TAS-2-GUI/settings.json`; if unset, `~/.config/TSV-TAS-2-GUI/settings.json`.
 
-The Editor also saves its window size, resized table column widths, Raw/Table preference, and Input Palette Basic/Advanced page to the same user settings, restoring them when an Editor next opens. The first-run size is 1200×700. Size changes are saved after about 400 ms without another resize; column widths are saved when dragging ends. `.txt` always opens in Raw Text without clearing a Table preference. Workspace settings do not store screen position, document content, selection, cursor/scroll position, Undo history, or Frame data. They are separate from existing Recovery snapshots.
+The Editor **opens maximized**. Restoring it returns to the saved size (1200×700 at first, centered on Windows), which you can resize freely. If you close it restored, it opens restored next time; maximize it again to open maximized from then on. The Editor also saves its window size (the restored size), resized table column widths, Raw/Table preference, and Input Palette Basic/Advanced page to the same user settings, restoring them when an Editor next opens. Size changes are saved after about 400 ms without another resize; column widths are saved when dragging ends. `.txt` always opens in Raw Text without clearing a Table preference. Workspace settings do not store screen position, document content, selection, cursor/scroll position, Undo history, or Frame data. They are separate from existing Recovery snapshots.
 
 Corrupt JSON, unsupported schemas, and invalid values fall back to defaults; a settings save failure does not stop editing or conversion. Document contents, Undo history, analysis results, and FTP connection details are not stored in these settings. FTP credentials keep the existing `ftp_config.json` behavior. The FTP checkbox is not persisted and starts OFF each time. Explicit FTP sending with F8 remains available.
 

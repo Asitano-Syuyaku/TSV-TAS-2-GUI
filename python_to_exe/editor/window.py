@@ -217,8 +217,12 @@ class EditorWindow(tk.Toplevel):
         self._workspace_job = None
         self._workspace_size = (self.settings.get("editor_width"),
                                 self.settings.get("editor_height"))
-        self.geometry("{}x{}".format(*self._fitted_size(*self._workspace_size)))
+        # The saved size is the restored (un-maximized) size; maximized is a separate choice.
+        self.geometry(self._restored_geometry(*self._fitted_size(*self._workspace_size)))
         self.minsize(*self._fitted_size(px(EDITOR_SIZE_MIN[0]), px(EDITOR_SIZE_MIN[1])))
+        self._last_maximized = None
+        if self.settings.get("editor_maximized"):
+            self._set_maximized(True)
         self.configure(background=COLORS["app_background"])
         self._theme_fonts = editor_fonts(self)
 
@@ -508,6 +512,39 @@ class EditorWindow(tk.Toplevel):
         except tk.TclError:
             return width, height
         return min(width, max(640, screen_w - 40)), min(height, max(400, screen_h - 80))
+
+    def _restored_geometry(self, width, height):
+        """Centered on Windows, whose default placement can push a large window off-screen."""
+        if not sys.platform.startswith("win"):
+            return f"{width}x{height}"  # X11 window managers place on their own.
+        try:
+            screen_w, screen_h = self.winfo_screenwidth(), self.winfo_screenheight()
+        except tk.TclError:
+            return f"{width}x{height}"
+        # Center above a typical taskbar; the screen position is never saved.
+        return "{}x{}+{}+{}".format(width, height, max(0, (screen_w - width) // 2),
+                                    max(0, (screen_h - 40 - height) // 2))
+
+    def _set_maximized(self, maximized):
+        try:
+            if self.tk.call("tk", "windowingsystem") == "x11":
+                self.attributes("-zoomed", maximized)
+            else:
+                self.state("zoomed" if maximized else "normal")
+        except tk.TclError:
+            pass  # A window manager without maximize keeps the restored size.
+
+    def _is_maximized(self):
+        """True/False for a shown window; None while minimized or withdrawn."""
+        try:
+            state = self.state()
+            if state not in ("normal", "zoomed"):
+                return None
+            if self.tk.call("tk", "windowingsystem") == "x11":
+                return bool(self.attributes("-zoomed"))
+            return state == "zoomed"
+        except tk.TclError:
+            return None
 
     def _build_command_deck(self):
         """COMMAND DECK (§5.1): entry points that call the existing commands."""
@@ -929,6 +966,18 @@ class EditorWindow(tk.Toplevel):
         if event.widget is not self or self._closed:
             return
         self._fit_density(event.height)
+        maximized = self._is_maximized()
+        if maximized is None:
+            return
+        if maximized != self._last_maximized:
+            # Remember only a change seen in this window, not the opening state:
+            # X11 reports the restored size first, before the WM maximizes.
+            if self._last_maximized is not None:
+                self.settings.update(editor_maximized=maximized, persist=False)
+                self._schedule_workspace_flush()
+            self._last_maximized = maximized
+        if maximized:
+            return  # The screen's size, not one the user chose for the restored window.
         size = event.width, event.height
         if (size == self._workspace_size or
                 not all(low <= value <= high for value, low, high in
@@ -938,6 +987,9 @@ class EditorWindow(tk.Toplevel):
         # Keep only the changed fields in the shared state now. Debounce the disk
         # write, not a stale per-window copy of all workspace preferences.
         self.settings.update(editor_width=size[0], editor_height=size[1], persist=False)
+        self._schedule_workspace_flush()
+
+    def _schedule_workspace_flush(self):
         if self._workspace_job is not None:
             self.after_cancel(self._workspace_job)
         self._workspace_job = self.after(400, self._flush_workspace)

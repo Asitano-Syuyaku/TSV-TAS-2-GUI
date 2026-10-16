@@ -25,7 +25,9 @@ class SettingsTests(unittest.TestCase):
     def test_missing_file_defaults_without_creating_file(self):
         settings = AppSettings(self.path)
         self.assertEqual(settings.recent_files, ())
-        self.assertEqual(settings.get("output_format"), "binary")
+        self.assertEqual(settings.get("output_format"), "stas")
+        self.assertIs(settings.get("output_format_chosen"), False)
+        self.assertIs(settings.get("editor_maximized"), True)
         self.assertIs(settings.get("debug_enabled"), False)
         self.assertEqual(settings.get("last_input_directory"), "")
         self.assertEqual(settings.get("last_output_directory"), "")
@@ -58,9 +60,32 @@ class SettingsTests(unittest.TestCase):
             with self.subTest(data=data):
                 self.path.write_bytes(data)
                 settings = AppSettings(self.path)
-                self.assertEqual(settings.get("output_format"), "binary")
+                self.assertEqual(settings.get("output_format"), "stas")
                 self.assertFalse(settings.get("debug_enabled"))
                 self.assertEqual(settings.recent_files, ())
+
+    def test_implicit_old_binary_default_becomes_stas_but_choices_are_kept(self):
+        for values, expected in ((dict(output_format="binary"), ("stas", False)),
+                                 (dict(output_format="binary", output_format_chosen="yes"),
+                                  ("stas", False)),
+                                 (dict(output_format="binary", output_format_chosen=True),
+                                  ("binary", True)),
+                                 (dict(output_format="nxtas"), ("nxtas", True)),
+                                 (dict(output_format="stas"), ("stas", True))):
+            with self.subTest(values=values):
+                self.write(dict(version=1, **values))
+                settings = AppSettings(self.path)
+                self.assertEqual((settings.get("output_format"),
+                                  settings.get("output_format_chosen")), expected)
+        settings = AppSettings(self.path)
+        settings.update(output_format="binary", output_format_chosen=True)
+        self.assertEqual(AppSettings(self.path).get("output_format"), "binary")
+
+    def test_editor_maximized_accepts_only_booleans(self):
+        for value, expected in ((False, False), (True, True), (0, True), ("false", True)):
+            with self.subTest(value=value):
+                self.write(dict(version=1, editor_maximized=value))
+                self.assertIs(AppSettings(self.path).get("editor_maximized"), expected)
 
     def test_invalid_types_formats_and_paths_fall_back_independently(self):
         for invalid in (None, 1, True, [], {}, "unknown"):
@@ -69,7 +94,7 @@ class SettingsTests(unittest.TestCase):
                                 recent_files="not a list", last_input_directory=42,
                                 last_output_directory="relative/path"))
                 settings = AppSettings(self.path)
-                self.assertEqual(settings.get("output_format"), "binary")
+                self.assertEqual(settings.get("output_format"), "stas")
                 self.assertFalse(settings.get("debug_enabled"))
                 self.assertEqual(settings.recent_files, ())
                 self.assertEqual(settings.get("last_input_directory"), "")
@@ -134,9 +159,11 @@ class SettingsTests(unittest.TestCase):
                         password="not stored", ip="not stored", username="not stored",
                         port=5000, document="not stored", undo=["not stored"], frames=[1])
         saved = json.loads(self.path.read_text(encoding="utf-8"))
-        self.assertEqual(set(saved), {"version", "recent_files", "output_format", "debug_enabled",
+        self.assertEqual(set(saved), {"version", "recent_files", "output_format",
+                                      "output_format_chosen", "debug_enabled",
                                       "last_input_directory", "last_output_directory",
-                                      "editor_width", "editor_height", "editor_view",
+                                      "editor_width", "editor_height", "editor_maximized",
+                                      "editor_view",
                                       "editor_palette_page", "editor_column_widths",
                                       # Dopagaki3 effect preferences only (no game numbers).
                                       "dopa_motion", "dopa_flash", "dopa_sound", "dopa_volume"})
