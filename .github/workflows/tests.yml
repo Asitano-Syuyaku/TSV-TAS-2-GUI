@@ -1,0 +1,33 @@
+name: Tests
+
+# Runs the whole suite, including the Tk tests, on Linux with a virtual display.
+# Start it from the Actions tab (or `gh workflow run tests.yml -f ref=...`).
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or commit to test"
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install a virtual display
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Run tests
+        timeout-minutes: 15
+        run: xvfb-run -a -s "-screen 0 1600x1000x24" python -m unittest discover -v -s tests -p "test_*.py"
