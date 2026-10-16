@@ -4,6 +4,15 @@ English | [日本語](README.md)
 
 A GUI fork of [xiivler/TSV-TAS-2](https://github.com/xiivler/TSV-TAS-2) for converting Super Mario Odyssey TAS scripts. The converters are based on [MrKatzenGaming/TSV-TAS-2](https://github.com/MrKatzenGaming/TSV-TAS-2/tree/stas-dev) **`stas-dev` commit `00bf6f6146eb4d9a455af5dd92157dc5c7bc532c`**. The GUI runs the companion Python scripts as subprocesses. For advanced syntax, see the [TSV-TAS-2 Documentation](https://docs.google.com/document/d/1vW-swF3k96YxaIJqXbtRXbQ54mKKgeWfPFlW2hYBa_Q/edit?usp=sharing).
 
+## Branches
+
+| Branch | What it is |
+| --- | --- |
+| [`main`](https://github.com/Asitano-Syuyaku/TSV-TAS-2-GUI/tree/main) | The standard edition: a calm, light interface with no effects or sound |
+| [`dopagaki`](https://github.com/Asitano-Syuyaku/TSV-TAS-2-GUI/tree/dopagaki) | The Dopagaki edition: the same converter and editing aids, plus a dark neon interface, effects on every input, F5/F8 celebrations, and sound effects |
+
+Both branches produce the same output files from the same script. This README describes `dopagaki`. Features only in the Dopagaki edition are collected in [Dopagaki edition features](#dopagaki-edition-features).
+
 ## Output formats and requirements
 
 | GUI choice | Output | Intended use |
@@ -48,7 +57,7 @@ This example holds the left stick upward for five frames, then inputs A and the 
 
 The Japanese and English launchers use the same conversion behavior; only displayed language differs. `-l` is an interactive CLI option for repeated compilation and is not in the GUI.
 
-After a successful conversion, the dialog and log show the output file path. The log also lists the Debug CSV and intermediate TSV generated from `.txt` input, when enabled or applicable, and indicates when FTP transfer was attempted. Editor F5/F8 use the same result display. **Open Output Folder／出力フォルダーを開く** beside Output Directory opens the currently specified folder, even before conversion. An empty or missing folder produces an error.
+After a successful conversion, the dialog and log show the output file path. The log also lists the Debug CSV and intermediate TSV generated from `.txt` input, when enabled or applicable, and indicates when FTP transfer was attempted. Editor F5/F8 show their results in the Editor's HUD and Problems instead of dialogs (see [F5/F8 results](#f5f8-results)). **Open Output Folder／出力フォルダーを開く** beside Output Directory opens the currently specified folder, even before conversion. An empty or missing folder produces an error.
 
 ### Recent files and preferences
 
@@ -82,13 +91,13 @@ Before saving to the same path, the Editor compares disk content with the Open /
 
 Each Editor save of an existing `.tsv` keeps **up to 10 backups of the file before saving**, in the same folder. `route.tsv.before1` is the immediately preceding disk version; `route.tsv.before10` is the oldest. Rotation proceeds from the oldest generations downward. Backups preserve bytes without changing newlines or encoding, including the external disk version when you approve overwriting an external change. The first save of a new file and `.txt` files are excluded. Save As backs up the overwritten destination; F5/F8 use the same process when they actually save a TSV. If backup creation fails, the original TSV is not replaced and conversion/FTP sending does not start. This is separate from Recovery in user config, and backups are not automatically added to Recent Files. `.tsv.beforeN` files inside the repository are ignored by Git.
 
-**Save & Convert** (`F5`) commits the current cell edit, saves it, and converts the file open in that Editor locally as the Converter's Input. It never sends by FTP, even when the parent GUI's FTP checkbox is on. For a new file, Save As asks where to save it; canceling stops conversion. After Save As, Input switches to the new path. If Output Directory or Output File Name is empty, it fills from the file's folder or stem; existing values are kept. Conversion uses the Converter's current output format, skip-empty (nx-TAS only), and Debug settings. Converter stdout and stderr appear in the existing log; conversion failures also show a dialog.
+**Save & Convert** (`F5`) commits the current cell edit, saves it, and converts the file open in that Editor locally as the Converter's Input. It never sends by FTP, even when the parent GUI's FTP checkbox is on. For a new file, Save As asks where to save it; canceling stops conversion. After Save As, Input switches to the new path. If Output Directory or Output File Name is empty, it fills from the file's folder or stem; existing values are kept. Conversion uses the Converter's current output format, skip-empty (nx-TAS only), and Debug settings. Converter stdout and stderr appear in the existing log. The result appears in the HUD's result line, and failure details in the Editor's Problems.
 
 **Save, Convert & Send** (`F8`) uses the same save, Input synchronization, and local conversion workflow, then sends by FTP. It sends even when the parent GUI's FTP checkbox is off, using the current IP / Port / Username / Password fields. A new document requires Save As; canceling stops the send. If saving the FTP settings fails, conversion stops before starting and generates no new output. A transfer failure may occur after local output has already been generated. The parent GUI's **Start Conversion** still follows its FTP checkbox. F5/F8 leave the checkbox unchanged and identify the action in the log.
 
 **Validate** (`F6`) commits the current cell edit and passes the current unsaved Editor buffer to the bundled converter as a temporary snapshot, using the selected output format. It does not save the actual file; untitled documents can be validated without Save As. The modified state and Undo history are preserved. Success shows “No errors”; failure shows the converter's unchanged message in Problems below the editor. Double-click a message with an explicit source line number to jump there. Errors without a reliable line number, including errors in the intermediate TSV made from `.txt`, have no guessed jump target. If you edit during validation, the Editor asks you to validate again. Validate leaves Converter output settings unchanged and does not upload by FTP or generate a Debug CSV. Use **Save & Convert** to save the file and create the normal output.
 
-The upper right shows the selected TSV rows' **Start / Duration / End / Total** frames. Start and End are zero-based frame indices; Duration and Total are frame counts. For 18 frames, it shows `Start: 0f | Duration: 18f | End: 17f | Total: 18f`. In Table, it summarizes all rows from the top to the bottom of the selection; a single-row selection shows that row. In Raw Text, it follows the cursor's line. A completely empty row (including TAB-only or whitespace-only rows) consumes the converter's default 1f. A row with an empty first cell but input elsewhere also uses the default 1f. About 0.5 seconds after an edit, a background run of the bundled converter analyzes a temporary TSV snapshot and updates the display automatically. It does not save the document or upload by FTP. The values come from the converter's resolved row duration and total frame count; while updating or after an error, they are shown as unavailable. Changing the selection only looks up cached results. `.txt` is not supported here.
+The FRAME METER on the left of the FEVER HUD shows the selected TSV rows' **Start / Duration / End / Total** frames. Start and End are zero-based frame indices; Duration and Total are frame counts. For 18 frames, it shows `Start: 0f | Duration: 18f | End: 17f | Total: 18f`. In Table, it summarizes all rows from the top to the bottom of the selection; a single-row selection shows that row. In Raw Text, it follows the cursor's line. A completely empty row (including TAB-only or whitespace-only rows) consumes the converter's default 1f. A row with an empty first cell but input elsewhere also uses the default 1f. About 0.5 seconds after an edit, a background run of the bundled converter analyzes a temporary TSV snapshot and updates the display automatically. It does not save the document or upload by FTP. The values come from the converter's resolved row duration and total frame count; while updating or after an error, they are shown as unavailable. Changing the selection only looks up cached results. `.txt` is not supported here.
 
 Enter a zero-based frame number in the permanent **Go to** field beside the Frame display, then press Enter or **Go** to navigate to the TSV source row that generates that frame. `Ctrl+G` focuses the field; Escape returns to the editor. Table keeps the current column; Raw Text moves to the start of the line. Navigation uses only the bundled converter's cached source-line map, without running another analysis. While updating, after an analysis failure, or when no resolved source row matches, it stays put and shows feedback beside the field. A pending cell edit is committed when Go runs; if its content changes, wait for automatic analysis and try Go again. `.txt` (nx-TAS) is not supported.
 
@@ -104,17 +113,66 @@ Drag the right edge of a column header to resize that column. Click away from an
 
 At the last row, Enter or Down moves to an unsaved virtual row. Moving alone adds no blank line. Entering and committing text there adds only the needed rows. After Tab or Enter navigation, the cell remains selected so you can type the next value directly. The table also draws empty cells across unused viewport space and keeps an expanded display range when you select another cell. Displayed empty cells alone do not add saved content.
 
-While editing a Table cell, typing `l` or `/` can show suggestions for buttons, sticks, acceleration/gyro, 2P input, and STAS commands. Use Up/Down to select, then Tab/Enter or a click to insert a suggestion and continue editing. Escape first closes only the popup. The **Input Palette** is always visible to the right of the table and offers common buttons, left/right sticks, and STAS commands. Selecting an item starts editing the selected cell or inserts at the caret while editing. Left and right stick suggestions each show the simple angle form first. Candidates with parentheses or arguments insert a template with its value selected, ready to replace. Raw Text for `.tsv` colors comments, commands, variables, and inputs. In Table, a subtle background hints that the first column is often duration, while a color beside row numbers distinguishes ordinary input, comment, command, variable, loop/control-like, and blank rows. The first cell of a command or comment row is not treated as duration. Colors and row categories are **editing aids**, not syntax validation. The converter processes STAS commands when producing STAS output.
+While editing a Table cell, typing `l` or `/` can show suggestions for buttons, sticks, acceleration/gyro, 2P input, and STAS commands. Use Up/Down to select, then Tab/Enter or a click to insert a suggestion and continue editing. Escape first closes only the popup. The **Input Palette** is always visible to the right of the table and offers common buttons, motion shakes, left/right sticks, STAS commands, and STAS header fields. Category headings use a neon color per kind. Selecting an item starts editing the selected cell or inserts at the caret while editing. Left and right stick suggestions each show the simple angle form first. Candidates with parentheses or arguments insert a template with its value selected, ready to replace. Raw Text for `.tsv` colors comments, commands, variables, and inputs. In Table, a subtle background hints that the first column is often duration, while a color beside row numbers distinguishes ordinary input, comment, command, variable, loop/control-like, and blank rows. The first cell of a command or comment row is not treated as duration. Colors and row categories are **editing aids**, not syntax validation. The converter processes STAS commands when producing STAS output.
 
-The Input Palette uses two columns in a 400px sidebar. Use the top ◀/▶ buttons to switch between Page 1 **Basic** (Buttons / Motion / Left Stick / Right Stick / Stick Preview) and Page 2 **Advanced** (STAS Commands / STAS Info / Cappy / Accel / Gyro / Notation). The first Editor starts on Page 1; later Editors restore the last page. Switching pages does not affect the document, selection, or Undo history. Scroll each page vertically with the mouse wheel inside the palette or its scrollbar. In each stick category, `ls(angle)` or `rs(angle)` occupies a wide first-row button; radius-plus-angle and XY forms sit left and right on the next row. STAS Info's `$title`/`$author`/`$desc` are inserted from the palette only and are not offered by `$` completion, so pressing Tab after a variable used as a duration keeps that variable. Motion takes the D-pad's place with Joy-Con shakes, always four a row: single `m-u`/`m-d`/`m-l`/`m-r` on top, double `m-uu`/`m-dd`/`m-ll`/`m-rr` below. The D-pad (`dp-u` and so on) leaves the palette but stays in completion and highlighting. The 12 buttons and 8 shakes show icons alongside text. If an image cannot be read, the button shows text alone. Display labels and inserted TSV text are managed separately.
+The Input Palette uses two columns in a 400px sidebar. Use the top ◀/▶ buttons to switch between Page 1 **Basic** (Buttons / Motion / Left Stick / Right Stick / Stick Preview) and Page 2 **Advanced** (STAS Commands / STAS Info / Cappy / Accel / Gyro / Notation). The first Editor starts on Page 1; later Editors restore the last page. Switching pages does not affect the document, selection, or Undo history. Scroll each page vertically with the mouse wheel inside the palette or its scrollbar. When the window is short, the Basic page folds its buttons into four columns (`A B X Y` / `L R ZL ZR` / `+ − LS RS`, three keys per stick row) and scrolls only what still does not fit. In each stick category, `ls(angle)` or `rs(angle)` occupies a wide first-row button; radius-plus-angle and XY forms sit left and right on the next row. STAS Info's `$title`/`$author`/`$desc` are inserted from the palette only and are not offered by `$` completion, so pressing Tab after a variable used as a duration keeps that variable. Motion takes the D-pad's place with Joy-Con shakes, always four a row: single `m-u`/`m-d`/`m-l`/`m-r` on top, double `m-uu`/`m-dd`/`m-ll`/`m-rr` below. The D-pad (`dp-u` and so on) leaves the palette but stays in completion and highlighting. The 12 buttons and 8 shakes show icons alongside text. If an image cannot be read, the button shows text alone. Display labels and inserted TSV text are managed separately.
 
-**Stick Preview** at the bottom of Page 1 shows 1P LS/RS side by side on unit circles. It uses the active row's zero-based StartFrame: red marks the current position, and progressively lighter red marks the previous 1–3 frames. It also displays x/y (Debug coordinates normalized from the converter's 32767 scale), radius, and angle in degrees. A single run of the existing background converter analysis produces both the source-line map and Debug CSV; selection changes only read the cache. Pending edits, updates, and analysis failures show no confirmed values, and missing frames are not filled in. This is read-only: it does not change the document, Undo history, or Converter settings, save the source file, or send by FTP.
+**Stick Preview**, docked at the bottom of Page 1, shows 1P LS/RS side by side on unit circles. In a short window only the buttons scroll, so the preview stays fully visible. It uses the active row's zero-based StartFrame: the current position is a white dot ringed in the stick's color (cyan for LS, magenta for RS), and the previous 1–3 frames are small dots in that color. It also displays x/y (Debug coordinates normalized from the converter's 32767 scale), radius, and angle in degrees. A single run of the existing background converter analysis produces both the source-line map and Debug CSV; selection changes only read the cache. Pending edits, updates, and analysis failures show no confirmed values, and missing frames are not filled in. This is read-only: it does not change the document, Undo history, or Converter settings, save the source file, or send by FTP.
 
 Table does not interpret TSV-TAS syntax or apply its own formatting on save. Column operations affect every row, including command and comment lines. Both views preserve UTF-8 and original line endings where possible. `tsv-tas.py` still interprets scripts.
 
 ### FTP setup
 
 Enabling FTP shows IP, port, user, and password fields. The GUI saves `ip` (string), `port` (integer), `user` (string), and `passwd` (string) to `ftp_config.json` beside the converter scripts. To use `-f` in the CLI, configure that file and run the command **from the repository root**. The file can contain secrets: do not commit or share it after entering credentials. FTP can be combined with any of the three output formats. Verify actual transfer in your Switch environment.
+
+## Dopagaki edition features
+
+Converting, saving, and editing aids work exactly as on `main`. Effects celebrate **only confirmed facts**: they never anticipate or exaggerate frame positions, stick values, or conversion results. If an effect or sound fails, saving, converting, and sending are unaffected.
+
+### Interface
+
+- The Editor, Converter, Frame Inspector, and Find dialog use a dark neon theme.
+- The **COMMAND DECK** at the top of the Editor holds the Raw/Table toggle, `+ Row`/`+ Column`, `Validate F6`, `Analyze F7`, `Save & Convert F5`, and `Convert & SEND F8`. They are extra entry points to the same menu and shortcut commands. In a narrow window, the shortcut labels are dropped.
+- Below it, the **FEVER HUD** shows the FRAME METER on the left (the selected rows' Start/Duration/End/Total frames and the Go field) and COMBO, HEAT, and DOPA on the right. FRAME METER numbers turn yellow only when the converter has confirmed them.
+- The status bar ends with `[FX 100%]` and `[♪ ON]` chips; click them to change the settings.
+- The Converter window also shows each conversion's result as a badge beside Start Conversion (`CONVERTED!!`, `SENT!!`, `BUILT · SEND: UNVERIFIED (see log)`, or `SO CLOSE!`).
+
+### Effects
+
+- Each committed Table cell or Raw Text row raises COMBO, HEAT, and DOPA, with shout words and particles.
+- Validate (F6) shows `NO ERRORS!!` on success and `SO CLOSE!` on failure.
+- F5 shows `CONVERTED!!` once the conversion has succeeded.
+- F8 keeps the `HOT!!` cover only while conversion and FTP transfer are actually running. A confirmed send shows `SENT!!` and a result card (output file, format, destination). When the send cannot be confirmed, it shows `BUILT` / `SEND: UNVERIFIED` so it never looks like a success.
+- Effects never delay work: conversion starts the moment you press the key.
+
+### F5/F8 results
+
+F5/F8 run from the Editor show no success or failure dialog. The result appears in the HUD's result line (`✔ OUTPUT route.stas`, `✖ FAILED (see Problems)`, and so on), and the failure details, with line jumps, stay in the Editor's Problems. **Start Conversion** in the Converter window still shows its dialogs. Dialogs that need a decision, such as Save As, overwrite checks, and Recovery, remain.
+
+### Settings (**Dopa** menu)
+
+| Item | Values | Default |
+| --- | --- | --- |
+| Effects | 100% / 75% / 50% / 25% / 0% (work focus) | 100%; 25% on first launch when Windows "Show animations" is off |
+| Flashes | On / Off | On |
+| Sound | On / Off | On |
+| Volume | High / Medium / Low | Medium |
+
+`Ctrl+Shift+D` steps through the effect levels and `Ctrl+Shift+M` toggles sound. At 0%, shakes, particles, and flashes stop; numbers and words appear quietly. Flashes stay inside the HUD and frame, with no full-screen or red flashing. The settings are saved as `dopa_motion`, `dopa_flash`, `dopa_sound`, and `dopa_volume` in `settings.json` and apply to every open Editor at once.
+
+### Sound
+
+- Sound effects are synthesized in Python and cached in `sound-cache/v1/` in the user config on first use (about 1 MB). The repository contains no audio files.
+- To replace an effect, put `sounds/<name>.wav` (48 kHz, 16-bit PCM) in the user config. Names match the files in `sound-cache/v1/` (`clear`, `oshii`, `fanfare`, `kyuin`, `coins`, and so on).
+- The F5 track (JAXSON GAMBLE "Let's Go") is not included. Put `lets_go_dopagaki.wav` (48 kHz, stereo, 16-bit) or `lets_go_dopagaki.webm` (decoded once with `ffmpeg` on `PATH`) in the folder below, and the success effect lands on the track's drop. Without it, F5 runs without the track.
+  - Windows: `%LOCALAPPDATA%\tsv-tas-2-gui\dopagaki\`
+  - Linux/WSL: `$XDG_DATA_HOME/tsv-tas-2-gui/dopagaki/` (default `~/.local/share/tsv-tas-2-gui/dopagaki/`)
+- Playback uses WinMM on Windows and `pw-play`, `pacat`, or `aplay` on Linux/WSL, with no extra packages. Without an output device, the sound menu items are disabled and the chip shows `♪ —`.
+
+### Display
+
+- On Windows, the app stays sharp at high DPI (125%, 150%, and so on) and uses Meiryo UI, which renders Japanese and Latin text evenly. Text is never shrunk; pixel sizes scale with the DPI instead.
+- The palette's Stick Preview is docked at the bottom of Page 1. In a short window only the buttons scroll; if space is still short, the buttons fold into four columns.
 
 ## TSV-TAS syntax essentials
 
@@ -126,6 +184,7 @@ Enabling FTP shows IP, port, user, and password fields. The GUI saves `ip` (stri
 | 2P/Cappy | Put `$is_two_player = true` on its own row, then use `1<TAB>ca<TAB>cls(45)` for player two's A button and left stick. See the Documentation for details and target-mod limits |
 | Loops | `6<TAB>a/b` alternates A and B for six frames. `/` separates inputs within one cell |
 | Stick interpolation | `6<TAB>ls(0)->ls(50)` interpolates the left stick from 0 to 50 degrees over six frames |
+| Motion | `1<TAB>m-u` shakes one Joy-Con up (motion input such as a cap throw). `m-d`/`m-l`/`m-r` change the direction; `m-uu` and the like shake both. See the Documentation for `$motion_offset` and more |
 | Expressions and variables | Put `$angle = 90` on its own row, then use `4<TAB>ls($angle + 45)`. Addition, subtraction, multiplication, and division are supported |
 | Comments | A row whose duration field begins with `//` is ignored; for example, `// Explanation` |
 
@@ -212,7 +271,11 @@ Place `dist/main_jp.exe` or `dist/main_en.exe` in the **same folder** as `tsv-ta
 | `python_to_exe/app_settings.py` | Non-sensitive preferences and shared Recent Files in user config |
 | `python_to_exe/editor/` | Raw Text/Table editor, file state, find/replace, input hints, validation, Debug CSV parsing, and Frame Inspector |
 | `python_to_exe/editor/recovery.py` | Per-document Recovery snapshots in user config, restoration, and original-file change detection |
-| `python_to_exe/editor/theme.py` | Editor-only light theme: colors, system fonts, spacing, grid lines, and widget styles. Converter window styles are unchanged |
+| `python_to_exe/editor/theme.py` | The Dopagaki edition's dark neon theme: colors, fonts, spacing, grid lines, widget styles, category colors, and DPI-scaled sizes shared by the Editor, Converter, and Frame Inspector |
+| `python_to_exe/editor/dopa/` | Effects (HUD, FX, the F8 cover, F5 choreography) and sound (synthesis, mixer, playback); never changes documents or conversion results |
+| `python_to_exe/display.py` | Windows high-DPI awareness and font setup; does nothing elsewhere |
+| `python_to_exe/background.py` | Pauses GC while conversion/analysis workers run, preventing crashes from Tcl calls on non-Tk threads |
+| `dopagaki3.md` | Dopagaki edition design specification |
 | `ftp_config.json` | FTP connection settings; do not commit real credentials |
 | `tests/test_conversion.py` | Local conversion and GUI argument tests |
 
