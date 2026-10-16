@@ -171,6 +171,29 @@ class WorkspaceTkTests(unittest.TestCase):
         self.assertEqual(self.settings.get("editor_column_widths"), {})
         self.assertFalse(editor.document.modified)
 
+    def test_reset_widths_button_beside_analyze_restores_defaults(self):
+        self.settings.update(editor_column_widths={"0": 224, "1": 216, "2": 214},
+                             editor_view="table")
+        app = self.make_app()
+        editor = app._create_editor()
+        app.update()
+        grid = editor.table_grid
+        self.assertEqual([grid.columns.width(column) for column in range(3)], [224, 216, 214])
+        before = self.state(editor)
+        button = editor._reset_widths_button
+        self.assertEqual(button.cget("text"), editor.words["deck_reset_widths"])
+        row = button.master.pack_slaves()
+        self.assertEqual(row.index(button), row.index(editor._analyze_button) + 1)
+        button.invoke()
+        self.assertEqual([grid.columns.width(column) for column in range(3)], [112, 178, 178])
+        self.assertEqual(self.settings.get("editor_column_widths"), {})
+        self.assertEqual(self.state(editor), before)
+        self.assertFalse(editor.document.modified)
+        editor.close_editor()
+        editor = app._create_editor()
+        app.update()
+        self.assertEqual(editor.table_grid.columns.width(1), 178)
+
     def test_saved_future_column_and_table_raw_switch_keep_widths(self):
         self.settings.update(editor_column_widths={"0": 90, "1": 130, "10000": 230}, editor_view="table")
         app = self.make_app()

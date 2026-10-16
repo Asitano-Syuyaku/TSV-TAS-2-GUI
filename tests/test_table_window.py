@@ -163,7 +163,8 @@ class TableWindowTests(unittest.TestCase):
         self.assertFalse(window.document.modified)
 
     def test_sidebar_groups_existing_candidates_and_uses_table_insertion(self):
-        from python_to_exe.editor.tsv_syntax import CANDIDATES, PALETTE_CATEGORIES, PALETTE_PAGES
+        from python_to_exe.editor.tsv_syntax import (CANDIDATES, PALETTE_CATEGORIES, PALETTE_PAGES,
+                                                     palette_items)
 
         widgets = []
 
@@ -255,8 +256,7 @@ class TableWindowTests(unittest.TestCase):
         self.assertEqual(window.stick_preview.options["title"], window.words["stick_preview"])
         palette_buttons = [item for item in widgets if item.kind == "button"
                            and item.placement and "row" in item.placement]
-        expected = [item for category in PALETTE_CATEGORIES
-                    for item in CANDIDATES if item.category == category]
+        expected = [item for category in PALETTE_CATEGORIES for item in palette_items(category)]
         self.assertEqual([item.options["text"] for item in palette_buttons],
                          [item.display_label for item in expected])
         button_group = palette_buttons[0].master
@@ -270,14 +270,14 @@ class TableWindowTests(unittest.TestCase):
                                 if item.category == category]
             self.assertEqual({button.placement["column"] for button in category_buttons
                               if button.placement["columnspan"] == 1},
-                             set() if category in ("gyro", "script_info", "notation")
+                             set() if category in ("gyro", "notation")
                              else {0, 1, 2, 3} if category == "motion" else {0, 1})
         self.assertEqual({category: 1 + max(button.placement["row"]
                                             for button, item in zip(palette_buttons, expected)
                                             if item.category == category)
                           for category in PALETTE_CATEGORIES},
                          {"buttons": 6, "motion": 2, "left_stick": 2,
-                          "right_stick": 2, "commands": 5, "script_info": 3,
+                          "right_stick": 2, "commands": 3, "script_info": 4,
                           "cappy": 3, "accel": 1, "gyro": 2, "notation": 6})
         self.assertEqual(icon_button.options["image"], icon)
         self.assertEqual(icon_button.options["compound"], "left")

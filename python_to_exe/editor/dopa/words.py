@@ -20,7 +20,7 @@ WORDS = {
         "fact_unverified": "⚠ 送信未確認（問題を参照）", "fact_failed": "✖ 失敗（問題を参照）",
         "fact_not_started": "✖ 未実行（問題を参照）",
         "sound": "音", "volume": "音量", "volume_levels": {3: "大", 2: "中", 1: "小"},
-        "chip_on": "♪ ON", "chip_off": "♪ OFF", "chip_none": "♪ —",
+        "chip_on": "♪ ON", "chip_off": "♪ OFF", "chip_none": "♪ —", "aligned": "整列!!",
     },
     "en": {
         "meter_locked": "LOCKED", "meter_pending": "ANALYZING", "meter_unavailable": "UNAVAILABLE",
@@ -41,7 +41,7 @@ WORDS = {
         "fact_unverified": "⚠ SEND UNVERIFIED (see Problems)", "fact_failed": "✖ FAILED (see Problems)",
         "fact_not_started": "✖ NOT STARTED (see Problems)",
         "sound": "Sound", "volume": "Volume", "volume_levels": {3: "High", 2: "Medium", 1: "Low"},
-        "chip_on": "♪ ON", "chip_off": "♪ OFF", "chip_none": "♪ —",
+        "chip_on": "♪ ON", "chip_off": "♪ OFF", "chip_none": "♪ —", "aligned": "ALIGNED!!",
     },
 }
 # Shared instrument and game labels (§6, §14), identical in both languages.

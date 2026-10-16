@@ -191,6 +191,31 @@ class DopaDirector:
 
         self.fx.add(Tween(0.2, flash))
 
+    def columns_reset(self, button):
+        """Column widths really returned to defaults: housekeeping, so HEAT stays.
+
+        The button flashes, then a neon frame runs left to right over the
+        column headers, one column after another, as they line up.
+        """
+        self.deck_pressed(button)
+        self.hud.stamp(self.words["aligned"], COLORS["accent"])
+        self.sfx("lock")
+        grid = self.editor.table_grid
+        if self.fx.reduced or getattr(self.editor, "_view", None) != "table":
+            return
+        grid.fx_layer = True
+        canvas = grid.canvas
+        left, top = canvas.canvasx(0), canvas.canvasy(0)
+        count = max(getattr(grid, "display_column_count", 0), grid.model.column_count + 1)
+        # Skip columns scrolled under the row-number gutter.
+        visible = [column for column in grid.columns.visible(left, canvas.winfo_width(),
+                                                             grid.gutter_width, count)
+                   if grid.columns.edge(column) >= left]
+        for step, column in enumerate(visible):
+            x1 = grid.gutter_width + grid.columns.edge(column)
+            box = x1, top, x1 + grid.columns.width(column), top + grid.header_height
+            self.fx.add(Punch(canvas, box, COLORS["header_background"], delay=0.035 * step))
+
     def check_started(self):
         """Validate / F7 really running: SCAN beside the lamp, for that time only."""
         self.hud.process(COMMON["scan"])

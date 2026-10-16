@@ -47,9 +47,12 @@ class SyntaxHintsTests(unittest.TestCase):
         section = candidates_for("/se", 3, 0)
         self.assertEqual([(item.text, item.select) for item in section],
                          [("/section TASer", (9, 14))])
-        # STAS header fields are palette-only; `$t` stays the user's variable.
+        speed = candidates_for("/sp", 3, 0)
+        self.assertEqual([(item.text, item.select) for item in speed], [("/speed 10", (7, 9))])
+        # STAS settings are palette-only; `$t` and `$s` stay the user's variables.
         self.assertEqual([item.text for item in candidates_for("$", 1, 0)], ["$name = "])
         self.assertEqual(candidates_for("$t", 2, 0), ())
+        self.assertEqual(candidates_for("$s", 2, 0), ())
         self.assertEqual(classify_cell("$title = My Run", 0), "variable")
         self.assertEqual(classify_cell("/section TASer", 0), "command")
         self.assertEqual(completion_span("a/ls", 4, 1), (2, 4, "ls"))

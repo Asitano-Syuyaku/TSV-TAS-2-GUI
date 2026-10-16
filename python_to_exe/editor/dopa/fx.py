@@ -248,8 +248,8 @@ class Ambient(Effect):
 class Punch(Effect):
     """Committed-cell frame: 1.18x to the cell, YELLOW -> CYAN -> ground (§7.2)."""
 
-    def __init__(self, canvas, box, ground, rainbow=False, reduced=False):
-        super().__init__(0.22)
+    def __init__(self, canvas, box, ground, rainbow=False, reduced=False, delay=0.0):
+        super().__init__(0.22, delay)
         self.canvas, self.box, self.ground = canvas, box, ground
         self.rainbow, self.reduced = rainbow, reduced
 

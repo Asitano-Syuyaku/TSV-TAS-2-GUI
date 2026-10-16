@@ -19,7 +19,7 @@ from .text_ops import (file_kind, find_next as next_match, find_previous as prev
                        line_column, replace_all as replace_every, replace_current as replace_match)
 from .theme import (CATEGORY_COLORS, COLORS, FONTS, HEAT_RAMP, SIZES, SPACING, SYNTAX_COLORS,
                     button_options, editor_fonts, entry_options, label_options, menu_options, px)
-from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
+from .tsv_syntax import CANDIDATES, PALETTE_PAGES, palette_items, syntax_spans
 from .dopa.words import MOTION_LEVELS, WORDS as DOPA_WORDS
 
 if __package__ == "editor":
@@ -70,7 +70,7 @@ LABELS = {
         "left_stick": "Left Stick", "right_stick": "Right Stick",
         "stick_preview": "Stick Preview (1P)",
         "preview_updating": "Updating...", "preview_unavailable": "Unavailable",
-        "commands": "STAS Commands", "script_info": "STAS Info",
+        "commands": "STAS Commands", "script_info": "STAS Settings",
         "cappy": "Cappy", "accel": "Accel", "gyro": "Gyro", "notation": "Notation",
         "validate": "Validate", "validating": "Validating...",
         "no_errors": "No errors", "problems": "Problems",
@@ -96,6 +96,7 @@ LABELS = {
         "deck_validate": "Validate  F6", "deck_analyze": "Analyze  F7",
         "deck_convert": "Save & Convert  F5", "deck_send": "Convert & SEND  F8",
         "deck_validate_compact": "Validate", "deck_analyze_compact": "Analyze",
+        "deck_reset_widths": "Reset Widths", "deck_reset_widths_compact": "Reset Widths",
         "deck_convert_compact": "Save & Convert", "deck_send_compact": "Convert & SEND",
         # Decorative Dopagaki words only; factual messages above stay unchanged.
         "dopa_oshii": "SO CLOSE!", "dopa_clear": "✔",
@@ -134,7 +135,7 @@ LABELS = {
         "left_stick": "左スティック", "right_stick": "右スティック",
         "stick_preview": "スティックプレビュー (1P)",
         "preview_updating": "更新中...", "preview_unavailable": "未確定",
-        "commands": "STASコマンド", "script_info": "STAS情報",
+        "commands": "STASコマンド", "script_info": "STAS設定",
         "cappy": "Cappy", "accel": "加速度", "gyro": "ジャイロ", "notation": "記法",
         "validate": "検証", "validating": "検証中...",
         "no_errors": "エラーなし", "problems": "問題",
@@ -159,6 +160,7 @@ LABELS = {
         "deck_validate": "検証  F6", "deck_analyze": "解析  F7",
         "deck_convert": "保存して変換  F5", "deck_send": "変換してSEND  F8",
         "deck_validate_compact": "検証", "deck_analyze_compact": "解析",
+        "deck_reset_widths": "列幅リセット", "deck_reset_widths_compact": "列幅リセット",
         "deck_convert_compact": "保存して変換", "deck_send_compact": "変換してSEND",
         "dopa_oshii": "おしい!", "dopa_clear": "✔",
     },
@@ -533,10 +535,14 @@ class EditorWindow(tk.Toplevel):
         self._validate_button.pack(side="left", padx=SPACING["button_gap"])
         self._analyze_button = tk.Button(checks, command=self.analyze_frames, **button_options())
         self._analyze_button.pack(side="left", padx=SPACING["button_gap"])
+        self._reset_widths_button = tk.Button(checks, command=self.reset_column_widths,
+                                              **button_options())
+        self._reset_widths_button.pack(side="left", padx=SPACING["button_gap"])
         # (button, full label key, compact label key); compact drops the shortcut suffix.
         self._deck_checks = checks
         self._deck_labels = ((self._validate_button, "deck_validate"),
                              (self._analyze_button, "deck_analyze"),
+                             (self._reset_widths_button, "deck_reset_widths"),
                              (self._convert_button, "deck_convert"),
                              (self._send_button, "deck_send"))
         self._deck_compact = None
@@ -1119,7 +1125,7 @@ class EditorWindow(tk.Toplevel):
                 group = tk.Frame(content, background=COLORS["panel_background"])
                 group.pack(fill="x", padx=SPACING["gap"])
                 buttons = [(self._palette_button(group, candidate), candidate)
-                           for candidate in CANDIDATES if candidate.category == category]
+                           for candidate in palette_items(category)]
                 self._grid_palette_group(group, buttons, folded=False)
                 if docked:
                     self._palette_folds.append((group, buttons))
@@ -1236,6 +1242,17 @@ class EditorWindow(tk.Toplevel):
         if settings is not None:
             settings.update(**values)
 
+    def reset_column_widths(self):
+        """Forget dragged widths: every Table column returns to its default."""
+        self._remember_workspace(editor_column_widths={})
+        grid = self.table_grid  # Other tabs import the cleared widths when shown.
+        grid.columns.import_widths({})
+        grid._update_region()
+        grid._schedule_draw()
+        director = getattr(self, "_dopa", None)
+        if director is not None:
+            director.columns_reset(self._reset_widths_button)
+
     def _remember_column_width(self, column):
         # Merge just the dragged column with shared state. Another Editor's newer
         # widths must not be replaced by this window's older local layout.
@@ -1316,8 +1333,9 @@ class EditorWindow(tk.Toplevel):
 
     @staticmethod
     def _palette_span(candidate):
-        return 2 if (candidate.category in ("gyro", "script_info", "notation") or
-                     candidate.label in ("ls(angle)", "rs(angle)", "/section TASer")) else 1
+        return 2 if (candidate.category in ("gyro", "notation") or
+                     candidate.label in ("ls(angle)", "rs(angle)", "/tp x y z",
+                                         "$stage = StageName", "$entrance = EntranceName")) else 1
 
     def _palette_button(self, parent, candidate):
         image = getattr(self, "_palette_icons", {}).get(candidate.icon_key)

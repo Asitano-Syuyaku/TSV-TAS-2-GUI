@@ -345,6 +345,32 @@ class FeverEditorTests(TkCase):
         self.assertEqual(button.cget("activebackground"), normal["activebackground"])
         grid.cancel_edit()
 
+    def test_reset_widths_lines_up_the_headers_without_a_reward(self):
+        root, editor, _ = self.make_editor(language="ja", editor_column_widths={"1": 216, "2": 214})
+        grid, director = editor.table_grid, editor._dopa
+        self.assertEqual((grid.columns.width(1), grid.columns.width(2)), (216, 214))
+        editor._reset_widths_button.invoke()
+        self.assertEqual([grid.columns.width(column) for column in range(3)],
+                         [theme.px(112), theme.px(178), theme.px(178)])
+        self.assertEqual(root._tas_app_settings.get("editor_column_widths"), {})
+        self.assertEqual((director.heat.actions, director.heat.dopa), (0, 0))  # Housekeeping.
+        self.assertEqual(director.hud._shout.text, "整列!!")
+        punches = [effect for effect in director.fx.active if isinstance(effect, fxmod.Punch)]
+        self.assertGreaterEqual(len(punches), 6)  # Every header in view, from A rightward.
+        self.assertEqual(punches[0].box[0], grid.gutter_width)
+        self.assertEqual([round(effect.delay, 3) for effect in punches[:3]], [0, 0.035, 0.07])
+        self.assertEqual([effect.box[0] for effect in punches],
+                         sorted(effect.box[0] for effect in punches))
+        self.now[0] += 2
+        director.fx.step()
+        self.assertEqual(self.table_fx(), ())
+        director.set_settings(0, True)  # Effects 0%: the stamp only.
+        editor._reset_widths_button.invoke()
+        self.assertFalse([effect for effect in director.fx.active
+                          if isinstance(effect, fxmod.Punch)])
+        self.assertFalse(editor.document.modified)
+        self.assertEqual(self.errors, [])
+
     def test_destroy_mid_effects_releases_editor_without_callback_errors(self):
         root, editor, _ = self.make_editor()
         self.commit(0, 2, "a")
