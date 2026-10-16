@@ -21,8 +21,10 @@ from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
 
 if __package__ == "editor":
     from app_settings import AppSettings, EDITOR_SIZE_DEFAULT, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
+    from background import hold_gc, resume_gc, resume_gc_soon
 else:
     from ..app_settings import AppSettings, EDITOR_SIZE_DEFAULT, EDITOR_SIZE_MIN, EDITOR_SIZE_MAX
+    from ..background import hold_gc, resume_gc, resume_gc_soon
 
 
 HIGHLIGHT_COLORS = SYNTAX_COLORS
@@ -703,6 +705,8 @@ class EditorWindow(tk.Toplevel):
 
     def _on_destroy(self, event):
         if event.widget is self:
+            # A cancelled poller must not leave GC paused; the root outlives us.
+            resume_gc_soon(self._root())
             self._flush_workspace()
             self._closed = True
             # Release Tk images on the UI thread, before background CSV parsing
@@ -753,6 +757,7 @@ class EditorWindow(tk.Toplevel):
         state = self.words["modified"] if self.document.modified else self.words["saved"]
         self.status.config(text=f"{self.words['line']} {line}, {self.words['column']} {column}"
                                 f"  |  {state}  |  {file_kind(self.document.path)}")
+        resume_gc()  # Cheap Tk-thread fallback if a worker's poller was cancelled.
         if hasattr(self, "frame_status"):
             self._update_frame_info(line)
 
@@ -928,19 +933,23 @@ class EditorWindow(tk.Toplevel):
         results = self._position_queue
         self._position_worker_active = True
         self._position_waiting = False
+        # CSV parsing allocates heavily; never let it finalize Tk garbage.
+        gc_hold = hold_gc()
 
         def worker():
-            try:
-                result = analyze_positions(snapshot, base_dir=base_dir, include_sticks=True)
-            except Exception as error:
-                traceback.print_exc()
-                result = PositionResult(error=str(error))
-            # The worker keeps only plain data and its queue, not Tk widgets.
-            results.put((revision, result))
+            with gc_hold:
+                try:
+                    result = analyze_positions(snapshot, base_dir=base_dir, include_sticks=True)
+                except Exception as error:
+                    traceback.print_exc()
+                    result = PositionResult(error=str(error))
+                # The worker keeps only plain data and its queue, not Tk widgets.
+                results.put((revision, result))
 
         try:
             threading.Thread(target=worker, daemon=True).start()
         except Exception:
+            gc_hold.release()
             self._position_worker_active = False
             raise
         if self._position_poll_job is None:
@@ -954,6 +963,8 @@ class EditorWindow(tk.Toplevel):
             self._position_poll_job = self.after(50, self._poll_position_analysis)
             return
         self._position_worker_active = False
+        # Retry on the root: the result may arrive before the worker releases.
+        resume_gc_soon(self._root())
         if revision == self._position_revision:
             self._positions = result.positions if result.success else None
             self._stick_frames = result.sticks if result.success else None

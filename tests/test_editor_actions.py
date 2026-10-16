@@ -95,6 +95,7 @@ class EditorActionTkTests(unittest.TestCase):
                 app = self.make_app(work, language)
                 editor = self.open_editor(app, first)
                 other = self.open_editor(app, second)
+                app._set_input_path(first)  # The typed name is for the first file.
                 app.output_entry.delete(0, "end")
                 app.output_entry.insert(0, str(work))
                 app.outname_entry.delete(0, "end")
@@ -150,6 +151,7 @@ class EditorActionTkTests(unittest.TestCase):
 
                     other.save()  # Simulate another Editor taking over Input.
                     self.assertEqual(app.input_entry.get(), str(second))
+                    self.assertEqual(app.outname_entry.get(), second.stem)
                     app.ftp_var.set(False)
                     grid.begin_edit(initial="zl")
                     self.assertEqual(self.shortcut(grid._editor, "F8"), "break")
@@ -158,7 +160,8 @@ class EditorActionTkTests(unittest.TestCase):
                     self.assertIn("-fned", calls[-1][0])
                     self.assertEqual(app.input_entry.get(), str(first))
                     self.assertEqual(app.output_entry.get(), str(work))
-                    self.assertEqual(app.outname_entry.get(), "chosen result")
+                    # Back to the first file: its own name, not the second file's.
+                    self.assertEqual(app.outname_entry.get(), first.stem)
                     self.assertFalse(app.ftp_var.get())
                     self.assertTrue(app.debug_var.get())
                     self.assertTrue(app.skip_var.get())
@@ -216,7 +219,7 @@ class EditorActionTkTests(unittest.TestCase):
                 self.wait_for(app, lambda: not app._busy())
                 self.assertEqual(source.read_bytes(), b"1\ta")
                 self.assertEqual(Path(calls[0][-2]), source)
-                self.assertIn("-f", calls[0])
+                self.assertIn("f", next(arg for arg in calls[0] if arg.startswith("-")))
                 self.assertEqual(app.input_entry.get(), str(source))
                 self.assertEqual(app.output_entry.get(), str(work))
                 self.assertEqual(app.outname_entry.get(), source.stem)

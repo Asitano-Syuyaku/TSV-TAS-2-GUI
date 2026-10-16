@@ -10,7 +10,6 @@ from unittest.mock import patch
 
 from python_to_exe.app_settings import AppSettings
 from python_to_exe.converter_gui import TASConverterApp
-from python_to_exe.editor.window import EditorWindow
 
 
 class WorkspaceTkTests(unittest.TestCase):
@@ -81,7 +80,7 @@ class WorkspaceTkTests(unittest.TestCase):
 
     def test_opens_maximized_by_default_and_remembers_only_user_changes(self):
         settings = AppSettings(self.folder / "maximized.json")
-        with patch.object(EditorWindow, "_set_maximized") as maximize:
+        with patch("python_to_exe.editor.window.EditorWindow._set_maximized") as maximize:
             app = self.make_app(settings=settings)
             editor = app._create_editor()
             app.update()
@@ -103,7 +102,7 @@ class WorkspaceTkTests(unittest.TestCase):
         self.assertEqual(settings.get("editor_width"), 1300)
         self.assertTrue(editor.close_editor())
         self.assertFalse(AppSettings(settings.path).get("editor_maximized"))
-        with patch.object(EditorWindow, "_set_maximized") as maximize:
+        with patch("python_to_exe.editor.window.EditorWindow._set_maximized") as maximize:
             app._create_editor()
             app.update()
         maximize.assert_not_called()

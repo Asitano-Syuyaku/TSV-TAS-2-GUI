@@ -285,14 +285,16 @@ class StickPreviewTkTests(unittest.TestCase):
             root, editor, _source = self.make_editor()
             self.wait_for(root, started.is_set)
             results = editor._position_queue
+            icons = len(editor._palette_icons)
+            self.assertEqual(icons, 20)  # 12 buttons and 8 motion shakes.
             editor.destroy()
             self.assertEqual(editor._palette_icons, {})
             self.assertEqual(editor._position_poll_job, None)
-            self.assertEqual(destroyed_on, [threading.main_thread()] * 16)
+            self.assertEqual(destroyed_on, [threading.main_thread()] * icons)
             release.set()
             self.wait_for(root, lambda: not results.empty())
             _revision, result = results.get_nowait()
             self.assertTrue(result.success, result.error)
             self.assertIsNotNone(result.sticks)
             self.assertTrue(editor._closed)
-            self.assertEqual(destroyed_on, [threading.main_thread()] * 16)
+            self.assertEqual(destroyed_on, [threading.main_thread()] * icons)

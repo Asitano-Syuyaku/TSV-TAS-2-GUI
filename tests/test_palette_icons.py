@@ -146,7 +146,8 @@ class PaletteTkTests(unittest.TestCase):
                 editor = EditorWindow(root, language="en")
             try:
                 self.assertEqual(set(editor._palette_icons),
-                                 set(BUTTON_KEYS.values()) - {"button_a", "button_plus"})
+                                 set(BUTTON_KEYS.values()) - {"button_a", "button_plus"}
+                                 | set(MOTION_KEYS.values()))
                 self.assertTrue(editor.show_table())
                 root.update()
                 palette_buttons = list(buttons_in(editor.input_palette))
