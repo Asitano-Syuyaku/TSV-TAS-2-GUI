@@ -141,7 +141,7 @@ class ConverterPlumbingTests(unittest.TestCase):
         dialog.assert_not_called()  # P4: the requesting Editor presents it (non-modal).
         self.assertEqual([who for who, _ in received], ["editor"])
         self.assertIs(received[0][1][0], True)
-        self.assertEqual(received[0][1][1].primary, self.folder / "route")
+        self.assertEqual(received[0][1][1].primary, self.folder / "route.stas")  # STAS default.
         self.assertEqual(editor._dopa.heat.round, 2)  # Real local output: the round settles.
         self.assertIsNone(self.app._conversion_listener)
 
