@@ -17,6 +17,13 @@ from python_to_exe.converter_gui import TASConverterApp, TEXT
 from python_to_exe.converter_logic import build_commands, conversion_outputs, open_output_folder
 
 
+def descendants(widget):
+    """Every widget below `widget`; the Converter groups its fields in cards."""
+    for child in widget.winfo_children():
+        yield child
+        yield from descendants(child)
+
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -321,7 +328,7 @@ class OutputWorkflowTkTests(unittest.TestCase):
                     self.assertIn(str(path), log)
                 self.assertIn(str(outputs.primary), success.call_args.args[1])
                 self.assertNotIn(app.words["result_ftp"], log)
-            output_buttons = [child for frame in app.winfo_children() for child in frame.winfo_children()
+            output_buttons = [child for child in descendants(app)
                               if isinstance(child, tk.Button) and child.cget("text") == app.words["open_output"]]
             self.assertEqual(len(output_buttons), 1)
             with patch("python_to_exe.converter_gui.open_output_folder") as opener:

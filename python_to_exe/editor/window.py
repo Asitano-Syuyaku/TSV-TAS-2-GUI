@@ -15,8 +15,8 @@ from .resources import palette_icon_path
 from .snapshot import ScriptSnapshot
 from .text_ops import (file_kind, find_next as next_match, find_previous as previous_match,
                        line_column, replace_all as replace_every, replace_current as replace_match)
-from .theme import (COLORS, FONTS, SIZES, SPACING, SYNTAX_COLORS, button_options,
-                    editor_fonts, entry_options, label_options)
+from .theme import (CATEGORY_COLORS, COLORS, FONTS, SIZES, SPACING, SYNTAX_COLORS,
+                    button_options, editor_fonts, entry_options, label_options)
 from .tsv_syntax import CANDIDATES, PALETTE_PAGES, syntax_spans
 
 if __package__ == "editor":
@@ -503,10 +503,15 @@ class EditorWindow(tk.Toplevel):
                                                        title=self.words[category])
                     self.stick_preview.pack(fill="x", padx=SPACING["gap"])
                     continue
+                # Category accent: the heading text and a short rule under it.
+                color = CATEGORY_COLORS.get(category, COLORS["muted_text"])
                 tk.Label(content, text=self.words[category], anchor="w",
-                         **label_options(role="heading", fonts=fonts)).pack(
-                    fill="x", padx=SPACING["section"],
-                    pady=(SPACING["category_top"], SPACING["category_bottom"]))
+                         **{**label_options(role="heading", fonts=fonts),
+                            "foreground": color}).pack(
+                    fill="x", padx=SPACING["section"], pady=(SPACING["category_top"], 0))
+                tk.Frame(content, width=24, height=2, background=color).pack(
+                    anchor="w", padx=SPACING["section"],
+                    pady=(1, SPACING["category_bottom"] + 2))
                 group = tk.Frame(content, background=COLORS["panel_background"])
                 group.pack(fill="x", padx=SPACING["gap"])
                 # Shakes are four keys a row: singles over doubles, u d l r.
@@ -1495,20 +1500,21 @@ class EditorWindow(tk.Toplevel):
         return (identity == (getattr(self, "_document_revision", 0), self.document.path)
                 and not getattr(self, "_frame_edit_pending", False))
 
-    def _show_problem_title(self, title):
-        self._problems_title.config(text=title)
+    def _show_problem_title(self, title, tone="text"):
+        self._problems_title.config(text=title, foreground=COLORS[tone])
         self._problems_panel.pack(fill="x", before=self.status)
 
     def _show_stale_result(self, title):
         self._problem_rows = {}
         self._problem_snapshot = None
         self._problems_text.pack_forget()
-        self._show_problem_title(title)
+        self._show_problem_title(title, "muted_text")
 
     def _show_validation_result(self, result):
         self._problem_snapshot = self.document.text
         self._show_problem_title(self.words["no_errors"] if result.success else
-                                 self.words["problems"] + " — " + self.words["jump_hint"])
+                                 self.words["problems"] + " — " + self.words["jump_hint"],
+                                 "success" if result.success else "error")
         self._problems_text.config(state="normal")
         self._problems_text.delete("1.0", "end")
         self._problem_rows = {}

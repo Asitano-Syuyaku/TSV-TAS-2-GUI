@@ -1,4 +1,4 @@
-"""Editor-only light theme. Pure tokens/options never change global Tk styles."""
+"""Light theme shared by the Editor and the Converter window. Pure tokens/options never change global Tk styles."""
 
 
 COLORS = {
@@ -11,6 +11,7 @@ COLORS = {
     "muted_text": "#627284",
     "accent": "#286da4",
     "accent_hover": "#205c8e",
+    "accent_disabled_text": "#b9cfe2",
     "selection_background": "#deecf8",
     "active_selection_outline": "#286da4",
     "success": "#397756",
@@ -35,8 +36,10 @@ FONTS = {"standard": "TkDefaultFont", "small": "TkSmallCaptionFont",
 SMALL_FONT_STEP = 1
 SPACING = {"outer": 8, "section": 6, "gap": 4, "button_gap": 2,
            "toolbar_y": 4, "button_x": 7, "button_y": 2, "status_y": 2,
-           "category_top": 4, "category_bottom": 1, "palette_button_y": 0,
-           "palette_grid_y": 0}
+           "category_top": 8, "category_bottom": 1, "palette_button_y": 0,
+           "palette_grid_y": 0,
+           # Converter window: cards on the app background.
+           "window": 12, "card_x": 12, "card_y": 10, "row_y": 4}
 # Keep the 24px icons and plots full size; trim button chrome for numeric space.
 SIZES = {"palette_width": 400, "palette_row": 26, "plot_width": 160, "plot_height": 126,
          "initial_columns": 8}
@@ -50,6 +53,13 @@ ROW_HINTS = {"comment": "#80a88a", "command": "#ac90bf",
              "variable": "#bda06d", "control": "#7fa4b4",
              "blank": "#d1dae2", "input": "#9bb2ca"}
 TRAIL_COLORS = ("#cc2828", "#dc7777", "#e7aaaa", "#f0cece")
+# Palette category accents: calm ink tones (>= 4.9:1 on white) for the heading
+# and its short rule only; buttons keep the shared palette colors.
+CATEGORY_COLORS = {"buttons": "#8a6a12", "motion": "#a8571c",
+                   "left_stick": "#1f7a8c", "right_stick": "#a33b6b",
+                   "commands": "#73509a", "script_info": "#73509a",
+                   "cappy": "#3f7a4b", "accel": "#a8571c", "gyro": "#a8571c",
+                   "notation": "#627284"}
 
 
 def editor_fonts(master):
@@ -84,7 +94,7 @@ def button_options(kind="toolbar", selected=False, fonts=None):
                              "palette_text" if palette else "text"],
         "activebackground": COLORS["accent_hover" if primary else "palette_hover"],
         "activeforeground": COLORS["panel_background" if primary else "text"],
-        "disabledforeground": COLORS["muted_text"],
+        "disabledforeground": COLORS["accent_disabled_text" if primary else "muted_text"],
         "relief": "flat", "overrelief": "flat", "borderwidth": 0 if palette else 1,
         "highlightthickness": 1, "highlightbackground": COLORS["subtle_border"],
         "highlightcolor": COLORS["accent"],
@@ -92,6 +102,15 @@ def button_options(kind="toolbar", selected=False, fonts=None):
         "padx": SPACING["button_x"],
         "pady": SPACING["palette_button_y" if palette else "button_y"],
     }
+
+
+def choice_options(surface="panel_background", fonts=None):
+    """Radiobutton/Checkbutton on a surface; the indicator stays white."""
+    return {"background": COLORS[surface], "foreground": COLORS["text"],
+            "activebackground": COLORS[surface], "activeforeground": COLORS["text"],
+            "selectcolor": COLORS["panel_background"],
+            "disabledforeground": COLORS["muted_text"], "highlightthickness": 0,
+            "font": (fonts or FONTS)["standard"]}
 
 
 def entry_options():

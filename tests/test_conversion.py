@@ -216,6 +216,9 @@ class FakeWidget:
     def resizable(self, *args):
         pass
 
+    def grid_columnconfigure(self, *args, **kwargs):
+        pass
+
     def protocol(self, *args):
         pass
 

@@ -12,6 +12,13 @@ from python_to_exe.converter_gui import TASConverterApp
 from python_to_exe.editor.window import EditorWindow
 
 
+def descendants(widget):
+    """Every widget below `widget`; the Converter groups its fields in cards."""
+    for child in widget.winfo_children():
+        yield child
+        yield from descendants(child)
+
+
 class RecentFilesTkTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="tas recent 日本語 ")
@@ -160,12 +167,12 @@ class RecentFilesTkTests(unittest.TestCase):
         for language in ("en", "ja"):
             with self.subTest(language=language):
                 app = self.make_app(language)
-                format_frame = next(child for child in app.winfo_children()
+                format_frame = next(child for child in descendants(app)
                                     if any(isinstance(item, tk.Radiobutton) for item in child.winfo_children()))
                 stas = next(child for child in format_frame.winfo_children() if child.cget("value") == "stas")
                 app.skip_var.set(True)
                 stas.invoke()
-                debug = next(child for child in app.winfo_children()
+                debug = next(child for child in descendants(app)
                              if isinstance(child, tk.Checkbutton) and child.cget("text") == app.words["debug"])
                 if not app.debug_var.get():
                     debug.invoke()

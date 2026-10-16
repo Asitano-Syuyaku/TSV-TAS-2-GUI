@@ -12,11 +12,15 @@ from tkinter import filedialog, messagebox
 
 if __package__:
     from .app_settings import AppSettings
+    from .editor.theme import (COLORS, FONTS, SPACING, button_options, choice_options,
+                               entry_options, label_options)
     from .converter_logic import (FORMATS, build_commands, conversion_outputs, load_ftp_config,
                                   open_output_folder, save_ftp_config, scripts_dir,
                                   utf8_subprocess_kwargs)
 else:
     from app_settings import AppSettings
+    from editor.theme import (COLORS, FONTS, SPACING, button_options, choice_options,
+                              entry_options, label_options)
     from converter_logic import (FORMATS, build_commands, conversion_outputs, load_ftp_config,
                                  open_output_folder, save_ftp_config, scripts_dir,
                                  utf8_subprocess_kwargs)
@@ -28,6 +32,7 @@ TEXT = {
         "output": "Output Directory:", "name": "Output File Name (without extension):",
         "browse": "Browse...", "edit": "Edit...", "format": "Output format:",
         "open_output": "Open Output Folder",
+        "files": "Files", "settings": "Output settings", "log": "Log",
         "recovery_title": "Unsaved recovery",
         "recovery_found": "Unsaved editing content was found.",
         "recovery_choices": "Yes: Restore\nNo: Discard\nCancel: Keep for a later startup",
@@ -54,6 +59,7 @@ TEXT = {
         "output": "出力ディレクトリ:", "name": "出力ファイル名 (拡張子なし):",
         "browse": "参照...", "edit": "編集...", "format": "出力形式:",
         "open_output": "出力フォルダーを開く",
+        "files": "ファイル", "settings": "出力設定", "log": "ログ",
         "recovery_title": "未保存内容の復旧",
         "recovery_found": "保存されていない編集内容が見つかりました。",
         "recovery_choices": "はい: 復元\nいいえ: 破棄\nキャンセル: 次回起動まで保留",
@@ -110,64 +116,90 @@ class TASConverterApp(tk.Tk):
         self._validation_running = False
         self._analysis_running = False
 
-        tk.Label(self, text=self.words["input"]).grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        self.input_entry = tk.Entry(self, width=50)
-        self.input_entry.grid(row=0, column=1, padx=5, pady=5)
-        input_buttons = tk.Frame(self)
-        input_buttons.grid(row=0, column=2, padx=5, pady=5)
-        tk.Button(input_buttons, text=self.words["browse"], command=self.browse_input).pack(side="left")
-        tk.Button(input_buttons, text=self.words["edit"], command=self.open_editor).pack(side="left")
+        # Light theme shared with the Editor: two cards, one primary action, the log.
+        self.config(background=COLORS["app_background"])
+        self.grid_columnconfigure(0, weight=1)
+        row = {"padx": SPACING["gap"], "pady": SPACING["row_y"]}
+        text = label_options()
+        entry = entry_options()
 
-        tk.Label(self, text=self.words["output"]).grid(row=1, column=0, padx=5, pady=5, sticky="e")
-        self.output_entry = tk.Entry(self, width=50)
-        self.output_entry.grid(row=1, column=1, padx=5, pady=5)
-        output_buttons = tk.Frame(self)
-        output_buttons.grid(row=1, column=2, padx=5, pady=5)
-        tk.Button(output_buttons, text=self.words["browse"], command=self.browse_output).pack(side="left")
-        tk.Button(output_buttons, text=self.words["open_output"], command=self.open_output_folder).pack(side="left")
+        files = self._card(0, self.words["files"])
+        tk.Label(files, text=self.words["input"], **text).grid(row=1, column=0, sticky="w", **row)
+        self.input_entry = tk.Entry(files, width=50, **entry)
+        self.input_entry.grid(row=1, column=1, ipady=3, **row)
+        input_buttons = tk.Frame(files, background=COLORS["panel_background"])
+        input_buttons.grid(row=1, column=2, sticky="w", **row)
+        tk.Button(input_buttons, text=self.words["browse"], command=self.browse_input,
+                  **button_options()).pack(side="left")
+        # The Editor is the other way in: softly emphasized, never the primary action.
+        tk.Button(input_buttons, text=self.words["edit"], command=self.open_editor,
+                  **button_options("palette")).pack(side="left", padx=(SPACING["gap"], 0))
 
-        tk.Label(self, text=self.words["name"]).grid(row=2, column=0, padx=5, pady=5, sticky="e")
-        self.outname_entry = tk.Entry(self, width=50)
-        self.outname_entry.grid(row=2, column=1, columnspan=2, padx=5, pady=5)
+        tk.Label(files, text=self.words["output"], **text).grid(row=2, column=0, sticky="w", **row)
+        self.output_entry = tk.Entry(files, width=50, **entry)
+        self.output_entry.grid(row=2, column=1, ipady=3, **row)
+        output_buttons = tk.Frame(files, background=COLORS["panel_background"])
+        output_buttons.grid(row=2, column=2, sticky="w", **row)
+        tk.Button(output_buttons, text=self.words["browse"], command=self.browse_output,
+                  **button_options()).pack(side="left")
+        tk.Button(output_buttons, text=self.words["open_output"], command=self.open_output_folder,
+                  **button_options()).pack(side="left", padx=(SPACING["gap"], 0))
 
-        tk.Label(self, text=self.words["format"]).grid(row=3, column=0, padx=5, pady=5, sticky="e")
+        tk.Label(files, text=self.words["name"], **text).grid(row=3, column=0, sticky="w", **row)
+        self.outname_entry = tk.Entry(files, width=50, **entry)
+        self.outname_entry.grid(row=3, column=1, ipady=3, **row)
+
+        options = self._card(1, self.words["settings"])
+        tk.Label(options, text=self.words["format"], **text).grid(row=1, column=0, sticky="w", **row)
         self.format_var = tk.StringVar(value=self.settings.get("output_format"))
-        format_frame = tk.Frame(self)
-        format_frame.grid(row=3, column=1, columnspan=2, sticky="w")
+        format_frame = tk.Frame(options, background=COLORS["panel_background"])
+        format_frame.grid(row=1, column=1, sticky="w", **row)
         for key in FORMATS:
             tk.Radiobutton(format_frame, text=self.words[key], value=key,
-                           variable=self.format_var, command=self._format_changed).pack(side="left")
+                           variable=self.format_var, command=self._format_changed,
+                           **choice_options()).pack(side="left", padx=(0, SPACING["card_x"]))
 
+        # Options line up under the formats they modify.
         self.skip_var = tk.BooleanVar()
-        self.skip_check = tk.Checkbutton(self, text=self.words["skip"], variable=self.skip_var)
-        self.skip_check.grid(row=4, column=0, columnspan=3, padx=5, sticky="w")
+        self.skip_check = tk.Checkbutton(options, text=self.words["skip"], variable=self.skip_var,
+                                         **choice_options())
+        self.skip_check.grid(row=2, column=1, sticky="w", padx=SPACING["gap"])
         self.toggle_skip()
 
         self.debug_var = tk.BooleanVar(value=self.settings.get("debug_enabled"))
-        tk.Checkbutton(self, text=self.words["debug"], variable=self.debug_var,
-                       command=self._save_preferences).grid(
-            row=5, column=0, columnspan=3, padx=5, sticky="w")
+        tk.Checkbutton(options, text=self.words["debug"], variable=self.debug_var,
+                       command=self._save_preferences, **choice_options()).grid(
+            row=3, column=1, sticky="w", padx=SPACING["gap"])
 
         self.ftp_var = tk.BooleanVar()
-        tk.Checkbutton(self, text=self.words["ftp"], variable=self.ftp_var,
-                       command=self.toggle_ftp).grid(row=6, column=0, columnspan=3, padx=5, sticky="w")
+        tk.Checkbutton(options, text=self.words["ftp"], variable=self.ftp_var,
+                       command=self.toggle_ftp, **choice_options()).grid(
+            row=4, column=1, sticky="w", padx=SPACING["gap"])
 
-        self.ftp_frame = tk.Frame(self)
+        self.ftp_frame = tk.Frame(options, background=COLORS["panel_background"])
         self.ip_entry = self._ftp_field("ip", 0, 0)
         self.port_entry = self._ftp_field("port", 0, 2)
         self.user_entry = self._ftp_field("user", 1, 0)
         self.pass_entry = self._ftp_field("password", 1, 2, show="*")
-        self.ftp_frame.grid(row=7, column=0, columnspan=3)
+        self.ftp_frame.grid(row=5, column=1, sticky="w", padx=(SPACING["card_x"], 0),
+                            pady=(0, SPACING["row_y"]))
         self.ftp_frame.grid_remove()
         config = load_ftp_config(self.base_dir)
-        for entry, key in ((self.ip_entry, "ip"), (self.port_entry, "port"),
-                           (self.user_entry, "user"), (self.pass_entry, "passwd")):
-            entry.insert(0, str(config.get(key, "")))
+        for entry_widget, key in ((self.ip_entry, "ip"), (self.port_entry, "port"),
+                                  (self.user_entry, "user"), (self.pass_entry, "passwd")):
+            entry_widget.insert(0, str(config.get(key, "")))
 
-        self.convert_btn = tk.Button(self, text=self.words["start"], command=self.start_conversion)
-        self.convert_btn.grid(row=8, column=1, padx=5, pady=10)
-        self.log_text = tk.Text(self, height=10, width=80, state="disabled")
-        self.log_text.grid(row=9, column=0, columnspan=3, padx=5, pady=5)
+        # The one primary action: full width, bold.
+        self.convert_btn = tk.Button(self, text=self.words["start"], command=self.start_conversion,
+                                     **{**button_options("primary", fonts={"standard": FONTS["heading"]}),
+                                        "padx": 24, "pady": 6})
+        self.convert_btn.grid(row=2, column=0, sticky="ew", padx=SPACING["window"],
+                              pady=SPACING["gap"])
+        log = self._card(3, self.words["log"], last=True)
+        log.grid_columnconfigure(0, weight=1)
+        self.log_text = tk.Text(log, height=10, width=80, state="disabled", font="TkFixedFont",
+                                padx=SPACING["gap"], pady=SPACING["gap"], **entry)
+        self.log_text.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(SPACING["gap"], 0))
         if __package__:
             from .editor.recovery import RecoveryStore
         else:
@@ -223,10 +255,25 @@ class TASConverterApp(tk.Tk):
             self.settings.update(last_output_directory=os.path.abspath(directory))
         self.destroy()
 
+    def _card(self, row, title, last=False):
+        """A white section on the app background, headed by an accent title."""
+        card = tk.Frame(self, background=COLORS["panel_background"], highlightthickness=1,
+                        highlightbackground=COLORS["subtle_border"],
+                        padx=SPACING["card_x"], pady=SPACING["card_y"])
+        card.grid(row=row, column=0, sticky="ew", padx=SPACING["window"],
+                  pady=(SPACING["window"] if row == 0 else SPACING["gap"],
+                        SPACING["window"] if last else SPACING["gap"]))
+        tk.Label(card, text=title, **{**label_options(role="heading"),
+                                      "foreground": COLORS["accent"]}).grid(
+            row=0, column=0, columnspan=3, sticky="w", padx=SPACING["gap"],
+            pady=(0, SPACING["row_y"]))
+        return card
+
     def _ftp_field(self, key, row, column, **kwargs):
-        tk.Label(self.ftp_frame, text=self.words[key]).grid(row=row, column=column, padx=5, pady=2, sticky="e")
-        entry = tk.Entry(self.ftp_frame, **kwargs)
-        entry.grid(row=row, column=column + 1, padx=5, pady=2)
+        tk.Label(self.ftp_frame, text=self.words[key], **label_options()).grid(
+            row=row, column=column, padx=SPACING["gap"], pady=2, sticky="w")
+        entry = tk.Entry(self.ftp_frame, **{**entry_options(), **kwargs})
+        entry.grid(row=row, column=column + 1, padx=SPACING["gap"], pady=2, ipady=2)
         return entry
 
     def browse_input(self):
